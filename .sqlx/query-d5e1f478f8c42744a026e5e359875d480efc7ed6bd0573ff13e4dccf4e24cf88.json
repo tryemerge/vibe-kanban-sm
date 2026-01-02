@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE kanban_columns\n                   SET position = $2, updated_at = datetime('now', 'subsec')\n                   WHERE id = $1 AND project_id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d5e1f478f8c42744a026e5e359875d480efc7ed6bd0573ff13e4dccf4e24cf88"
+}
