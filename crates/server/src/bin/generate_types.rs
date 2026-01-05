@@ -20,6 +20,12 @@ fn generate_types_content() -> String {
         db::models::project::UpdateProject::decl(),
         db::models::project::SearchResult::decl(),
         db::models::project::SearchMatchType::decl(),
+        db::models::board::Board::decl(),
+        db::models::board::CreateBoard::decl(),
+        db::models::board::UpdateBoard::decl(),
+        db::models::kanban_column::KanbanColumn::decl(),
+        db::models::kanban_column::CreateKanbanColumn::decl(),
+        db::models::kanban_column::UpdateKanbanColumn::decl(),
         db::models::repo::Repo::decl(),
         db::models::project_repo::ProjectRepo::decl(),
         db::models::project_repo::CreateProjectRepo::decl(),
@@ -201,6 +207,11 @@ fn generate_types_content() -> String {
         executors::logs::ToolStatus::decl(),
         executors::logs::utils::patch::PatchType::decl(),
         serde_json::Value::decl(),
+        // Agent types
+        db::models::agent::Agent::decl(),
+        db::models::agent::CreateAgent::decl(),
+        db::models::agent::UpdateAgent::decl(),
+        db::models::agent::ContextFile::decl(),
     ];
 
     let body = decls

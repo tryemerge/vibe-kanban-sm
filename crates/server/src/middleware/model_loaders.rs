@@ -5,9 +5,10 @@ use axum::{
     response::Response,
 };
 use db::models::{
-    agent::Agent, automation_rule::AutomationRule, execution_process::ExecutionProcess,
-    kanban_column::KanbanColumn, project::Project, session::Session,
-    state_transition::StateTransition, tag::Tag, task::Task, workspace::Workspace,
+    agent::Agent, automation_rule::AutomationRule, board::Board,
+    execution_process::ExecutionProcess, kanban_column::KanbanColumn, project::Project,
+    session::Session, state_transition::StateTransition, tag::Tag, task::Task,
+    workspace::Workspace,
 };
 use deployment::Deployment;
 use uuid::Uuid;
@@ -256,5 +257,27 @@ pub async fn load_state_transition_middleware(
     };
 
     request.extensions_mut().insert(transition);
+    Ok(next.run(request).await)
+}
+
+pub async fn load_board_middleware(
+    State(deployment): State<DeploymentImpl>,
+    Path(board_id): Path<Uuid>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let board = match Board::find_by_id(&deployment.db().pool, board_id).await {
+        Ok(Some(board)) => board,
+        Ok(None) => {
+            tracing::warn!("Board {} not found", board_id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch board {}: {}", board_id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    request.extensions_mut().insert(board);
     Ok(next.run(request).await)
 }

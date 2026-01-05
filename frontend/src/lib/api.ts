@@ -3,6 +3,12 @@
 import {
   ApprovalStatus,
   ApiResponse,
+  Board,
+  CreateBoard,
+  UpdateBoard,
+  KanbanColumn,
+  CreateKanbanColumn,
+  UpdateKanbanColumn,
   Config,
   CreateFollowUpAttempt,
   EditorType,
@@ -89,6 +95,9 @@ import {
   AbortConflictsRequest,
   Session,
   Workspace,
+  Agent,
+  CreateAgent,
+  UpdateAgent,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -1288,5 +1297,198 @@ export const queueApi = {
   getStatus: async (sessionId: string): Promise<QueueStatus> => {
     const response = await makeRequest(`/api/sessions/${sessionId}/queue`);
     return handleApiResponse<QueueStatus>(response);
+  },
+};
+
+// Agents API (subagents for workflow automation)
+export const agentsApi = {
+  list: async (): Promise<Agent[]> => {
+    const response = await makeRequest('/api/agents');
+    return handleApiResponse<Agent[]>(response);
+  },
+
+  getById: async (agentId: string): Promise<Agent> => {
+    const response = await makeRequest(`/api/agents/${agentId}`);
+    return handleApiResponse<Agent>(response);
+  },
+
+  create: async (data: CreateAgent): Promise<Agent> => {
+    const response = await makeRequest('/api/agents', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Agent>(response);
+  },
+
+  update: async (agentId: string, data: UpdateAgent): Promise<Agent> => {
+    const response = await makeRequest(`/api/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Agent>(response);
+  },
+
+  delete: async (agentId: string): Promise<void> => {
+    const response = await makeRequest(`/api/agents/${agentId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+};
+
+// Boards API (kanban board templates)
+export const boardsApi = {
+  list: async (): Promise<Board[]> => {
+    const response = await makeRequest('/api/boards');
+    return handleApiResponse<Board[]>(response);
+  },
+
+  getById: async (boardId: string): Promise<Board> => {
+    const response = await makeRequest(`/api/boards/${boardId}`);
+    return handleApiResponse<Board>(response);
+  },
+
+  create: async (data: CreateBoard): Promise<Board> => {
+    const response = await makeRequest('/api/boards', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Board>(response);
+  },
+
+  update: async (boardId: string, data: UpdateBoard): Promise<Board> => {
+    const response = await makeRequest(`/api/boards/${boardId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Board>(response);
+  },
+
+  delete: async (boardId: string): Promise<void> => {
+    const response = await makeRequest(`/api/boards/${boardId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  // Column management for boards
+  listColumns: async (boardId: string): Promise<KanbanColumn[]> => {
+    const response = await makeRequest(`/api/boards/${boardId}/columns`);
+    return handleApiResponse<KanbanColumn[]>(response);
+  },
+
+  createColumn: async (
+    boardId: string,
+    data: CreateKanbanColumn
+  ): Promise<KanbanColumn> => {
+    const response = await makeRequest(`/api/boards/${boardId}/columns`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<KanbanColumn>(response);
+  },
+
+  updateColumn: async (
+    boardId: string,
+    columnId: string,
+    data: UpdateKanbanColumn
+  ): Promise<KanbanColumn> => {
+    const response = await makeRequest(
+      `/api/boards/${boardId}/columns/${columnId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<KanbanColumn>(response);
+  },
+
+  deleteColumn: async (boardId: string, columnId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/boards/${boardId}/columns/${columnId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  reorderColumns: async (
+    boardId: string,
+    columnIds: string[]
+  ): Promise<KanbanColumn[]> => {
+    const response = await makeRequest(
+      `/api/boards/${boardId}/columns/reorder`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ column_ids: columnIds }),
+      }
+    );
+    return handleApiResponse<KanbanColumn[]>(response);
+  },
+};
+
+// Kanban Columns API (columns within a project)
+export const columnsApi = {
+  listByProject: async (projectId: string): Promise<KanbanColumn[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/columns`);
+    return handleApiResponse<KanbanColumn[]>(response);
+  },
+
+  getById: async (
+    projectId: string,
+    columnId: string
+  ): Promise<KanbanColumn> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/columns/${columnId}`
+    );
+    return handleApiResponse<KanbanColumn>(response);
+  },
+
+  create: async (
+    projectId: string,
+    data: CreateKanbanColumn
+  ): Promise<KanbanColumn> => {
+    const response = await makeRequest(`/api/projects/${projectId}/columns`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<KanbanColumn>(response);
+  },
+
+  update: async (
+    projectId: string,
+    columnId: string,
+    data: UpdateKanbanColumn
+  ): Promise<KanbanColumn> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/columns/${columnId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<KanbanColumn>(response);
+  },
+
+  delete: async (projectId: string, columnId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/columns/${columnId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  reorder: async (projectId: string, columnIds: string[]): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/columns/reorder`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ column_ids: columnIds }),
+      }
+    );
+    return handleApiResponse<void>(response);
   },
 };

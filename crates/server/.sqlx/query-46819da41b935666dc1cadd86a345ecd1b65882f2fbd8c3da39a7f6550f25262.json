@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM state_transitions WHERE from_column_id = $1 OR to_column_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "46819da41b935666dc1cadd86a345ecd1b65882f2fbd8c3da39a7f6550f25262"
+}

@@ -7,6 +7,8 @@
         "generalDesc": "Theme, notifications, and preferences",
         "projects": "Projects",
         "projectsDesc": "Project scripts and configuration",
+        "boards": "Boards",
+        "boardsDesc": "Kanban board templates",
         "agents": "Agents",
         "agentsDesc": "Coding agent configurations",
         "mcp": "MCP Servers",
@@ -304,6 +306,78 @@
         "success": "Settings Saved!",
         "successMessage": "✓ MCP configuration saved successfully!",
         "loading": "Loading current MCP server configuration..."
+      }
+    },
+    "boards": {
+      "title": "Kanban Boards",
+      "description": "Create and manage board templates for organizing tasks.",
+      "loading": "Loading boards...",
+      "actions": {
+        "create": "New Board"
+      },
+      "empty": {
+        "title": "No boards yet.",
+        "description": "Create a board template to organize tasks with custom columns."
+      },
+      "form": {
+        "name": "Name",
+        "namePlaceholder": "e.g., Development Workflow",
+        "description": "Description",
+        "descriptionPlaceholder": "Describe the purpose of this board..."
+      },
+      "dialog": {
+        "createTitle": "Create Board",
+        "createDescription": "Create a new board template.",
+        "editTitle": "Edit Board",
+        "editDescription": "Update board details.",
+        "deleteTitle": "Delete Board",
+        "deleteDescription": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone."
+      },
+      "save": {
+        "createSuccess": "Board created successfully!",
+        "updateSuccess": "Board updated successfully!",
+        "deleteSuccess": "Board deleted successfully!"
+      },
+      "errors": {
+        "loadFailed": "Failed to load boards.",
+        "saveFailed": "Failed to save board.",
+        "deleteFailed": "Failed to delete board."
+      },
+      "columns": {
+        "title": "Columns",
+        "add": "Add Column",
+        "loading": "Loading columns...",
+        "empty": "No columns yet. Add columns to define task states.",
+        "initial": "Initial",
+        "terminal": "Terminal",
+        "form": {
+          "name": "Name",
+          "namePlaceholder": "e.g., In Progress",
+          "slug": "Slug",
+          "slugPlaceholder": "e.g., in_progress",
+          "slugHelper": "A unique identifier for this column. Used in API and filters.",
+          "color": "Color",
+          "isInitial": "Initial column (new tasks start here)",
+          "isTerminal": "Terminal column (completed/cancelled tasks)"
+        },
+        "dialog": {
+          "createTitle": "Add Column",
+          "createDescription": "Add a new column to this board.",
+          "editTitle": "Edit Column",
+          "editDescription": "Update column details.",
+          "deleteTitle": "Delete Column",
+          "deleteDescription": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone."
+        },
+        "save": {
+          "createSuccess": "Column created successfully!",
+          "updateSuccess": "Column updated successfully!",
+          "deleteSuccess": "Column deleted successfully!"
+        },
+        "errors": {
+          "loadFailed": "Failed to load columns.",
+          "saveFailed": "Failed to save column.",
+          "deleteFailed": "Failed to delete column."
+        }
       }
     },
     "projects": {

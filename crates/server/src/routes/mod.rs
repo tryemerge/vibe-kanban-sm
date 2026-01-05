@@ -8,6 +8,7 @@ use crate::DeploymentImpl;
 pub mod agents;
 pub mod approvals;
 pub mod automation_rules;
+pub mod boards;
 pub mod config;
 pub mod containers;
 pub mod filesystem;
@@ -54,6 +55,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(kanban_columns::router(&deployment))
         .merge(state_transitions::router(&deployment))
         .merge(automation_rules::router(&deployment))
+        .merge(boards::router(&deployment))
         .nest("/images", images::routes())
         .with_state(deployment);
 

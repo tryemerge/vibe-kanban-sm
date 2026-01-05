@@ -22,6 +22,18 @@ export type SearchResult = { path: string, is_file: boolean, match_type: SearchM
 
 export type SearchMatchType = "FileName" | "DirectoryName" | "FullPath";
 
+export type Board = { id: string, name: string, description: string | null, created_at: Date, updated_at: Date, };
+
+export type CreateBoard = { name: string, description: string | null, };
+
+export type UpdateBoard = { name: string | null, description: string | null, };
+
+export type KanbanColumn = { id: string, project_id: string, board_id: string | null, name: string, slug: string, position: number, color: string | null, is_initial: boolean, is_terminal: boolean, created_at: Date, updated_at: Date, };
+
+export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, };
+
+export type UpdateKanbanColumn = { name: string | null, slug: string | null, position: number | null, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, };
+
 export type Repo = { id: string, path: string, name: string, display_name: string, created_at: Date, updated_at: Date, };
 
 export type ProjectRepo = { id: string, project_id: string, repo_id: string, setup_script: string | null, cleanup_script: string | null, copy_files: string | null, parallel_setup_script: boolean, };
@@ -492,6 +504,14 @@ export type ToolStatus = { "status": "created" } | { "status": "success" } | { "
 export type PatchType = { "type": "NORMALIZED_ENTRY", "content": NormalizedEntry } | { "type": "STDOUT", "content": string } | { "type": "STDERR", "content": string } | { "type": "DIFF", "content": Diff };
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;
+
+export type Agent = { id: string, name: string, role: string, system_prompt: string, capabilities: string | null, tools: string | null, description: string | null, context_files: string | null, executor: string, created_at: Date, updated_at: Date, };
+
+export type CreateAgent = { name: string, role: string, system_prompt: string, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, };
+
+export type UpdateAgent = { name: string | null, role: string | null, system_prompt: string | null, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, };
+
+export type ContextFile = { pattern: string, instruction: string | null, };
 
 export const DEFAULT_PR_DESCRIPTION_PROMPT = `Update the GitHub PR that was just created with a better title and description.
 The PR number is #{pr_number} and the URL is {pr_url}.
