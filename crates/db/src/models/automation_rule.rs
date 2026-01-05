@@ -404,9 +404,10 @@ impl AutomationRule {
 
     /// Delete a rule
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!("DELETE FROM automation_rules WHERE id = $1", id)
-            .execute(pool)
-            .await?;
+        let result: sqlx::sqlite::SqliteQueryResult =
+            sqlx::query!("DELETE FROM automation_rules WHERE id = $1", id)
+                .execute(pool)
+                .await?;
         Ok(result.rows_affected())
     }
 }

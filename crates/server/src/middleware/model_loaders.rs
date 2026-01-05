@@ -5,8 +5,9 @@ use axum::{
     response::Response,
 };
 use db::models::{
-    execution_process::ExecutionProcess, project::Project, session::Session, tag::Tag, task::Task,
-    workspace::Workspace,
+    agent::Agent, automation_rule::AutomationRule, execution_process::ExecutionProcess,
+    kanban_column::KanbanColumn, project::Project, session::Session,
+    state_transition::StateTransition, tag::Tag, task::Task, workspace::Workspace,
 };
 use deployment::Deployment;
 use uuid::Uuid;
@@ -167,5 +168,93 @@ pub async fn load_session_middleware(
     };
 
     request.extensions_mut().insert(session);
+    Ok(next.run(request).await)
+}
+
+pub async fn load_agent_middleware(
+    State(deployment): State<DeploymentImpl>,
+    Path(agent_id): Path<Uuid>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let agent = match Agent::find_by_id(&deployment.db().pool, agent_id).await {
+        Ok(Some(agent)) => agent,
+        Ok(None) => {
+            tracing::warn!("Agent {} not found", agent_id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch agent {}: {}", agent_id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    request.extensions_mut().insert(agent);
+    Ok(next.run(request).await)
+}
+
+pub async fn load_kanban_column_middleware(
+    State(deployment): State<DeploymentImpl>,
+    Path(column_id): Path<Uuid>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let column = match KanbanColumn::find_by_id(&deployment.db().pool, column_id).await {
+        Ok(Some(column)) => column,
+        Ok(None) => {
+            tracing::warn!("KanbanColumn {} not found", column_id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch kanban column {}: {}", column_id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    request.extensions_mut().insert(column);
+    Ok(next.run(request).await)
+}
+
+pub async fn load_automation_rule_middleware(
+    State(deployment): State<DeploymentImpl>,
+    Path(rule_id): Path<Uuid>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let rule = match AutomationRule::find_by_id(&deployment.db().pool, rule_id).await {
+        Ok(Some(rule)) => rule,
+        Ok(None) => {
+            tracing::warn!("AutomationRule {} not found", rule_id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch automation rule {}: {}", rule_id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    request.extensions_mut().insert(rule);
+    Ok(next.run(request).await)
+}
+
+pub async fn load_state_transition_middleware(
+    State(deployment): State<DeploymentImpl>,
+    Path(transition_id): Path<Uuid>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let transition = match StateTransition::find_by_id(&deployment.db().pool, transition_id).await {
+        Ok(Some(transition)) => transition,
+        Ok(None) => {
+            tracing::warn!("StateTransition {} not found", transition_id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch state transition {}: {}", transition_id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    request.extensions_mut().insert(transition);
     Ok(next.run(request).await)
 }

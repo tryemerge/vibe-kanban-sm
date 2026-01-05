@@ -41,6 +41,25 @@ pub struct CreateStateTransition {
 }
 
 impl StateTransition {
+    /// Find a transition by ID
+    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            StateTransition,
+            r#"SELECT id as "id!: Uuid",
+                      project_id as "project_id!: Uuid",
+                      from_column_id as "from_column_id!: Uuid",
+                      to_column_id as "to_column_id!: Uuid",
+                      name,
+                      requires_confirmation as "requires_confirmation!: bool",
+                      created_at as "created_at!: DateTime<Utc>"
+               FROM state_transitions
+               WHERE id = $1"#,
+            id
+        )
+        .fetch_optional(pool)
+        .await
+    }
+
     /// Find all transitions for a project
     pub async fn find_by_project(
         pool: &SqlitePool,

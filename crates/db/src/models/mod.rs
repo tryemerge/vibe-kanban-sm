@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod automation_execution;
 pub mod automation_rule;
 pub mod coding_agent_turn;

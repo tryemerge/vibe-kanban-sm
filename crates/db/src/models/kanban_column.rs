@@ -235,12 +235,13 @@ impl KanbanColumn {
         column_ids: &[Uuid],
     ) -> Result<(), sqlx::Error> {
         for (position, column_id) in column_ids.iter().enumerate() {
+            let pos = position as i32;
             sqlx::query!(
                 r#"UPDATE kanban_columns
                    SET position = $2, updated_at = datetime('now', 'subsec')
                    WHERE id = $1 AND project_id = $3"#,
                 column_id,
-                position as i32,
+                pos,
                 project_id
             )
             .execute(pool)
@@ -251,9 +252,10 @@ impl KanbanColumn {
 
     /// Delete a column
     pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!("DELETE FROM kanban_columns WHERE id = $1", id)
-            .execute(pool)
-            .await?;
+        let result: sqlx::sqlite::SqliteQueryResult =
+            sqlx::query!("DELETE FROM kanban_columns WHERE id = $1", id)
+                .execute(pool)
+                .await?;
         Ok(result.rows_affected())
     }
 }

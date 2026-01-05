@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT ae.id as \"id!: Uuid\",\n                      ae.rule_id as \"rule_id!: Uuid\",\n                      ar.name as rule_name,\n                      ar.action_type,\n                      ae.task_id as \"task_id!: Uuid\",\n                      t.title as \"task_title!\",\n                      ae.attempt_id as \"attempt_id: Uuid\",\n                      ae.status,\n                      ae.trigger_context,\n                      ae.result,\n                      ae.started_at as \"started_at: DateTime<Utc>\",\n                      ae.completed_at as \"completed_at: DateTime<Utc>\",\n                      ae.created_at as \"created_at!: DateTime<Utc>\"\n               FROM automation_executions ae\n               JOIN automation_rules ar ON ar.id = ae.rule_id\n               JOIN tasks t ON t.id = ae.task_id\n               WHERE ae.task_id = $1\n               ORDER BY ae.created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "rule_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "rule_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "action_type",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "task_id!: Uuid",
+        "ordinal": 4,
+        "type_info": "Blob"
+      },
+      {
+        "name": "task_title!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "attempt_id: Uuid",
+        "ordinal": 6,
+        "type_info": "Blob"
+      },
+      {
+        "name": "status",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "trigger_context",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "result",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "started_at: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "completed_at: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 12,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "03b42250988b7ca0f09d49f4665c774e8150ac9b71928327a31429c3efb0bcde"
+}

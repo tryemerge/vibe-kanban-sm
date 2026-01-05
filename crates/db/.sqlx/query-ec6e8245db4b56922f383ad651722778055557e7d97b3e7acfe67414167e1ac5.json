@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) as \"count!: i64\"\n               FROM state_transitions\n               WHERE from_column_id = $1 AND to_column_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ec6e8245db4b56922f383ad651722778055557e7d97b3e7acfe67414167e1ac5"
+}

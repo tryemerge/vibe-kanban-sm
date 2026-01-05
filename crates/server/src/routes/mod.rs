@@ -5,7 +5,9 @@ use axum::{
 
 use crate::DeploymentImpl;
 
+pub mod agents;
 pub mod approvals;
+pub mod automation_rules;
 pub mod config;
 pub mod containers;
 pub mod filesystem;
@@ -15,6 +17,7 @@ pub mod execution_processes;
 pub mod frontend;
 pub mod health;
 pub mod images;
+pub mod kanban_columns;
 pub mod oauth;
 pub mod organizations;
 pub mod projects;
@@ -22,6 +25,7 @@ pub mod repo;
 pub mod scratch;
 pub mod sessions;
 pub mod shared_tasks;
+pub mod state_transitions;
 pub mod tags;
 pub mod task_attempts;
 pub mod tasks;
@@ -46,6 +50,10 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(approvals::router())
         .merge(scratch::router(&deployment))
         .merge(sessions::router(&deployment))
+        .merge(agents::router(&deployment))
+        .merge(kanban_columns::router(&deployment))
+        .merge(state_transitions::router(&deployment))
+        .merge(automation_rules::router(&deployment))
         .nest("/images", images::routes())
         .with_state(deployment);
 
