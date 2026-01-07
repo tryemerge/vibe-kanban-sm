@@ -184,8 +184,8 @@ export const useJsonPatchWsStream = <T extends object>(
         retryTimerRef.current = null;
       }
       finishedRef.current = false;
-      dataRef.current = undefined;
-      setData(undefined);
+      // Don't clear dataRef.current - preserve data across StrictMode remounts
+      // Data will be cleared when enabled becomes false or endpoint changes
     };
   }, [
     endpoint,

@@ -212,6 +212,25 @@ fn generate_types_content() -> String {
         db::models::agent::CreateAgent::decl(),
         db::models::agent::UpdateAgent::decl(),
         db::models::agent::ContextFile::decl(),
+        // Automation rule types
+        db::models::automation_rule::AutomationRule::decl(),
+        db::models::automation_rule::AutomationRuleWithColumn::decl(),
+        db::models::automation_rule::CreateAutomationRule::decl(),
+        db::models::automation_rule::UpdateAutomationRule::decl(),
+        db::models::automation_rule::TriggerType::decl(),
+        db::models::automation_rule::ActionType::decl(),
+        db::models::automation_rule::RunAgentConfig::decl(),
+        db::models::automation_rule::CreateWorkspaceConfig::decl(),
+        db::models::automation_rule::CreatePrConfig::decl(),
+        db::models::automation_rule::WebhookConfig::decl(),
+        db::models::automation_rule::NotifyConfig::decl(),
+        // Task event types
+        db::models::task_event::TaskEventType::decl(),
+        db::models::task_event::EventTriggerType::decl(),
+        db::models::task_event::ActorType::decl(),
+        db::models::task_event::TaskEvent::decl(),
+        db::models::task_event::TaskEventWithNames::decl(),
+        db::models::task_event::CreateTaskEvent::decl(),
     ];
 
     let body = decls

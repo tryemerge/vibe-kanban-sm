@@ -98,6 +98,9 @@ import {
   Agent,
   CreateAgent,
   UpdateAgent,
+  TaskEventWithNames,
+  CreateTaskEvent,
+  TaskEvent,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -1490,5 +1493,24 @@ export const columnsApi = {
       }
     );
     return handleApiResponse<void>(response);
+  },
+};
+
+// Task Events API
+export const taskEventsApi = {
+  getByTaskId: async (taskId: string): Promise<TaskEventWithNames[]> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/events`);
+    return handleApiResponse<TaskEventWithNames[]>(response);
+  },
+
+  create: async (
+    taskId: string,
+    data: Omit<CreateTaskEvent, 'task_id'>
+  ): Promise<TaskEvent> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/events`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, task_id: taskId }),
+    });
+    return handleApiResponse<TaskEvent>(response);
   },
 };

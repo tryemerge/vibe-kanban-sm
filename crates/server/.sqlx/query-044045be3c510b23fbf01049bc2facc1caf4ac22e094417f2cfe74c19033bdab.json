@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE automation_executions\n               SET status = 'completed', result = $2, attempt_id = $3, completed_at = datetime('now', 'subsec')\n               WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "044045be3c510b23fbf01049bc2facc1caf4ac22e094417f2cfe74c19033bdab"
+}

@@ -358,8 +358,13 @@
           "slugHelper": "A unique identifier for this column. Used in API and filters.",
           "color": "Color",
           "isInitial": "Initial column (new tasks start here)",
-          "isTerminal": "Terminal column (completed/cancelled tasks)"
+          "isTerminal": "Terminal column (completed/cancelled tasks)",
+          "agent": "Agent",
+          "agentPlaceholder": "Select an agent...",
+          "noAgent": "No agent (manual processing)",
+          "agentHelper": "Tasks entering this column will be automatically processed by the selected agent."
         },
+        "unknownAgent": "Unknown Agent",
         "dialog": {
           "createTitle": "Add Column",
           "createDescription": "Add a new column to this board.",
@@ -403,6 +408,13 @@
           "label": "Git Repository Path",
           "placeholder": "/path/to/your/existing/repo",
           "helper": "The absolute path to your git repository on disk."
+        },
+        "board": {
+          "label": "Kanban Board",
+          "placeholder": "Select a board...",
+          "loading": "Loading boards...",
+          "noBoard": "Default (Backlog → In Progress → Done)",
+          "helper": "Choose a custom board template to define task columns and workflow states for this project."
         }
       },
       "scripts": {

@@ -260,20 +260,28 @@ pub async fn load_state_transition_middleware(
     Ok(next.run(request).await)
 }
 
+/// Board path params - handles both single board routes and nested column routes
+#[derive(Debug, serde::Deserialize)]
+pub struct BoardPathParams {
+    pub board_id: Uuid,
+    #[serde(default)]
+    pub column_id: Option<Uuid>,
+}
+
 pub async fn load_board_middleware(
     State(deployment): State<DeploymentImpl>,
-    Path(board_id): Path<Uuid>,
+    Path(params): Path<BoardPathParams>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let board = match Board::find_by_id(&deployment.db().pool, board_id).await {
+    let board = match Board::find_by_id(&deployment.db().pool, params.board_id).await {
         Ok(Some(board)) => board,
         Ok(None) => {
-            tracing::warn!("Board {} not found", board_id);
+            tracing::warn!("Board {} not found", params.board_id);
             return Err(StatusCode::NOT_FOUND);
         }
         Err(e) => {
-            tracing::error!("Failed to fetch board {}: {}", board_id, e);
+            tracing::error!("Failed to fetch board {}: {}", params.board_id, e);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     };

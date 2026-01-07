@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                e.id as \"id!: Uuid\",\n                e.task_id as \"task_id!: Uuid\",\n                e.event_type as \"event_type!: TaskEventType\",\n                e.from_column_id as \"from_column_id: Uuid\",\n                e.to_column_id as \"to_column_id: Uuid\",\n                e.workspace_id as \"workspace_id: Uuid\",\n                e.session_id as \"session_id: Uuid\",\n                e.executor,\n                e.automation_rule_id as \"automation_rule_id: Uuid\",\n                e.trigger_type as \"trigger_type: EventTriggerType\",\n                e.commit_hash,\n                e.commit_message,\n                e.metadata as \"metadata: JsonValue\",\n                e.actor_type as \"actor_type!: ActorType\",\n                e.actor_id,\n                e.created_at as \"created_at!: DateTime<Utc>\",\n                fc.name as \"from_column_name?\",\n                tc.name as \"to_column_name?\"\n            FROM task_events e\n            LEFT JOIN kanban_columns fc ON e.from_column_id = fc.id\n            LEFT JOIN kanban_columns tc ON e.to_column_id = tc.id\n            WHERE e.task_id = $1\n            ORDER BY e.created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "task_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "event_type!: TaskEventType",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_column_id: Uuid",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "to_column_id: Uuid",
+        "ordinal": 4,
+        "type_info": "Blob"
+      },
+      {
+        "name": "workspace_id: Uuid",
+        "ordinal": 5,
+        "type_info": "Blob"
+      },
+      {
+        "name": "session_id: Uuid",
+        "ordinal": 6,
+        "type_info": "Blob"
+      },
+      {
+        "name": "executor",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "automation_rule_id: Uuid",
+        "ordinal": 8,
+        "type_info": "Blob"
+      },
+      {
+        "name": "trigger_type: EventTriggerType",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "commit_hash",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "commit_message",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata: JsonValue",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "actor_type!: ActorType",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "actor_id",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_column_name?",
+        "ordinal": 16,
+        "type_info": "Text"
+      },
+      {
+        "name": "to_column_name?",
+        "ordinal": 17,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "85e52a461498f150f4899caf53d5088d597e50e6b3b84bb61b11d182db6f91cf"
+}

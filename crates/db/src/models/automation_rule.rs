@@ -32,8 +32,10 @@ impl TriggerType {
 /// Action type for automation rules
 #[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[ts(rename = "AutomationActionType")]
 pub enum ActionType {
     RunAgent,
+    CreateWorkspace,
     CreatePr,
     MergePr,
     Webhook,
@@ -44,6 +46,7 @@ impl ActionType {
     pub fn as_str(&self) -> &'static str {
         match self {
             ActionType::RunAgent => "run_agent",
+            ActionType::CreateWorkspace => "create_workspace",
             ActionType::CreatePr => "create_pr",
             ActionType::MergePr => "merge_pr",
             ActionType::Webhook => "webhook",
@@ -54,6 +57,7 @@ impl ActionType {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "run_agent" => Some(ActionType::RunAgent),
+            "create_workspace" => Some(ActionType::CreateWorkspace),
             "create_pr" => Some(ActionType::CreatePr),
             "merge_pr" => Some(ActionType::MergePr),
             "webhook" => Some(ActionType::Webhook),
@@ -70,6 +74,15 @@ pub struct RunAgentConfig {
     pub prompt_template: String,
     pub executor: Option<String>,
     pub timeout_minutes: Option<i32>,
+}
+
+/// Configuration for create_workspace action (starts a new attempt)
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct CreateWorkspaceConfig {
+    /// Executor to use (e.g., "local", "docker")
+    pub executor: Option<String>,
+    /// Optional branch name template (uses default if not provided)
+    pub branch_template: Option<String>,
 }
 
 /// Configuration for create_pr action

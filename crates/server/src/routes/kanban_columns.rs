@@ -25,22 +25,28 @@ pub struct ReorderColumnsRequest {
     pub column_ids: Vec<Uuid>,
 }
 
-/// Get all columns for a project
+/// Get all columns for a project (via its board)
 pub async fn get_project_columns(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<KanbanColumn>>>, ApiError> {
-    let columns = KanbanColumn::find_by_project(&deployment.db().pool, project.id).await?;
+    let board_id = project.board_id.ok_or_else(|| {
+        ApiError::BadRequest("Project has no board assigned".to_string())
+    })?;
+    let columns = KanbanColumn::find_by_board(&deployment.db().pool, board_id).await?;
     Ok(ResponseJson(ApiResponse::success(columns)))
 }
 
-/// Create a new column for a project
+/// Create a new column for a project (via its board)
 pub async fn create_column(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateKanbanColumn>,
 ) -> Result<ResponseJson<ApiResponse<KanbanColumn>>, ApiError> {
-    let column = KanbanColumn::create(&deployment.db().pool, project.id, &payload).await?;
+    let board_id = project.board_id.ok_or_else(|| {
+        ApiError::BadRequest("Project has no board assigned".to_string())
+    })?;
+    let column = KanbanColumn::create_for_board(&deployment.db().pool, board_id, &payload).await?;
 
     deployment
         .track_if_analytics_allowed(
@@ -90,10 +96,10 @@ pub async fn delete_column(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     // Check if any tasks are in this column
-    let tasks_in_column = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!: i64" FROM tasks WHERE column_id = $1"#,
-        column.id
+    let tasks_in_column: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE column_id = $1"
     )
+    .bind(column.id)
     .fetch_one(&deployment.db().pool)
     .await?;
 
@@ -105,12 +111,10 @@ pub async fn delete_column(
     }
 
     // Delete associated transitions first
-    sqlx::query!(
-        "DELETE FROM state_transitions WHERE from_column_id = $1 OR to_column_id = $1",
-        column.id
-    )
-    .execute(&deployment.db().pool)
-    .await?;
+    sqlx::query("DELETE FROM state_transitions WHERE from_column_id = $1 OR to_column_id = $1")
+        .bind(column.id)
+        .execute(&deployment.db().pool)
+        .await?;
 
     let rows_affected = KanbanColumn::delete(&deployment.db().pool, column.id).await?;
     if rows_affected == 0 {
@@ -135,8 +139,11 @@ pub async fn reorder_columns(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<ReorderColumnsRequest>,
 ) -> Result<ResponseJson<ApiResponse<Vec<KanbanColumn>>>, ApiError> {
-    KanbanColumn::reorder(&deployment.db().pool, project.id, &payload.column_ids).await?;
-    let columns = KanbanColumn::find_by_project(&deployment.db().pool, project.id).await?;
+    let board_id = project.board_id.ok_or_else(|| {
+        ApiError::BadRequest("Project has no board assigned".to_string())
+    })?;
+    KanbanColumn::reorder_board(&deployment.db().pool, board_id, &payload.column_ids).await?;
+    let columns = KanbanColumn::find_by_board(&deployment.db().pool, board_id).await?;
 
     deployment
         .track_if_analytics_allowed(

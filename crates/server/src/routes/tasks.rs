@@ -13,7 +13,9 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use db::models::{
+    automation_rule::{AutomationRule, TriggerType},
     image::TaskImage,
+    kanban_column::KanbanColumn,
     project::{Project, ProjectError},
     repo::Repo,
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
@@ -254,32 +256,90 @@ pub async fn update_task(
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
     ensure_shared_task_auth(&existing_task, &deployment).await?;
 
+    let pool = &deployment.db().pool;
+
     // Use existing values if not provided in update
-    let title = payload.title.unwrap_or(existing_task.title);
+    let title = payload.title.unwrap_or(existing_task.title.clone());
     let description = match payload.description {
         Some(s) if s.trim().is_empty() => None, // Empty string = clear description
         Some(s) => Some(s),                     // Non-empty string = update description
-        None => existing_task.description,      // Field omitted = keep existing
+        None => existing_task.description.clone(), // Field omitted = keep existing
     };
-    let status = payload.status.unwrap_or(existing_task.status);
+    let status = payload.status.unwrap_or(existing_task.status.clone());
+    let column_id = payload.column_id.or(existing_task.column_id);
     let parent_workspace_id = payload
         .parent_workspace_id
         .or(existing_task.parent_workspace_id);
 
+    // Check if moving to a new column
+    let is_column_changing = payload.column_id.is_some() && payload.column_id != existing_task.column_id;
+
+    if is_column_changing {
+        if let Some(target_column_id) = payload.column_id {
+            // Get the target column to check its slug
+            if let Some(target_column) = KanbanColumn::find_by_id(pool, target_column_id).await? {
+                // If moving to "in_progress" column, check for active attempts
+                if target_column.slug == "in_progress" {
+                    let has_active = Task::has_active_attempt(pool, existing_task.id).await?;
+                    if has_active {
+                        return Err(ApiError::Conflict(
+                            "Cannot move task to In Progress: task already has an active attempt. \
+                             Wait for the current attempt to complete or stop it first.".to_string()
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
     let task = Task::update(
-        &deployment.db().pool,
+        pool,
         existing_task.id,
         existing_task.project_id,
         title,
         description,
         status,
+        column_id,
         parent_workspace_id,
     )
     .await?;
 
     if let Some(image_ids) = &payload.image_ids {
-        TaskImage::delete_by_task_id(&deployment.db().pool, task.id).await?;
-        TaskImage::associate_many_dedup(&deployment.db().pool, task.id, image_ids).await?;
+        TaskImage::delete_by_task_id(pool, task.id).await?;
+        TaskImage::associate_many_dedup(pool, task.id, image_ids).await?;
+    }
+
+    // Trigger automation rules on column change
+    if is_column_changing {
+        // Fire OnExit rules for the old column
+        if let Some(old_column_id) = existing_task.column_id {
+            let exit_rules = AutomationRule::find_triggered_rules(pool, old_column_id, TriggerType::OnExit).await?;
+            for rule in exit_rules {
+                tracing::info!(
+                    "Automation triggered: OnExit rule '{}' (action: {}) for task {} leaving column {}",
+                    rule.name.as_deref().unwrap_or("unnamed"),
+                    rule.action_type,
+                    task.id,
+                    old_column_id
+                );
+                // TODO: Execute automation action
+            }
+        }
+
+        // Fire OnEnter rules for the new column
+        if let Some(new_column_id) = payload.column_id {
+            let enter_rules = AutomationRule::find_triggered_rules(pool, new_column_id, TriggerType::OnEnter).await?;
+            for rule in enter_rules {
+                tracing::info!(
+                    "Automation triggered: OnEnter rule '{}' (action: {}) for task {} entering column {}",
+                    rule.name.as_deref().unwrap_or("unnamed"),
+                    rule.action_type,
+                    task.id,
+                    new_column_id
+                );
+                // TODO: Execute automation action
+            }
+        }
     }
 
     // If task has been shared, broadcast update

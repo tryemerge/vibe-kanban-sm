@@ -6,6 +6,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use super::{
+    kanban_column::KanbanColumn,
     project::Project,
     task::Task,
     workspace_repo::{RepoWithTargetBranch, WorkspaceRepo},
@@ -85,6 +86,8 @@ pub struct WorkspaceContext {
     pub task: Task,
     pub project: Project,
     pub workspace_repos: Vec<RepoWithTargetBranch>,
+    /// The current kanban column for the task (if assigned to one)
+    pub column: Option<KanbanColumn>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -184,11 +187,19 @@ impl Workspace {
         let workspace_repos =
             WorkspaceRepo::find_repos_with_target_branch_for_workspace(pool, workspace_id).await?;
 
+        // Fetch the column info if the task has a column_id
+        let column = if let Some(column_id) = task.column_id {
+            KanbanColumn::find_by_id(pool, column_id).await?
+        } else {
+            None
+        };
+
         Ok(WorkspaceContext {
             workspace,
             task,
             project,
             workspace_repos,
+            column,
         })
     }
 

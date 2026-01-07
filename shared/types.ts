@@ -12,11 +12,11 @@ export type SharedTask = { id: string, organization_id: string, project_id: stri
 
 export type UserData = { user_id: string, first_name: string | null, last_name: string | null, username: string | null, };
 
-export type Project = { id: string, name: string, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, remote_project_id: string | null, created_at: Date, updated_at: Date, };
+export type Project = { id: string, name: string, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, remote_project_id: string | null, board_id: string | null, created_at: Date, updated_at: Date, };
 
 export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, };
 
-export type UpdateProject = { name: string | null, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, };
+export type UpdateProject = { name: string | null, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, board_id: string | null, };
 
 export type SearchResult = { path: string, is_file: boolean, match_type: SearchMatchType, };
 
@@ -28,11 +28,11 @@ export type CreateBoard = { name: string, description: string | null, };
 
 export type UpdateBoard = { name: string | null, description: string | null, };
 
-export type KanbanColumn = { id: string, project_id: string, board_id: string | null, name: string, slug: string, position: number, color: string | null, is_initial: boolean, is_terminal: boolean, created_at: Date, updated_at: Date, };
+export type KanbanColumn = { id: string, board_id: string, name: string, slug: string, position: number, color: string | null, is_initial: boolean, is_terminal: boolean, agent_id: string | null, created_at: Date, updated_at: Date, };
 
-export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, };
+export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, agent_id: string | null, };
 
-export type UpdateKanbanColumn = { name: string | null, slug: string | null, position: number | null, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, };
+export type UpdateKanbanColumn = { name: string | null, slug: string | null, position: number | null, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, agent_id: string | null, };
 
 export type Repo = { id: string, path: string, name: string, display_name: string, created_at: Date, updated_at: Date, };
 
@@ -56,15 +56,15 @@ export type UpdateTag = { tag_name: string | null, content: string | null, };
 
 export type TaskStatus = "todo" | "inprogress" | "inreview" | "done" | "cancelled";
 
-export type Task = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
+export type Task = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
 
-export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
+export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
 
 export type TaskRelationships = { parent_task: Task | null, current_workspace: Workspace, children: Array<Task>, };
 
-export type CreateTask = { project_id: string, title: string, description: string | null, status: TaskStatus | null, parent_workspace_id: string | null, image_ids: Array<string> | null, shared_task_id: string | null, };
+export type CreateTask = { project_id: string, title: string, description: string | null, status: TaskStatus | null, column_id: string | null, parent_workspace_id: string | null, image_ids: Array<string> | null, shared_task_id: string | null, };
 
-export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_workspace_id: string | null, image_ids: Array<string> | null, };
+export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, column_id: string | null, parent_workspace_id: string | null, image_ids: Array<string> | null, };
 
 export type DraftFollowUpData = { message: string, variant: string | null, };
 
@@ -512,6 +512,48 @@ export type CreateAgent = { name: string, role: string, system_prompt: string, c
 export type UpdateAgent = { name: string | null, role: string | null, system_prompt: string | null, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, };
 
 export type ContextFile = { pattern: string, instruction: string | null, };
+
+export type AutomationRule = { id: string, project_id: string, column_id: string, trigger_type: string, action_type: string, action_config: string, enabled: boolean, priority: number, name: string | null, created_at: Date, updated_at: Date, };
+
+export type AutomationRuleWithColumn = { id: string, project_id: string, column_id: string, column_name: string, trigger_type: string, action_type: string, action_config: string, enabled: boolean, priority: number, name: string | null, created_at: Date, updated_at: Date, };
+
+export type CreateAutomationRule = { column_id: string, trigger_type: TriggerType, action_type: AutomationActionType, action_config: JsonValue, enabled: boolean | null, priority: number | null, name: string | null, };
+
+export type UpdateAutomationRule = { trigger_type: TriggerType | null, action_type: AutomationActionType | null, action_config: JsonValue | null, enabled: boolean | null, priority: number | null, name: string | null, };
+
+export type TriggerType = "on_enter" | "on_exit";
+
+export type AutomationActionType = "run_agent" | "create_workspace" | "create_pr" | "merge_pr" | "webhook" | "notify";
+
+export type RunAgentConfig = { agent_id: string | null, prompt_template: string, executor: string | null, timeout_minutes: number | null, };
+
+export type CreateWorkspaceConfig = { 
+/**
+ * Executor to use (e.g., "local", "docker")
+ */
+executor: string | null, 
+/**
+ * Optional branch name template (uses default if not provided)
+ */
+branch_template: string | null, };
+
+export type CreatePrConfig = { title_template: string, body_template: string, draft: boolean | null, auto_merge_on_approval: boolean | null, };
+
+export type WebhookConfig = { url: string, method: string | null, headers: JsonValue | null, body_template: string | null, };
+
+export type NotifyConfig = { channel: string, webhook_url: string, message_template: string, };
+
+export type TaskEventType = "column_enter" | "column_exit" | "agent_start" | "agent_complete" | "agent_failed" | "commit" | "manual_action" | "task_created" | "status_change";
+
+export type EventTriggerType = "manual" | "automation" | "drag_drop" | "system";
+
+export type ActorType = "user" | "agent" | "system";
+
+export type TaskEvent = { id: string, task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType, actor_id: string | null, created_at: Date, };
+
+export type TaskEventWithNames = { from_column_name: string | null, to_column_name: string | null, id: string, task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType, actor_id: string | null, created_at: Date, };
+
+export type CreateTaskEvent = { task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType | null, actor_id: string | null, };
 
 export const DEFAULT_PR_DESCRIPTION_PROMPT = `Update the GitHub PR that was just created with a better title and description.
 The PR number is #{pr_number} and the URL is {pr_url}.

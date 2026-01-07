@@ -17,5 +17,6 @@ pub mod session;
 pub mod state_transition;
 pub mod tag;
 pub mod task;
+pub mod task_event;
 pub mod workspace;
 pub mod workspace_repo;

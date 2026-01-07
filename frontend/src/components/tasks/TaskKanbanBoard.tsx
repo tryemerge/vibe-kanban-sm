@@ -8,8 +8,8 @@ import {
   KanbanProvider,
 } from '@/components/ui/shadcn-io/kanban';
 import { TaskCard } from './TaskCard';
-import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';
-import { statusBoardColors, statusLabels } from '@/utils/statusLabels';
+import type { TaskWithAttemptStatus } from 'shared/types';
+import { statusBoardColors } from '@/utils/statusLabels';
 import type { SharedTaskRecord } from '@/hooks/useProjectTasks';
 import { SharedTaskCard } from './SharedTaskCard';
 
@@ -24,10 +24,20 @@ export type KanbanColumnItem =
       task: SharedTaskRecord;
     };
 
-export type KanbanColumns = Record<TaskStatus, KanbanColumnItem[]>;
+// Column items keyed by column ID (or slug for backwards compatibility)
+export type KanbanColumnItems = Record<string, KanbanColumnItem[]>;
+
+// Column definition for rendering
+export interface KanbanColumnDef {
+  id: string;
+  name: string;
+  slug: string;
+  color: string | null;
+}
 
 interface TaskKanbanBoardProps {
-  columns: KanbanColumns;
+  columnDefs: KanbanColumnDef[];
+  columnItems: KanbanColumnItems;
   onDragEnd: (event: DragEndEvent) => void;
   onViewTaskDetails: (task: TaskWithAttemptStatus) => void;
   onViewSharedTask?: (task: SharedTaskRecord) => void;
@@ -38,7 +48,8 @@ interface TaskKanbanBoardProps {
 }
 
 function TaskKanbanBoard({
-  columns,
+  columnDefs,
+  columnItems,
   onDragEnd,
   onViewTaskDetails,
   onViewSharedTask,
@@ -51,13 +62,16 @@ function TaskKanbanBoard({
 
   return (
     <KanbanProvider onDragEnd={onDragEnd}>
-      {Object.entries(columns).map(([status, items]) => {
-        const statusKey = status as TaskStatus;
+      {columnDefs.map((column) => {
+        const items = columnItems[column.id] ?? [];
+        // Use column color if provided, otherwise fall back to status-based color
+        const columnColor = column.color ?? statusBoardColors[column.slug as keyof typeof statusBoardColors] ?? 'gray';
+
         return (
-          <KanbanBoard key={status} id={statusKey}>
+          <KanbanBoard key={column.id} id={column.slug}>
             <KanbanHeader
-              name={statusLabels[statusKey]}
-              color={statusBoardColors[statusKey]}
+              name={column.name}
+              color={columnColor}
               onAddTask={onCreateTask}
             />
             <KanbanCards>
@@ -74,7 +88,7 @@ function TaskKanbanBoard({
                       key={item.task.id}
                       task={item.task}
                       index={index}
-                      status={statusKey}
+                      status={column.slug}
                       onViewDetails={onViewTaskDetails}
                       isOpen={selectedTaskId === item.task.id}
                       projectId={projectId}
@@ -91,7 +105,7 @@ function TaskKanbanBoard({
                     key={`shared-${item.task.id}`}
                     task={sharedTask}
                     index={index}
-                    status={statusKey}
+                    status={column.slug}
                     isSelected={selectedSharedTaskId === item.task.id}
                     onViewDetails={onViewSharedTask}
                   />

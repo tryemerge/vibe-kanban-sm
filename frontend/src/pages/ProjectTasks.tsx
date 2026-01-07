@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle, Plus, X } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
-import { tasksApi } from '@/lib/api';
+import { tasksApi, attemptsApi, agentsApi } from '@/lib/api';
 import type { RepoBranchStatus, Workspace } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { FeatureShowcaseDialog } from '@/components/dialogs/global/FeatureShowcaseDialog';
@@ -18,7 +18,7 @@ import { useProject } from '@/contexts/ProjectContext';
 import { useTaskAttempts } from '@/hooks/useTaskAttempts';
 import { useTaskAttemptWithSession } from '@/hooks/useTaskAttempt';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { useBranchStatus, useAttemptExecution } from '@/hooks';
+import { useBranchStatus, useAttemptExecution, useProjectColumns, findColumnBySlug, useProjectRepos } from '@/hooks';
 import { paths } from '@/lib/paths';
 import { ExecutionProcessesProvider } from '@/contexts/ExecutionProcessesContext';
 import { ClickedElementsProvider } from '@/contexts/ClickedElementsProvider';
@@ -43,6 +43,8 @@ import {
 
 import TaskKanbanBoard, {
   type KanbanColumnItem,
+  type KanbanColumnDef,
+  type KanbanColumnItems,
 } from '@/components/tasks/TaskKanbanBoard';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import {
@@ -71,7 +73,7 @@ import {
 import { AttemptHeaderActions } from '@/components/panels/AttemptHeaderActions';
 import { TaskPanelHeaderActions } from '@/components/panels/TaskPanelHeaderActions';
 
-import type { TaskWithAttemptStatus, TaskStatus } from 'shared/types';
+import type { TaskWithAttemptStatus, TaskStatus, BaseCodingAgent } from 'shared/types';
 
 type Task = TaskWithAttemptStatus;
 
@@ -82,6 +84,15 @@ const TASK_STATUSES = [
   'done',
   'cancelled',
 ] as const;
+
+// Default column definitions when no board is assigned to the project
+const DEFAULT_COLUMN_DEFS: KanbanColumnDef[] = [
+  { id: 'default-todo', name: 'To Do', slug: 'todo', color: null },
+  { id: 'default-inprogress', name: 'In Progress', slug: 'inprogress', color: null },
+  { id: 'default-inreview', name: 'In Review', slug: 'inreview', color: null },
+  { id: 'default-done', name: 'Done', slug: 'done', color: null },
+  { id: 'default-cancelled', name: 'Cancelled', slug: 'cancelled', color: null },
+];
 
 const normalizeStatus = (status: string): TaskStatus =>
   status.toLowerCase() as TaskStatus;
@@ -174,6 +185,43 @@ export function ProjectTasks() {
     isLoading,
     error: streamError,
   } = useProjectTasks(projectId || '');
+
+  // Fetch columns for the project to check for agent assignments
+  const { data: projectColumns } = useProjectColumns(projectId);
+
+  // Fetch repos for the project (needed for creating task attempts)
+  const { data: projectRepos = [] } = useProjectRepos(projectId);
+
+  // Create column definitions from project columns or use defaults
+  const columnDefs = useMemo<KanbanColumnDef[]>(() => {
+    if (projectColumns && projectColumns.length > 0) {
+      return projectColumns.map((col) => ({
+        id: col.id,
+        name: col.name,
+        slug: col.slug,
+        color: col.color,
+      }));
+    }
+    return DEFAULT_COLUMN_DEFS;
+  }, [projectColumns]);
+
+  // Build a map from column ID to column definition for quick lookups
+  const columnById = useMemo(() => {
+    const map = new Map<string, KanbanColumnDef>();
+    for (const col of columnDefs) {
+      map.set(col.id, col);
+    }
+    return map;
+  }, [columnDefs]);
+
+  // Build a map from slug to column ID for fallback matching
+  const columnIdBySlug = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const col of columnDefs) {
+      map.set(col.slug, col.id);
+    }
+    return map;
+  }, [columnDefs]);
 
   const selectedTask = useMemo(
     () => (taskId ? (tasksById[taskId] ?? null) : null),
@@ -358,14 +406,23 @@ export function ProjectTasks() {
     setSelectedSharedTaskId(null);
   }, [selectedSharedTaskId, sharedTasksById, showSharedTasks, userId]);
 
-  const kanbanColumns = useMemo(() => {
-    const columns: Record<TaskStatus, KanbanColumnItem[]> = {
-      todo: [],
-      inprogress: [],
-      inreview: [],
-      done: [],
-      cancelled: [],
-    };
+  // Helper to determine which column a task belongs to
+  const getTaskColumnId = useCallback((task: Task): string | null => {
+    // If task has a column_id, use it if it exists in our columns
+    if (task.column_id && columnById.has(task.column_id)) {
+      return task.column_id;
+    }
+    // Fall back to matching by status slug
+    const statusSlug = normalizeStatus(task.status);
+    return columnIdBySlug.get(statusSlug) ?? null;
+  }, [columnById, columnIdBySlug]);
+
+  const kanbanColumnItems = useMemo<KanbanColumnItems>(() => {
+    // Initialize columns from column definitions
+    const columns: KanbanColumnItems = {};
+    for (const col of columnDefs) {
+      columns[col.id] = [];
+    }
 
     const matchesSearch = (
       title: string,
@@ -381,7 +438,12 @@ export function ProjectTasks() {
     };
 
     tasks.forEach((task) => {
-      const statusKey = normalizeStatus(task.status);
+      const columnId = getTaskColumnId(task);
+      if (!columnId || !columns[columnId]) {
+        // Task doesn't belong to any known column, skip it
+        return;
+      }
+
       const sharedTask = task.shared_task_id
         ? sharedTasksById[task.shared_task_id]
         : sharedTasksById[task.id];
@@ -400,18 +462,20 @@ export function ProjectTasks() {
         return;
       }
 
-      columns[statusKey].push({
+      columns[columnId].push({
         type: 'task',
         task,
         sharedTask,
       });
     });
 
+    // Add shared-only tasks by matching their status to column slugs
     (
       Object.entries(sharedOnlyByStatus) as [TaskStatus, SharedTaskRecord[]][]
     ).forEach(([status, items]) => {
-      if (!columns[status]) {
-        columns[status] = [];
+      const columnId = columnIdBySlug.get(status);
+      if (!columnId || !columns[columnId]) {
+        return;
       }
       items.forEach((sharedTask) => {
         if (!matchesSearch(sharedTask.title, sharedTask.description)) {
@@ -422,7 +486,7 @@ export function ProjectTasks() {
         if (!shouldIncludeShared) {
           return;
         }
-        columns[status].push({
+        columns[columnId].push({
           type: 'shared',
           task: sharedTask,
         });
@@ -435,12 +499,15 @@ export function ProjectTasks() {
       return new Date(createdAt).getTime();
     };
 
-    TASK_STATUSES.forEach((status) => {
-      columns[status].sort((a, b) => getTimestamp(b) - getTimestamp(a));
-    });
+    // Sort items within each column by timestamp (newest first)
+    for (const columnId of Object.keys(columns)) {
+      columns[columnId].sort((a, b) => getTimestamp(b) - getTimestamp(a));
+    }
 
     return columns;
   }, [
+    columnDefs,
+    columnIdBySlug,
     hasSearch,
     normalizedSearch,
     tasks,
@@ -448,8 +515,24 @@ export function ProjectTasks() {
     sharedTasksById,
     showSharedTasks,
     userId,
+    getTaskColumnId,
   ]);
 
+  // Build a map from column slug to visible tasks for keyboard navigation
+  const visibleTasksBySlug = useMemo(() => {
+    const map: Record<string, Task[]> = {};
+
+    for (const col of columnDefs) {
+      const items = kanbanColumnItems[col.id] ?? [];
+      map[col.slug] = items
+        .filter((item) => item.type === 'task')
+        .map((item) => item.task);
+    }
+
+    return map;
+  }, [columnDefs, kanbanColumnItems]);
+
+  // Legacy visibleTasksByStatus for keyboard nav (uses slug keys that match TaskStatus)
   const visibleTasksByStatus = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
       todo: [],
@@ -459,29 +542,28 @@ export function ProjectTasks() {
       cancelled: [],
     };
 
-    TASK_STATUSES.forEach((status) => {
-      map[status] = kanbanColumns[status]
-        .filter((item) => item.type === 'task')
-        .map((item) => item.task);
-    });
+    // Map from slug-keyed results to status-keyed results
+    for (const status of TASK_STATUSES) {
+      map[status] = visibleTasksBySlug[status] ?? [];
+    }
 
     return map;
-  }, [kanbanColumns]);
+  }, [visibleTasksBySlug]);
 
   const hasVisibleLocalTasks = useMemo(
     () =>
-      Object.values(visibleTasksByStatus).some(
-        (items) => items && items.length > 0
+      Object.values(kanbanColumnItems).some(
+        (items) => items && items.some((item) => item.type === 'task')
       ),
-    [visibleTasksByStatus]
+    [kanbanColumnItems]
   );
 
   const hasVisibleSharedTasks = useMemo(
     () =>
-      Object.values(kanbanColumns).some((items) =>
+      Object.values(kanbanColumnItems).some((items) =>
         items.some((item) => item.type === 'shared')
       ),
-    [kanbanColumns]
+    [kanbanColumnItems]
   );
 
   useKeyNavUp(
@@ -756,19 +838,53 @@ export function ProjectTasks() {
       const task = tasksById[draggedTaskId];
       if (!task || task.status === newStatus) return;
 
+      // Find the column for the target status (by slug)
+      const targetColumn = findColumnBySlug(projectColumns, newStatus);
+      const newColumnId = targetColumn?.id ?? null;
+
       try {
+        // Update task status and column_id
         await tasksApi.update(draggedTaskId, {
           title: task.title,
           description: task.description,
           status: newStatus,
+          column_id: newColumnId,
           parent_workspace_id: task.parent_workspace_id,
           image_ids: null,
         });
+
+        // If the target column has an agent assigned, trigger execution
+        if (targetColumn?.agent_id && projectRepos.length > 0) {
+          try {
+            // Fetch agent details to get the executor type
+            const agent = await agentsApi.getById(targetColumn.agent_id);
+
+            // Create repos input for the task attempt
+            const repos = projectRepos.map((repo) => ({
+              repo_id: repo.id,
+              target_branch: 'main', // TODO: Get default branch from repo
+            }));
+
+            // Create and start a task attempt with the column's agent
+            await attemptsApi.create({
+              task_id: draggedTaskId,
+              executor_profile_id: {
+                executor: agent.executor as BaseCodingAgent,
+                variant: null,
+              },
+              repos,
+            });
+
+            console.log(`Started agent execution for task ${draggedTaskId} with agent ${agent.name}`);
+          } catch (agentErr) {
+            console.error('Failed to trigger agent execution:', agentErr);
+          }
+        }
       } catch (err) {
         console.error('Failed to update task status:', err);
       }
     },
-    [tasksById]
+    [tasksById, projectColumns, projectRepos]
   );
 
   const getSharedTask = useCallback(
@@ -783,13 +899,13 @@ export function ProjectTasks() {
   );
 
   const hasSharedTasks = useMemo(() => {
-    return Object.values(kanbanColumns).some((items) =>
+    return Object.values(kanbanColumnItems).some((items) =>
       items.some((item) => {
         if (item.type === 'shared') return true;
         return Boolean(item.sharedTask);
       })
     );
-  }, [kanbanColumns]);
+  }, [kanbanColumnItems]);
 
   const isInitialTasksLoad = isLoading && tasks.length === 0;
 
@@ -851,7 +967,8 @@ export function ProjectTasks() {
     ) : (
       <div className="w-full h-full overflow-x-auto overflow-y-auto overscroll-x-contain">
         <TaskKanbanBoard
-          columns={kanbanColumns}
+          columnDefs={columnDefs}
+          columnItems={kanbanColumnItems}
           onDragEnd={handleDragEnd}
           onViewTaskDetails={handleViewTaskDetails}
           onViewSharedTask={handleViewSharedTask}

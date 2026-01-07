@@ -270,6 +270,20 @@ pub struct McpRepoContext {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
+pub struct McpColumnContext {
+    #[schemars(description = "The unique identifier of the column")]
+    pub column_id: Uuid,
+    #[schemars(description = "The display name of the column")]
+    pub column_name: String,
+    #[schemars(description = "The slug/identifier for this column (e.g., 'inprogress', 'review')")]
+    pub column_slug: String,
+    #[schemars(description = "Whether this is an initial column (entry point)")]
+    pub is_initial: bool,
+    #[schemars(description = "Whether this is a terminal column (workflow end)")]
+    pub is_terminal: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 pub struct McpContext {
     pub project_id: Uuid,
     pub task_id: Uuid,
@@ -280,6 +294,8 @@ pub struct McpContext {
         description = "Repository info and target branches for each repo in this workspace"
     )]
     pub workspace_repos: Vec<McpRepoContext>,
+    #[schemars(description = "The current kanban column for this task (if assigned)")]
+    pub column: Option<McpColumnContext>,
 }
 
 impl TaskServer {
@@ -347,6 +363,15 @@ impl TaskServer {
             })
             .collect();
 
+        // Map column info if available
+        let column = ctx.column.map(|col| McpColumnContext {
+            column_id: col.id,
+            column_name: col.name,
+            column_slug: col.slug,
+            is_initial: col.is_initial,
+            is_terminal: col.is_terminal,
+        });
+
         Some(McpContext {
             project_id: ctx.project.id,
             task_id: ctx.task.id,
@@ -354,6 +379,7 @@ impl TaskServer {
             workspace_id: ctx.workspace.id,
             workspace_branch: ctx.workspace.branch,
             workspace_repos,
+            column,
         })
     }
 }
@@ -754,6 +780,7 @@ impl TaskServer {
             title,
             description: expanded_description,
             status,
+            column_id: None,
             parent_workspace_id: None,
             image_ids: None,
         };
@@ -814,9 +841,21 @@ impl TaskServer {
 impl ServerHandler for TaskServer {
     fn get_info(&self) -> ServerInfo {
         let mut instruction = "A task and project management server. If you need to create or update tickets or tasks then use these tools. Most of them absolutely require that you pass the `project_id` of the project that you are currently working on. You can get project ids by using `list projects`. Call `list_tasks` to fetch the `task_ids` of all the tasks in a project`.. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'start_workspace_session', 'get_task', 'update_task', 'delete_task', 'list_repos'. Make sure to pass `project_id` or `task_id` where required. You can use list tools to get the available ids.".to_string();
-        if self.context.is_some() {
+
+        if let Some(ctx) = &self.context {
             let context_instruction = "Use 'get_context' to fetch project/task/workspace metadata for the active Vibe Kanban workspace session when available.";
-            instruction = format!("{} {}", context_instruction, instruction);
+
+            // Add workflow commit format instructions if we have column context
+            let workflow_instruction = if ctx.column.is_some() {
+                format!(
+                    " WORKFLOW COMMIT FORMAT: When making commits for workflow tasks, use git trailers to track context. Format your commits as:\n\n<summary>\n\n<body with notes for next stage>\n\nTask-Id: {}\nColumn: <column-slug>\n\nThis allows workflow stages to be tracked and enables rollback by checking out prior commits.",
+                    ctx.task_id
+                )
+            } else {
+                String::new()
+            };
+
+            instruction = format!("{} {}{}", context_instruction, instruction, workflow_instruction);
         }
 
         ServerInfo {

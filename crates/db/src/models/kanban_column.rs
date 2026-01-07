@@ -8,14 +8,14 @@ use uuid::Uuid;
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct KanbanColumn {
     pub id: Uuid,
-    pub project_id: Uuid,
-    pub board_id: Option<Uuid>,
+    pub board_id: Uuid,
     pub name: String,
     pub slug: String,
     pub position: i32,
     pub color: Option<String>,
     pub is_initial: bool,
     pub is_terminal: bool,
+    pub agent_id: Option<Uuid>, // Agent assigned to handle tasks in this column
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -30,6 +30,7 @@ pub struct CreateKanbanColumn {
     pub color: Option<String>,
     pub is_initial: Option<bool>,
     pub is_terminal: Option<bool>,
+    pub agent_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -40,6 +41,7 @@ pub struct UpdateKanbanColumn {
     pub color: Option<String>,
     pub is_initial: Option<bool>,
     pub is_terminal: Option<bool>,
+    pub agent_id: Option<Uuid>,
 }
 
 impl KanbanColumn {
@@ -51,14 +53,14 @@ impl KanbanColumn {
         sqlx::query_as!(
             KanbanColumn,
             r#"SELECT id as "id!: Uuid",
-                      project_id as "project_id!: Uuid",
-                      board_id as "board_id: Uuid",
+                      board_id as "board_id!: Uuid",
                       name,
                       slug,
                       position as "position!: i32",
                       color,
                       is_initial as "is_initial!: bool",
                       is_terminal as "is_terminal!: bool",
+                      agent_id as "agent_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -70,46 +72,19 @@ impl KanbanColumn {
         .await
     }
 
-    /// Find all columns for a project, ordered by position
-    pub async fn find_by_project(
-        pool: &SqlitePool,
-        project_id: Uuid,
-    ) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            KanbanColumn,
-            r#"SELECT id as "id!: Uuid",
-                      project_id as "project_id!: Uuid",
-                      board_id as "board_id: Uuid",
-                      name,
-                      slug,
-                      position as "position!: i32",
-                      color,
-                      is_initial as "is_initial!: bool",
-                      is_terminal as "is_terminal!: bool",
-                      created_at as "created_at!: DateTime<Utc>",
-                      updated_at as "updated_at!: DateTime<Utc>"
-               FROM kanban_columns
-               WHERE project_id = $1
-               ORDER BY position ASC"#,
-            project_id
-        )
-        .fetch_all(pool)
-        .await
-    }
-
     /// Find a column by ID
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             KanbanColumn,
             r#"SELECT id as "id!: Uuid",
-                      project_id as "project_id!: Uuid",
-                      board_id as "board_id: Uuid",
+                      board_id as "board_id!: Uuid",
                       name,
                       slug,
                       position as "position!: i32",
                       color,
                       is_initial as "is_initial!: bool",
                       is_terminal as "is_terminal!: bool",
+                      agent_id as "agent_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -120,56 +95,56 @@ impl KanbanColumn {
         .await
     }
 
-    /// Find a column by project and slug
+    /// Find a column by board and slug
     pub async fn find_by_slug(
         pool: &SqlitePool,
-        project_id: Uuid,
+        board_id: Uuid,
         slug: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             KanbanColumn,
             r#"SELECT id as "id!: Uuid",
-                      project_id as "project_id!: Uuid",
-                      board_id as "board_id: Uuid",
+                      board_id as "board_id!: Uuid",
                       name,
                       slug,
                       position as "position!: i32",
                       color,
                       is_initial as "is_initial!: bool",
                       is_terminal as "is_terminal!: bool",
+                      agent_id as "agent_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
-               WHERE project_id = $1 AND slug = $2"#,
-            project_id,
+               WHERE board_id = $1 AND slug = $2"#,
+            board_id,
             slug
         )
         .fetch_optional(pool)
         .await
     }
 
-    /// Find the initial column for a project
+    /// Find the initial column for a board
     pub async fn find_initial(
         pool: &SqlitePool,
-        project_id: Uuid,
+        board_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             KanbanColumn,
             r#"SELECT id as "id!: Uuid",
-                      project_id as "project_id!: Uuid",
-                      board_id as "board_id: Uuid",
+                      board_id as "board_id!: Uuid",
                       name,
                       slug,
                       position as "position!: i32",
                       color,
                       is_initial as "is_initial!: bool",
                       is_terminal as "is_terminal!: bool",
+                      agent_id as "agent_id: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
-               WHERE project_id = $1 AND is_initial = 1
+               WHERE board_id = $1 AND is_initial = 1
                LIMIT 1"#,
-            project_id
+            board_id
         )
         .fetch_optional(pool)
         .await
@@ -179,7 +154,6 @@ impl KanbanColumn {
     pub async fn create_for_board<'e, E>(
         executor: E,
         board_id: Uuid,
-        project_id: Uuid,
         data: &CreateKanbanColumn,
     ) -> Result<Self, sqlx::Error>
     where
@@ -191,69 +165,28 @@ impl KanbanColumn {
 
         sqlx::query_as!(
             KanbanColumn,
-            r#"INSERT INTO kanban_columns (id, project_id, board_id, name, slug, position, color, is_initial, is_terminal)
+            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, agent_id)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                RETURNING id as "id!: Uuid",
-                         project_id as "project_id!: Uuid",
-                         board_id as "board_id: Uuid",
+                         board_id as "board_id!: Uuid",
                          name,
                          slug,
                          position as "position!: i32",
                          color,
                          is_initial as "is_initial!: bool",
                          is_terminal as "is_terminal!: bool",
+                         agent_id as "agent_id: Uuid",
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
-            project_id,
             board_id,
             data.name,
             data.slug,
             data.position,
             data.color,
             is_initial,
-            is_terminal
-        )
-        .fetch_one(executor)
-        .await
-    }
-
-    /// Create a new column (legacy - uses project_id as board_id)
-    pub async fn create<'e, E>(
-        executor: E,
-        project_id: Uuid,
-        data: &CreateKanbanColumn,
-    ) -> Result<Self, sqlx::Error>
-    where
-        E: Executor<'e, Database = Sqlite>,
-    {
-        let id = Uuid::new_v4();
-        let is_initial = data.is_initial.unwrap_or(false);
-        let is_terminal = data.is_terminal.unwrap_or(false);
-
-        sqlx::query_as!(
-            KanbanColumn,
-            r#"INSERT INTO kanban_columns (id, project_id, board_id, name, slug, position, color, is_initial, is_terminal)
-               VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8)
-               RETURNING id as "id!: Uuid",
-                         project_id as "project_id!: Uuid",
-                         board_id as "board_id: Uuid",
-                         name,
-                         slug,
-                         position as "position!: i32",
-                         color,
-                         is_initial as "is_initial!: bool",
-                         is_terminal as "is_terminal!: bool",
-                         created_at as "created_at!: DateTime<Utc>",
-                         updated_at as "updated_at!: DateTime<Utc>""#,
-            id,
-            project_id,
-            data.name,
-            data.slug,
-            data.position,
-            data.color,
-            is_initial,
-            is_terminal
+            is_terminal,
+            data.agent_id
         )
         .fetch_one(executor)
         .await
@@ -275,22 +208,23 @@ impl KanbanColumn {
         let color = data.color.clone().or(existing.color);
         let is_initial = data.is_initial.unwrap_or(existing.is_initial);
         let is_terminal = data.is_terminal.unwrap_or(existing.is_terminal);
+        let agent_id = data.agent_id.or(existing.agent_id);
 
         sqlx::query_as!(
             KanbanColumn,
             r#"UPDATE kanban_columns
-               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7,
+               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, agent_id = $8,
                    updated_at = datetime('now', 'subsec')
                WHERE id = $1
                RETURNING id as "id!: Uuid",
-                         project_id as "project_id!: Uuid",
-                         board_id as "board_id: Uuid",
+                         board_id as "board_id!: Uuid",
                          name,
                          slug,
                          position as "position!: i32",
                          color,
                          is_initial as "is_initial!: bool",
                          is_terminal as "is_terminal!: bool",
+                         agent_id as "agent_id: Uuid",
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -299,7 +233,8 @@ impl KanbanColumn {
             position,
             color,
             is_initial,
-            is_terminal
+            is_terminal,
+            agent_id
         )
         .fetch_one(pool)
         .await
@@ -320,28 +255,6 @@ impl KanbanColumn {
                 column_id,
                 pos,
                 board_id
-            )
-            .execute(pool)
-            .await?;
-        }
-        Ok(())
-    }
-
-    /// Reorder columns - update positions for all columns in a project (legacy)
-    pub async fn reorder(
-        pool: &SqlitePool,
-        project_id: Uuid,
-        column_ids: &[Uuid],
-    ) -> Result<(), sqlx::Error> {
-        for (position, column_id) in column_ids.iter().enumerate() {
-            let pos = position as i32;
-            sqlx::query!(
-                r#"UPDATE kanban_columns
-                   SET position = $2, updated_at = datetime('now', 'subsec')
-                   WHERE id = $1 AND project_id = $3"#,
-                column_id,
-                pos,
-                project_id
             )
             .execute(pool)
             .await?;

@@ -29,15 +29,16 @@ import { useScriptPlaceholders } from '@/hooks/useScriptPlaceholders';
 import { CopyFilesField } from '@/components/projects/CopyFilesField';
 import { AutoExpandingTextarea } from '@/components/ui/auto-expanding-textarea';
 import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
-import { projectsApi } from '@/lib/api';
+import { projectsApi, boardsApi } from '@/lib/api';
 import { repoBranchKeys } from '@/hooks/useRepoBranches';
-import type { Project, ProjectRepo, Repo, UpdateProject } from 'shared/types';
+import type { Project, ProjectRepo, Repo, UpdateProject, Board } from 'shared/types';
 
 interface ProjectFormState {
   name: string;
   dev_script: string;
   dev_script_working_dir: string;
   default_agent_working_dir: string;
+  board_id: string | null;
 }
 
 interface RepoScriptsFormState {
@@ -53,6 +54,7 @@ function projectToFormState(project: Project): ProjectFormState {
     dev_script: project.dev_script ?? '',
     dev_script_working_dir: project.dev_script_working_dir ?? '',
     default_agent_working_dir: project.default_agent_working_dir ?? '',
+    board_id: project.board_id ?? null,
   };
 }
 
@@ -112,6 +114,10 @@ export function ProjectSettings() {
   const [savingScripts, setSavingScripts] = useState(false);
   const [scriptsSuccess, setScriptsSuccess] = useState(false);
   const [scriptsError, setScriptsError] = useState<string | null>(null);
+
+  // Boards state
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [boardsLoading, setBoardsLoading] = useState(true);
 
   // Get OS-appropriate script placeholders
   const placeholders = useScriptPlaceholders();
@@ -234,6 +240,18 @@ export function ProjectSettings() {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [hasUnsavedChanges]);
+
+  // Fetch boards on mount
+  useEffect(() => {
+    setBoardsLoading(true);
+    boardsApi
+      .list()
+      .then(setBoards)
+      .catch((err) => {
+        console.error('Failed to load boards:', err);
+      })
+      .finally(() => setBoardsLoading(false));
+  }, []);
 
   // Fetch repositories when project changes
   useEffect(() => {
@@ -397,6 +415,7 @@ export function ProjectSettings() {
         dev_script_working_dir: draft.dev_script_working_dir.trim() || null,
         default_agent_working_dir:
           draft.default_agent_working_dir.trim() || null,
+        board_id: draft.board_id || null,
       };
 
       updateProject.mutate({
@@ -627,6 +646,42 @@ export function ProjectSettings() {
                 />
                 <p className="text-sm text-muted-foreground">
                   {t('settings.projects.scripts.agentWorkingDir.helper')}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="board-selector">
+                  {t('settings.projects.general.board.label')}
+                </Label>
+                <Select
+                  value={draft.board_id || 'none'}
+                  onValueChange={(value) =>
+                    updateDraft({ board_id: value === 'none' ? null : value })
+                  }
+                  disabled={boardsLoading}
+                >
+                  <SelectTrigger id="board-selector">
+                    <SelectValue
+                      placeholder={
+                        boardsLoading
+                          ? t('settings.projects.general.board.loading')
+                          : t('settings.projects.general.board.placeholder')
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      {t('settings.projects.general.board.noBoard')}
+                    </SelectItem>
+                    {boards.map((board) => (
+                      <SelectItem key={board.id} value={board.id}>
+                        {board.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.projects.general.board.helper')}
                 </p>
               </div>
 

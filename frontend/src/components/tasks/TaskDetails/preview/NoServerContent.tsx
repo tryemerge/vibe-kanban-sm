@@ -87,6 +87,7 @@ export function NoServerContent({
           dev_script: script,
           dev_script_working_dir: project.dev_script_working_dir ?? null,
           default_agent_working_dir: project.default_agent_working_dir ?? null,
+          board_id: project.board_id ?? null,
         },
       },
       {
@@ -131,6 +132,7 @@ export function NoServerContent({
         title: COMPANION_INSTALL_TASK_TITLE,
         description: COMPANION_INSTALL_TASK_DESCRIPTION,
         status: null,
+        column_id: null,
         parent_workspace_id: null,
         image_ids: null,
         shared_task_id: null,

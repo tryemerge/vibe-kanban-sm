@@ -32,7 +32,14 @@ import {
   GripVertical,
   Columns3,
 } from 'lucide-react';
-import { boardsApi } from '@/lib/api';
+import { boardsApi, agentsApi } from '@/lib/api';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type {
   Board,
   CreateBoard,
@@ -40,6 +47,7 @@ import type {
   KanbanColumn,
   CreateKanbanColumn,
   UpdateKanbanColumn,
+  Agent,
 } from 'shared/types';
 
 export function BoardSettings() {
@@ -83,12 +91,30 @@ export function BoardSettings() {
     color: null,
     is_initial: false,
     is_terminal: false,
+    agent_id: null,
   });
   const [deleteColumnConfirmOpen, setDeleteColumnConfirmOpen] = useState(false);
   const [columnToDelete, setColumnToDelete] = useState<{
     boardId: string;
     column: KanbanColumn;
   } | null>(null);
+
+  // Agents state
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+
+  // Fetch agents
+  const fetchAgents = useCallback(async () => {
+    setAgentsLoading(true);
+    try {
+      const result = await agentsApi.list();
+      setAgents(result);
+    } catch (err) {
+      console.error('Failed to fetch agents:', err);
+    } finally {
+      setAgentsLoading(false);
+    }
+  }, []);
 
   // Fetch boards
   const fetchBoards = useCallback(async () => {
@@ -118,10 +144,11 @@ export function BoardSettings() {
     }
   }, []);
 
-  // Load boards on mount
+  // Load boards and agents on mount
   useEffect(() => {
     fetchBoards();
-  }, [fetchBoards]);
+    fetchAgents();
+  }, [fetchBoards, fetchAgents]);
 
   // Toggle board expansion
   const toggleBoardExpanded = (boardId: string) => {
@@ -234,6 +261,7 @@ export function BoardSettings() {
       color: null,
       is_initial: existingColumns.length === 0,
       is_terminal: false,
+      agent_id: null,
     });
     setColumnDialogOpen(true);
   };
@@ -249,6 +277,7 @@ export function BoardSettings() {
       color: column.color,
       is_initial: column.is_initial,
       is_terminal: column.is_terminal,
+      agent_id: column.agent_id ?? null,
     });
     setColumnDialogOpen(true);
   };
@@ -268,6 +297,7 @@ export function BoardSettings() {
           color: columnForm.color,
           is_initial: columnForm.is_initial,
           is_terminal: columnForm.is_terminal,
+          agent_id: columnForm.agent_id,
         };
         await boardsApi.updateColumn(columnBoardId, editingColumn.id, updateData);
         setSuccessMessage(t('settings.boards.columns.save.updateSuccess'));
@@ -364,6 +394,11 @@ export function BoardSettings() {
               {column.is_terminal && (
                 <span className="ml-2 text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 px-1.5 py-0.5 rounded">
                   {t('settings.boards.columns.terminal')}
+                </span>
+              )}
+              {column.agent_id && (
+                <span className="ml-2 text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 px-1.5 py-0.5 rounded">
+                  {agents.find((a) => a.id === column.agent_id)?.name || t('settings.boards.columns.unknownAgent')}
                 </span>
               )}
             </div>
@@ -728,6 +763,39 @@ export function BoardSettings() {
                   {t('settings.boards.columns.form.isTerminal')}
                 </Label>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="column-agent">
+                {t('settings.boards.columns.form.agent')}
+              </Label>
+              <Select
+                value={columnForm.agent_id || 'none'}
+                onValueChange={(value) =>
+                  setColumnForm({
+                    ...columnForm,
+                    agent_id: value === 'none' ? null : value,
+                  })
+                }
+                disabled={agentsLoading}
+              >
+                <SelectTrigger id="column-agent">
+                  <SelectValue placeholder={agentsLoading ? 'Loading agents...' : t('settings.boards.columns.form.agentPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    {t('settings.boards.columns.form.noAgent')}
+                  </SelectItem>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t('settings.boards.columns.form.agentHelper')}
+              </p>
             </div>
           </div>
 

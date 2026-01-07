@@ -14,12 +14,6 @@ use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_board_middleware};
 
-/// For board template columns, we use nil UUID as the project_id
-/// since boards are templates not tied to specific projects
-fn template_project_id() -> Uuid {
-    Uuid::nil()
-}
-
 /// Get all boards
 pub async fn list_boards(
     State(deployment): State<DeploymentImpl>,
@@ -82,10 +76,10 @@ pub async fn delete_board(
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     // Check if any columns belong to this board
-    let columns_count = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) as "count!: i64" FROM kanban_columns WHERE board_id = $1"#,
-        board.id
+    let columns_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM kanban_columns WHERE board_id = $1"
     )
+    .bind(board.id)
     .fetch_one(&deployment.db().pool)
     .await?;
 
@@ -135,7 +129,6 @@ pub async fn create_board_column(
     let column = KanbanColumn::create_for_board(
         &deployment.db().pool,
         board.id,
-        template_project_id(),
         &payload,
     )
     .await?;
@@ -156,6 +149,7 @@ pub async fn create_board_column(
 
 #[derive(Deserialize)]
 pub struct ColumnPath {
+    pub board_id: Uuid,
     pub column_id: Uuid,
 }
 
@@ -171,7 +165,7 @@ pub async fn update_board_column(
         .await?
         .ok_or(ApiError::BadRequest("Column not found".to_string()))?;
 
-    if existing.board_id != Some(board.id) {
+    if existing.board_id != board.id {
         return Err(ApiError::BadRequest("Column not found in this board".to_string()));
     }
 
@@ -202,7 +196,7 @@ pub async fn delete_board_column(
         .await?
         .ok_or(ApiError::BadRequest("Column not found".to_string()))?;
 
-    if existing.board_id != Some(board.id) {
+    if existing.board_id != board.id {
         return Err(ApiError::BadRequest("Column not found in this board".to_string()));
     }
 

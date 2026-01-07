@@ -8,6 +8,25 @@ const PORTS_FILE = path.join(__dirname, "..", ".dev-ports.json");
 const DEV_ASSETS_SEED = path.join(__dirname, "..", "dev_assets_seed");
 const DEV_ASSETS = path.join(__dirname, "..", "dev_assets");
 
+// Main repo ports vs worktree ports
+const MAIN_REPO_FRONTEND_PORT = 3401;
+const MAIN_REPO_BACKEND_PORT = 3501;
+const WORKTREE_FRONTEND_START = 4500;
+
+/**
+ * Check if we're in the main repo (not a worktree)
+ */
+function isMainRepo() {
+  const gitPath = path.join(__dirname, "..", ".git");
+  try {
+    const stats = fs.statSync(gitPath);
+    // Main repo has .git as a directory, worktrees have it as a file
+    return stats.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Check if a port is available
  */
@@ -103,7 +122,24 @@ async function allocatePorts() {
     return ports;
   }
 
-  // Try to load existing ports first
+  // Main repo always uses fixed ports
+  if (isMainRepo()) {
+    const ports = {
+      frontend: MAIN_REPO_FRONTEND_PORT,
+      backend: MAIN_REPO_BACKEND_PORT,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (process.argv[2] === "get") {
+      console.log("Main repo detected, using fixed ports:");
+      console.log(`Frontend: ${ports.frontend}`);
+      console.log(`Backend: ${ports.backend}`);
+    }
+
+    return ports;
+  }
+
+  // Worktree: Try to load existing ports first
   const existingPorts = loadPorts();
 
   if (existingPorts) {
@@ -124,9 +160,9 @@ async function allocatePorts() {
     }
   }
 
-  // Find new free ports
-  const frontendPort = await findFreePort(3000);
-  const backendPort = await findFreePort(frontendPort + 1);
+  // Find new free ports for worktree (starting from 4500 range)
+  const frontendPort = await findFreePort(WORKTREE_FRONTEND_START);
+  const backendPort = await findFreePort(frontendPort + 100);
 
   const ports = {
     frontend: frontendPort,
@@ -137,7 +173,7 @@ async function allocatePorts() {
   savePorts(ports);
 
   if (process.argv[2] === "get") {
-    console.log("Allocated new dev ports:");
+    console.log("Allocated new worktree dev ports:");
     console.log(`Frontend: ${ports.frontend}`);
     console.log(`Backend: ${ports.backend}`);
   }
