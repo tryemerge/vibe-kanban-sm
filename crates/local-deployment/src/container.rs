@@ -839,6 +839,9 @@ impl LocalContainerService {
                 prompt: queued_data.message.clone(),
                 executor_profile_id: executor_profile_id.clone(),
                 working_dir,
+                agent_system_prompt: None,
+                agent_start_command: None,
+                agent_deliverable: None,
             })
         };
 

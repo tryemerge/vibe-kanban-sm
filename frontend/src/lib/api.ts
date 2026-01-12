@@ -101,6 +101,9 @@ import {
   TaskEventWithNames,
   CreateTaskEvent,
   TaskEvent,
+  StateTransition,
+  StateTransitionWithColumns,
+  CreateStateTransition,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -556,6 +559,17 @@ export const attemptsApi = {
     const response = await makeRequest(`/api/task-attempts/${attemptId}/stop`, {
       method: 'POST',
     });
+    return handleApiResponse<void>(response);
+  },
+
+  /** Cancel an attempt: stops execution, deletes worktree, and moves task back to todo */
+  cancel: async (attemptId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/cancel`,
+      {
+        method: 'POST',
+      }
+    );
     return handleApiResponse<void>(response);
   },
 
@@ -1428,6 +1442,91 @@ export const boardsApi = {
       }
     );
     return handleApiResponse<KanbanColumn[]>(response);
+  },
+};
+
+// State Transitions API (workflow routing rules)
+// Supports hierarchical transitions: board (default) -> project (override) -> task (override)
+export const stateTransitionsApi = {
+  // Board-level transitions (default workflow for all projects using this board)
+  listByBoard: async (boardId: string): Promise<StateTransitionWithColumns[]> => {
+    const response = await makeRequest(`/api/boards/${boardId}/transitions`);
+    return handleApiResponse<StateTransitionWithColumns[]>(response);
+  },
+
+  createForBoard: async (
+    boardId: string,
+    data: CreateStateTransition
+  ): Promise<StateTransition> => {
+    const response = await makeRequest(`/api/boards/${boardId}/transitions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<StateTransition>(response);
+  },
+
+  deleteFromBoard: async (boardId: string, transitionId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/boards/${boardId}/transitions/${transitionId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  // Project-level transitions (override board defaults for specific project)
+  listByProject: async (projectId: string): Promise<StateTransitionWithColumns[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/transitions`);
+    return handleApiResponse<StateTransitionWithColumns[]>(response);
+  },
+
+  createForProject: async (
+    projectId: string,
+    data: CreateStateTransition
+  ): Promise<StateTransition> => {
+    const response = await makeRequest(`/api/projects/${projectId}/transitions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<StateTransition>(response);
+  },
+
+  deleteFromProject: async (projectId: string, transitionId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/transitions/${transitionId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  // Legacy aliases for backward compatibility
+  list: async (projectId: string): Promise<StateTransitionWithColumns[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/transitions`);
+    return handleApiResponse<StateTransitionWithColumns[]>(response);
+  },
+
+  create: async (
+    projectId: string,
+    data: CreateStateTransition
+  ): Promise<StateTransition> => {
+    const response = await makeRequest(`/api/projects/${projectId}/transitions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<StateTransition>(response);
+  },
+
+  delete: async (projectId: string, transitionId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/transitions/${transitionId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
   },
 };
 

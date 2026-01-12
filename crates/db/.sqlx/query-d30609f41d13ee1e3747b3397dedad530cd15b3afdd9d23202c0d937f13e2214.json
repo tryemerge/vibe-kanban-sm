@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM state_transitions WHERE task_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "d30609f41d13ee1e3747b3397dedad530cd15b3afdd9d23202c0d937f13e2214"
+}

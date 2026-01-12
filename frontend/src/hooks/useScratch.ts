@@ -24,13 +24,14 @@ export const useScratch = (
   scratchType: ScratchType,
   id: string
 ): UseScratchResult => {
-  const endpoint = scratchApi.getStreamUrl(scratchType, id);
+  // Only create endpoint when we have a valid id
+  const endpoint = id ? scratchApi.getStreamUrl(scratchType, id) : undefined;
 
   const initialData = useCallback((): ScratchState => ({ scratch: null }), []);
 
   const { data, isConnected, error } = useJsonPatchWsStream<ScratchState>(
     endpoint,
-    true,
+    !!id, // Only enable when we have a valid id
     initialData
   );
 

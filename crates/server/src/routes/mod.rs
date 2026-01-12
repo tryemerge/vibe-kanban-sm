@@ -11,6 +11,7 @@ pub mod automation_rules;
 pub mod boards;
 pub mod config;
 pub mod containers;
+pub mod debug_events;
 pub mod filesystem;
 // pub mod github;
 pub mod events;
@@ -58,6 +59,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(state_transitions::router(&deployment))
         .merge(automation_rules::router(&deployment))
         .merge(boards::router(&deployment))
+        .merge(debug_events::router(&deployment))
         .nest("/images", images::routes())
         .with_state(deployment);
 

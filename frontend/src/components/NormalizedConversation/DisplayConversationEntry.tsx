@@ -14,6 +14,7 @@ import FileChangeRenderer from './FileChangeRenderer';
 import { useExpandable } from '@/stores/useExpandableStore';
 import {
   AlertCircle,
+  ArrowRightLeft,
   Bot,
   Brain,
   CheckSquare,
@@ -66,6 +67,9 @@ const getEntryIcon = (entryType: NormalizedEntryType) => {
   }
   if (entryType.type === 'error_message') {
     return <AlertCircle className={iconSize} />;
+  }
+  if (entryType.type === 'agent_switch') {
+    return <ArrowRightLeft className={iconSize} />;
   }
   if (entryType.type === 'tool_use') {
     const { action_type, tool_name } = entryType;
@@ -795,6 +799,25 @@ function DisplayConversationEntry({
     return (
       <div className="px-4 py-2 text-sm">
         <LoadingCard />
+      </div>
+    );
+  }
+
+  if (entry.entry_type.type === 'agent_switch') {
+    const { agent_name, agent_color, column_name } = entry.entry_type;
+    const borderColor = agent_color || 'hsl(var(--primary))';
+    return (
+      <div className="px-4 py-3 text-sm">
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-sm border-l-4 bg-muted/50"
+          style={{ borderLeftColor: borderColor }}
+        >
+          <ArrowRightLeft className="h-4 w-4" style={{ color: borderColor }} />
+          <span className="font-medium">
+            Switching to <span style={{ color: borderColor }}>{agent_name}</span>
+          </span>
+          <span className="opacity-70">for {column_name}</span>
+        </div>
       </div>
     );
   }

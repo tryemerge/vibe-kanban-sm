@@ -23,11 +23,56 @@ pub struct CodingAgentInitialRequest {
     /// If None, uses the container_ref directory directly.
     #[serde(default)]
     pub working_dir: Option<String>,
+    /// Optional agent system prompt to prepend (establishes persona/role)
+    #[serde(default)]
+    pub agent_system_prompt: Option<String>,
+    /// Optional agent start command to append (initial instruction)
+    #[serde(default)]
+    pub agent_start_command: Option<String>,
+    /// Optional deliverable description - tells the agent what to produce and when to stop
+    #[serde(default)]
+    pub agent_deliverable: Option<String>,
 }
 
 impl CodingAgentInitialRequest {
     pub fn base_executor(&self) -> BaseCodingAgent {
         self.executor_profile_id.executor
+    }
+
+    /// Build the full prompt with agent context prepended and start command appended
+    pub fn build_full_prompt(&self) -> String {
+        let mut full = String::new();
+
+        // Prepend agent system prompt if present
+        if let Some(system_prompt) = &self.agent_system_prompt {
+            if !system_prompt.trim().is_empty() {
+                full.push_str(system_prompt.trim());
+                full.push_str("\n\n---\n\n");
+            }
+        }
+
+        // Add the task prompt
+        full.push_str("## Task\n\n");
+        full.push_str(&self.prompt);
+
+        // Append agent start command if present
+        if let Some(start_command) = &self.agent_start_command {
+            if !start_command.trim().is_empty() {
+                full.push_str("\n\n---\n\n## Instructions\n\n");
+                full.push_str(start_command.trim());
+            }
+        }
+
+        // Add deliverable section - tells the agent what to produce and when to stop
+        if let Some(deliverable) = &self.agent_deliverable {
+            if !deliverable.trim().is_empty() {
+                full.push_str("\n\n---\n\n## Expected Deliverable\n\n");
+                full.push_str(deliverable.trim());
+                full.push_str("\n\n**Important**: Once you have produced the deliverable described above, commit your work and stop. Do not proceed to implement the plan yourself - your job is complete when the deliverable is ready.");
+            }
+        }
+
+        full
     }
 }
 
@@ -54,6 +99,8 @@ impl Executable for CodingAgentInitialRequest {
 
         agent.use_approvals(approvals.clone());
 
-        agent.spawn(&effective_dir, &self.prompt, env).await
+        // Build full prompt with agent context (system prompt + task + start command)
+        let full_prompt = self.build_full_prompt();
+        agent.spawn(&effective_dir, &full_prompt, env).await
     }
 }

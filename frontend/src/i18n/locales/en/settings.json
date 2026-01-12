@@ -350,6 +350,7 @@
         "empty": "No columns yet. Add columns to define task states.",
         "initial": "Initial",
         "terminal": "Terminal",
+        "startsWorkflow": "Workflow",
         "form": {
           "name": "Name",
           "namePlaceholder": "e.g., In Progress",
@@ -359,10 +360,20 @@
           "color": "Color",
           "isInitial": "Initial column (new tasks start here)",
           "isTerminal": "Terminal column (completed/cancelled tasks)",
+          "startsWorkflow": "Starts Workflow (creates attempt)",
           "agent": "Agent",
           "agentPlaceholder": "Select an agent...",
           "noAgent": "No agent (manual processing)",
-          "agentHelper": "Tasks entering this column will be automatically processed by the selected agent."
+          "agentHelper": "Tasks entering this column will be automatically processed by the selected agent.",
+          "status": "Workflow Status",
+          "statusHelper": "Maps this column to a workflow state. Controls when agents run and task completion behavior."
+        },
+        "status": {
+          "todo": "Todo",
+          "inprogress": "In Progress",
+          "inreview": "In Review",
+          "done": "Done",
+          "cancelled": "Cancelled"
         },
         "unknownAgent": "Unknown Agent",
         "dialog": {
@@ -381,7 +392,50 @@
         "errors": {
           "loadFailed": "Failed to load columns.",
           "saveFailed": "Failed to save column.",
-          "deleteFailed": "Failed to delete column."
+          "deleteFailed": "Failed to delete column.",
+          "reorderFailed": "Failed to reorder columns."
+        }
+      },
+      "transitions": {
+        "title": "State Transitions",
+        "add": "Add Transition",
+        "loading": "Loading transitions...",
+        "empty": "No transitions defined",
+        "emptyHelp": "Define transitions to control workflow routing",
+        "requiresConfirm": "confirm",
+        "dialog": {
+          "createTitle": "Create State Transition",
+          "createDescription": "Define a routing rule between columns. Projects using this board will inherit these transitions.",
+          "deleteTitle": "Delete Transition",
+          "deleteDescription": "Are you sure you want to delete this transition? This may affect workflow routing for projects using this board."
+        },
+        "form": {
+          "fromColumn": "From Column",
+          "toColumn": "To Column",
+          "selectColumn": "Select column",
+          "name": "Name (optional)",
+          "namePlaceholder": "e.g., \"Approve\", \"Reject\"",
+          "conditionTitle": "Condition (optional)",
+          "conditionHelp": "Route based on decision file value (e.g., decision=approve)",
+          "conditionKey": "key",
+          "conditionValue": "value",
+          "elseColumn": "Else Column (on condition failure)",
+          "elseHelp": "Where to go when condition doesn't match",
+          "escalationColumn": "Escalation Column",
+          "escalationHelp": "Where to go when max failures is reached",
+          "maxFailures": "Max Failures (before escalation)",
+          "maxFailuresPlaceholder": "e.g., 3",
+          "maxFailuresHelp": "After this many trips through the else path, escalate instead",
+          "requiresConfirmation": "Requires confirmation",
+          "noneOptional": "(none)"
+        },
+        "save": {
+          "createSuccess": "Transition created successfully!",
+          "deleteSuccess": "Transition deleted successfully!"
+        },
+        "errors": {
+          "saveFailed": "Failed to save transition",
+          "deleteFailed": "Failed to delete transition"
         }
       }
     },

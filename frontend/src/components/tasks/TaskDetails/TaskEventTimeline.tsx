@@ -71,6 +71,11 @@ const EVENT_CONFIG: Record<
     label: 'Status changed',
     color: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
   },
+  else_transition: {
+    icon: AlertCircle,
+    label: 'Else path taken',
+    color: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  },
 };
 
 const ACTOR_ICONS: Record<ActorType, typeof User> = {
@@ -115,6 +120,10 @@ function EventItem({ event }: { event: TaskEventWithNames }) {
           ? `Exited ${event.from_column_name}`
           : config.label;
       case 'agent_start':
+        // Show agent name if available, fall back to executor
+        if (event.agent_name) {
+          return `${config.label}: ${event.agent_name}`;
+        }
         return event.executor ? `${config.label}: ${event.executor}` : config.label;
       case 'commit':
         if (event.commit_hash && event.commit_message) {
@@ -127,6 +136,9 @@ function EventItem({ event }: { event: TaskEventWithNames }) {
     }
   }, [event, config.label]);
 
+  // Use agent color for text if available, otherwise default
+  const textStyle = event.agent_color ? { color: event.agent_color } : undefined;
+
   return (
     <div className="flex items-start gap-3 py-3 px-2 hover:bg-muted/50 rounded-md transition-colors">
       <div
@@ -134,12 +146,13 @@ function EventItem({ event }: { event: TaskEventWithNames }) {
           'flex items-center justify-center w-8 h-8 rounded-full border shrink-0',
           config.color
         )}
+        style={event.agent_color ? { borderColor: event.agent_color, backgroundColor: `${event.agent_color}20` } : undefined}
       >
-        <Icon className="h-4 w-4" />
+        <Icon className="h-4 w-4" style={textStyle} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm">{description}</span>
+          <span className="font-medium text-sm" style={textStyle}>{description}</span>
           {event.trigger_type && (
             <Badge variant="outline" className="text-xs capitalize">
               {event.trigger_type}
@@ -147,8 +160,16 @@ function EventItem({ event }: { event: TaskEventWithNames }) {
           )}
         </div>
         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+          {event.agent_color && (
+            <div
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: event.agent_color }}
+            />
+          )}
           <ActorIcon className="h-3 w-3" />
-          <span className="capitalize">{event.actor_type}</span>
+          <span className="capitalize">
+            {event.agent_name || event.actor_type}
+          </span>
           <span className="opacity-50">·</span>
           <time dateTime={createdAt.toISOString()} title={createdAt.toLocaleString()}>
             {formatTimeAgo(createdAt)}

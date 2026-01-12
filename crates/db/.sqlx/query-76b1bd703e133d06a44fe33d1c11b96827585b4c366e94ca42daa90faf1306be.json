@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT st.id as \"id!: Uuid\",\n                      st.board_id as \"board_id: Uuid\",\n                      st.project_id as \"project_id: Uuid\",\n                      st.task_id as \"task_id: Uuid\",\n                      st.from_column_id as \"from_column_id!: Uuid\",\n                      fc.name as \"from_column_name!\",\n                      st.to_column_id as \"to_column_id!: Uuid\",\n                      tc.name as \"to_column_name!\",\n                      st.else_column_id as \"else_column_id: Uuid\",\n                      ec.name as \"else_column_name: Option<String>\",\n                      st.escalation_column_id as \"escalation_column_id: Uuid\",\n                      esc.name as \"escalation_column_name: Option<String>\",\n                      st.name,\n                      st.requires_confirmation as \"requires_confirmation!: bool\",\n                      st.condition_key,\n                      st.condition_value,\n                      st.max_failures,\n                      st.created_at as \"created_at!: DateTime<Utc>\"\n               FROM state_transitions st\n               JOIN kanban_columns fc ON fc.id = st.from_column_id\n               JOIN kanban_columns tc ON tc.id = st.to_column_id\n               LEFT JOIN kanban_columns ec ON ec.id = st.else_column_id\n               LEFT JOIN kanban_columns esc ON esc.id = st.escalation_column_id\n               WHERE st.board_id = $1 AND st.project_id IS NULL AND st.task_id IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "board_id: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id: Uuid",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "task_id: Uuid",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "from_column_id!: Uuid",
+        "ordinal": 4,
+        "type_info": "Blob"
+      },
+      {
+        "name": "from_column_name!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "to_column_id!: Uuid",
+        "ordinal": 6,
+        "type_info": "Blob"
+      },
+      {
+        "name": "to_column_name!",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "else_column_id: Uuid",
+        "ordinal": 8,
+        "type_info": "Blob"
+      },
+      {
+        "name": "else_column_name: Option<String>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "escalation_column_id: Uuid",
+        "ordinal": 10,
+        "type_info": "Blob"
+      },
+      {
+        "name": "escalation_column_name: Option<String>",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "requires_confirmation!: bool",
+        "ordinal": 13,
+        "type_info": "Integer"
+      },
+      {
+        "name": "condition_key",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "condition_value",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "max_failures",
+        "ordinal": 16,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 17,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "76b1bd703e133d06a44fe33d1c11b96827585b4c366e94ca42daa90faf1306be"
+}

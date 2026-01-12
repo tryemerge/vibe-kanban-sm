@@ -22,7 +22,9 @@ use axum::{
     routing::{get, post},
 };
 use db::models::{
+    board::Board,
     execution_process::{ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus},
+    kanban_column::KanbanColumn,
     merge::{Merge, MergeStatus, PrMerge, PullRequestInfo},
     project_repo::ProjectRepo,
     repo::{Repo, RepoError},
@@ -141,6 +143,15 @@ pub async fn create_task_attempt(
     let task = Task::find_by_id(&deployment.db().pool, payload.task_id)
         .await?
         .ok_or(SqlxError::RowNotFound)?;
+
+    // Prevent creating a new attempt while one is already running
+    let has_active = Task::has_active_attempt(pool, task.id).await?;
+    if has_active {
+        return Err(ApiError::Conflict(
+            "Cannot create attempt: an execution is already running for this task. \
+             Wait for the current execution to complete or stop it first.".to_string()
+        ));
+    }
 
     let project = task
         .parent_project(pool)
@@ -1252,6 +1263,47 @@ pub async fn stop_task_attempt_execution(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// Cancel an attempt: stop execution, delete worktree, mark as cancelled (preserving history)
+pub async fn cancel_task_attempt(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    // 1. Get the task
+    let task = Task::find_by_id(pool, workspace.task_id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?;
+
+    // 2. Stop any running execution and clean up worktree (code is deleted)
+    deployment.container().delete(&workspace).await?;
+
+    // 3. Mark workspace as cancelled (preserves history - sessions and dialogue are kept)
+    Workspace::set_cancelled(pool, workspace.id).await?;
+
+    // 4. Move task back to initial column (todo status)
+    // Get the first board (there's typically one board in the system)
+    let boards = Board::find_all(pool).await?;
+    if let Some(board) = boards.first() {
+        if let Some(initial_col) = KanbanColumn::find_initial(pool, board.id).await? {
+            Task::update_column_id(pool, task.id, Some(initial_col.id)).await?;
+            Task::update_status(pool, task.id, TaskStatus::Todo).await?;
+        }
+    }
+
+    deployment
+        .track_if_analytics_allowed(
+            "task_attempt_cancelled",
+            serde_json::json!({
+                "workspace_id": workspace.id.to_string(),
+                "task_id": workspace.task_id.to_string(),
+            }),
+        )
+        .await;
+
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 #[derive(Debug, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[ts(tag = "type", rename_all = "snake_case")]
@@ -1498,6 +1550,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/open-editor", post(open_task_attempt_in_editor))
         .route("/children", get(get_task_attempt_children))
         .route("/stop", post(stop_task_attempt_execution))
+        .route("/cancel", post(cancel_task_attempt))
         .route("/change-target-branch", post(change_target_branch))
         .route("/rename-branch", post(rename_branch))
         .route("/repos", get(get_task_attempt_repos))

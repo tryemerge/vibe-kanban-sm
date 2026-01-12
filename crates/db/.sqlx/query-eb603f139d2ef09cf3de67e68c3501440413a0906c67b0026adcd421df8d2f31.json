@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM state_transitions WHERE board_id = $1 AND project_id IS NULL AND task_id IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "eb603f139d2ef09cf3de67e68c3501440413a0906c67b0026adcd421df8d2f31"
+}

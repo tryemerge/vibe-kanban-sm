@@ -35,6 +35,7 @@ import { OnboardingDialog } from '@/components/dialogs/global/OnboardingDialog';
 import { ReleaseNotesDialog } from '@/components/dialogs/global/ReleaseNotesDialog';
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
 import NiceModal from '@ebay/nice-modal-react';
+import { DebugPanel } from '@/components/debug/DebugPanel';
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -120,7 +121,10 @@ function AppContent() {
     <I18nextProvider i18n={i18n}>
       <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
         <SearchProvider>
-          <div className="h-screen flex flex-col bg-background">
+          <div
+            className="h-screen flex flex-col bg-background transition-[padding-bottom] duration-200"
+            style={{ paddingBottom: 'var(--debug-panel-height, 0px)' }}
+          >
             <SentryRoutes>
               {/* VS Code full-page logs route (outside NormalLayout for minimal UI) */}
               <Route
@@ -163,6 +167,7 @@ function AppContent() {
               </Route>
             </SentryRoutes>
           </div>
+          <DebugPanel />
         </SearchProvider>
       </ThemeProvider>
     </I18nextProvider>

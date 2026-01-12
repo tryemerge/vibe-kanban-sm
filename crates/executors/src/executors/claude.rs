@@ -420,7 +420,7 @@ impl ClaudeLogProcessor {
                                     timestamp: None,
                                     entry_type: NormalizedEntryType::SystemMessage,
                                     content: trimmed.to_string(),
-                                    metadata: None,
+                                    metadata: None, agent_id: None, agent_color: None,
                                 };
 
                                 let patch_id = entry_index_provider.next();
@@ -442,7 +442,7 @@ impl ClaudeLogProcessor {
                     timestamp: None,
                     entry_type: NormalizedEntryType::SystemMessage,
                     content: buffer.trim().to_string(),
-                    metadata: None,
+                    metadata: None, agent_id: None, agent_color: None,
                 };
 
                 let patch_id = entry_index_provider.next();
@@ -479,7 +479,7 @@ impl ClaudeLogProcessor {
                     entry_type: NormalizedEntryType::ErrorMessage { error_type: NormalizedEntryError::Other,
                     },
                     content: "Claude Code + ANTHROPIC_API_KEY detected. Usage will be billed via Anthropic pay-as-you-go instead of your Claude subscription. If this is unintended, please select the `disable_api_key` checkbox in the conding-agent-configurations settings page.".to_string(),
-                    metadata: None,
+                    metadata: None, agent_id: None, agent_color: None,
                 })
             }
             _ => None,
@@ -543,6 +543,8 @@ impl ClaudeLogProcessor {
                     metadata: Some(
                         serde_json::to_value(content_item).unwrap_or(serde_json::Value::Null),
                     ),
+                    agent_id: None,
+                    agent_color: None,
                 })
             }
             ClaudeContentItem::Thinking { thinking } => Some(NormalizedEntry {
@@ -552,6 +554,8 @@ impl ClaudeLogProcessor {
                 metadata: Some(
                     serde_json::to_value(content_item).unwrap_or(serde_json::Value::Null),
                 ),
+                agent_id: None,
+                agent_color: None,
             }),
             ClaudeContentItem::ToolUse { tool_data, id } => {
                 let name = tool_data.get_name();
@@ -578,6 +582,8 @@ impl ClaudeLogProcessor {
                     },
                     content,
                     metadata: Some(metadata),
+                    agent_id: None,
+                    agent_color: None,
                 })
             }
             ClaudeContentItem::ToolResult { .. } => {
@@ -771,6 +777,8 @@ impl ClaudeLogProcessor {
                                 serde_json::to_value(claude_json)
                                     .unwrap_or(serde_json::Value::Null),
                             ),
+                            agent_id: None,
+                            agent_color: None,
                         };
                         let idx = entry_index_provider.next();
                         patches.push(ConversationPatch::add_normalized_entry(idx, entry));
@@ -784,6 +792,8 @@ impl ClaudeLogProcessor {
                                 serde_json::to_value(claude_json)
                                     .unwrap_or(serde_json::Value::Null),
                             ),
+                            agent_id: None,
+                            agent_color: None,
                         };
                         let idx = entry_index_provider.next();
                         patches.push(ConversationPatch::add_normalized_entry(idx, entry));
@@ -834,6 +844,8 @@ impl ClaudeLogProcessor {
                                 },
                                 content: content_text.clone(),
                                 metadata: Some(metadata),
+                                agent_id: None,
+                                agent_color: None,
                             };
                             let is_new = entry_index.is_none();
                             let id_num = entry_index.unwrap_or_else(|| entry_index_provider.next());
@@ -899,6 +911,8 @@ impl ClaudeLogProcessor {
                                 metadata: Some(
                                     serde_json::to_value(item).unwrap_or(serde_json::Value::Null),
                                 ),
+                                agent_id: None,
+                                agent_color: None,
                             };
                             let id = entry_index_provider.next();
                             patches.push(ConversationPatch::add_normalized_entry(id, entry));
@@ -976,7 +990,7 @@ impl ClaudeLogProcessor {
                                     status,
                                 },
                                 content: info.content.clone(),
-                                metadata: None,
+                                metadata: None, agent_id: None, agent_color: None,
                             };
                             patches.push(ConversationPatch::replace(info.entry_index, entry));
                         } else if matches!(
@@ -1030,7 +1044,7 @@ impl ClaudeLogProcessor {
                                     status,
                                 },
                                 content: info.content.clone(),
-                                metadata: None,
+                                metadata: None, agent_id: None, agent_color: None,
                             };
                             patches.push(ConversationPatch::replace(info.entry_index, entry));
                         }
@@ -1056,6 +1070,8 @@ impl ClaudeLogProcessor {
                     metadata: Some(
                         serde_json::to_value(claude_json).unwrap_or(serde_json::Value::Null),
                     ),
+                    agent_id: None,
+                    agent_color: None,
                 };
                 let idx = entry_index_provider.next();
                 patches.push(ConversationPatch::add_normalized_entry(idx, entry));
@@ -1133,6 +1149,8 @@ impl ClaudeLogProcessor {
                         metadata: Some(
                             serde_json::to_value(claude_json).unwrap_or(serde_json::Value::Null),
                         ),
+                        agent_id: None,
+                        agent_color: None,
                     };
                     let idx = entry_index_provider.next();
                     patches.push(ConversationPatch::add_normalized_entry(idx, entry));
@@ -1157,7 +1175,7 @@ impl ClaudeLogProcessor {
                             .map(|s| s.trim().to_string())
                             .filter(|s| !s.is_empty())
                             .unwrap_or_else(|| "User denied this tool use request".to_string()),
-                        metadata: None,
+                        metadata: None, agent_id: None, agent_color: None,
                     }),
                     ApprovalStatus::TimedOut => Some(NormalizedEntry {
                         timestamp: None,
@@ -1165,7 +1183,7 @@ impl ClaudeLogProcessor {
                             error_type: NormalizedEntryError::Other,
                         },
                         content: format!("Approval timed out for tool {tool_name}"),
-                        metadata: None,
+                        metadata: None, agent_id: None, agent_color: None,
                     }),
                 };
 
@@ -1182,7 +1200,7 @@ impl ClaudeLogProcessor {
                         "Unrecognized JSON message: {}",
                         serde_json::to_value(data).unwrap_or_default()
                     ),
-                    metadata: None,
+                    metadata: None, agent_id: None, agent_color: None,
                 };
                 let idx = entry_index_provider.next();
                 patches.push(ConversationPatch::add_normalized_entry(idx, entry));
@@ -1297,7 +1315,7 @@ fn extract_model_name(
             timestamp: None,
             entry_type: NormalizedEntryType::SystemMessage,
             content: format!("System initialized with model: {model}"),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         };
         let id = entry_index_provider.next();
         Some(ConversationPatch::add_normalized_entry(id, entry))

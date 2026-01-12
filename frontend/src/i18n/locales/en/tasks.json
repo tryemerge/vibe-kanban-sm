@@ -123,7 +123,12 @@
     "loadingAttempts": "Loading attempts...",
     "errorLoadingAttempts": "Failed to load attempts",
     "attemptsCount": "Attempts ({{count}})",
-    "noAttempts": "No attempts yet"
+    "noAttempts": "No attempts yet",
+    "cancelled": "Cancelled",
+    "startTask": "Start",
+    "cancelTask": "Cancel",
+    "success": "Completed Successfully",
+    "taskCancelled": "Task Cancelled"
   },
   "processes": {
     "selectAttempt": "Select an attempt to view execution processes.",
@@ -322,6 +327,7 @@
     "createSubtask": "Create subtask",
     "gitActions": "Git actions",
     "editBranchName": "Edit branch name",
+    "cancelAttempt": "Cancel attempt",
     "task": "Task",
     "share": "Share",
     "reassign": "Reassign",

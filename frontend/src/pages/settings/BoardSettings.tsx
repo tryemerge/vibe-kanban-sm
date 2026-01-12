@@ -31,8 +31,27 @@ import {
   ChevronRight,
   GripVertical,
   Columns3,
+  ArrowRight,
+  GitBranch,
 } from 'lucide-react';
-import { boardsApi, agentsApi } from '@/lib/api';
+import { boardsApi, agentsApi, stateTransitionsApi } from '@/lib/api';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Select,
   SelectContent,
@@ -48,6 +67,9 @@ import type {
   CreateKanbanColumn,
   UpdateKanbanColumn,
   Agent,
+  TaskStatus,
+  StateTransitionWithColumns,
+  CreateStateTransition,
 } from 'shared/types';
 
 export function BoardSettings() {
@@ -91,7 +113,10 @@ export function BoardSettings() {
     color: null,
     is_initial: false,
     is_terminal: false,
+    starts_workflow: false,
+    status: null,
     agent_id: null,
+    deliverable: null,
   });
   const [deleteColumnConfirmOpen, setDeleteColumnConfirmOpen] = useState(false);
   const [columnToDelete, setColumnToDelete] = useState<{
@@ -102,6 +127,35 @@ export function BoardSettings() {
   // Agents state
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
+
+  // Transitions state (per board)
+  const [transitionsMap, setTransitionsMap] = useState<Map<string, StateTransitionWithColumns[]>>(
+    new Map()
+  );
+  const [transitionsLoadingMap, setTransitionsLoadingMap] = useState<Map<string, boolean>>(
+    new Map()
+  );
+
+  // Transition dialog state
+  const [transitionDialogOpen, setTransitionDialogOpen] = useState(false);
+  const [transitionBoardId, setTransitionBoardId] = useState<string | null>(null);
+  const [transitionSaving, setTransitionSaving] = useState(false);
+  const [transitionForm, setTransitionForm] = useState<CreateStateTransition>({
+    from_column_id: '',
+    to_column_id: '',
+    else_column_id: null,
+    escalation_column_id: null,
+    name: null,
+    requires_confirmation: false,
+    condition_key: null,
+    condition_value: null,
+    max_failures: null,
+  });
+  const [deleteTransitionConfirmOpen, setDeleteTransitionConfirmOpen] = useState(false);
+  const [transitionToDelete, setTransitionToDelete] = useState<{
+    boardId: string;
+    transition: StateTransitionWithColumns;
+  } | null>(null);
 
   // Fetch agents
   const fetchAgents = useCallback(async () => {
@@ -144,6 +198,19 @@ export function BoardSettings() {
     }
   }, []);
 
+  // Fetch transitions for a board
+  const fetchTransitions = useCallback(async (boardId: string) => {
+    setTransitionsLoadingMap((prev) => new Map(prev).set(boardId, true));
+    try {
+      const transitions = await stateTransitionsApi.listByBoard(boardId);
+      setTransitionsMap((prev) => new Map(prev).set(boardId, transitions));
+    } catch (err) {
+      console.error('Failed to fetch transitions for board:', boardId, err);
+    } finally {
+      setTransitionsLoadingMap((prev) => new Map(prev).set(boardId, false));
+    }
+  }, []);
+
   // Load boards and agents on mount
   useEffect(() => {
     fetchBoards();
@@ -158,9 +225,12 @@ export function BoardSettings() {
         newSet.delete(boardId);
       } else {
         newSet.add(boardId);
-        // Fetch columns if not already loaded
+        // Fetch columns and transitions if not already loaded
         if (!columnsMap.has(boardId)) {
           fetchColumns(boardId);
+        }
+        if (!transitionsMap.has(boardId)) {
+          fetchTransitions(boardId);
         }
       }
       return newSet;
@@ -261,7 +331,10 @@ export function BoardSettings() {
       color: null,
       is_initial: existingColumns.length === 0,
       is_terminal: false,
+      starts_workflow: false,
+      status: 'todo',
       agent_id: null,
+      deliverable: null,
     });
     setColumnDialogOpen(true);
   };
@@ -277,7 +350,10 @@ export function BoardSettings() {
       color: column.color,
       is_initial: column.is_initial,
       is_terminal: column.is_terminal,
+      starts_workflow: column.starts_workflow,
+      status: column.status,
       agent_id: column.agent_id ?? null,
+      deliverable: column.deliverable ?? null,
     });
     setColumnDialogOpen(true);
   };
@@ -297,7 +373,10 @@ export function BoardSettings() {
           color: columnForm.color,
           is_initial: columnForm.is_initial,
           is_terminal: columnForm.is_terminal,
+          starts_workflow: columnForm.starts_workflow,
+          status: columnForm.status,
           agent_id: columnForm.agent_id,
+          deliverable: columnForm.deliverable,
         };
         await boardsApi.updateColumn(columnBoardId, editingColumn.id, updateData);
         setSuccessMessage(t('settings.boards.columns.save.updateSuccess'));
@@ -344,6 +423,209 @@ export function BoardSettings() {
     }
   };
 
+  // Open create transition dialog
+  const openCreateTransitionDialog = (boardId: string) => {
+    setTransitionBoardId(boardId);
+    const columns = columnsMap.get(boardId) || [];
+    setTransitionForm({
+      from_column_id: columns.length > 0 ? columns[0].id : '',
+      to_column_id: columns.length > 1 ? columns[1].id : '',
+      else_column_id: null,
+      escalation_column_id: null,
+      name: null,
+      requires_confirmation: false,
+      condition_key: null,
+      condition_value: null,
+      max_failures: null,
+    });
+    setTransitionDialogOpen(true);
+  };
+
+  // Handle transition form save
+  const handleTransitionSave = async () => {
+    if (!transitionBoardId) return;
+    setTransitionSaving(true);
+    setBoardsError(null);
+    try {
+      await stateTransitionsApi.createForBoard(transitionBoardId, transitionForm);
+      setSuccessMessage(t('settings.boards.transitions.save.createSuccess', 'Transition created successfully'));
+      setTransitionDialogOpen(false);
+      await fetchTransitions(transitionBoardId);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to save transition:', err);
+      setBoardsError(t('settings.boards.transitions.errors.saveFailed', 'Failed to save transition'));
+    } finally {
+      setTransitionSaving(false);
+    }
+  };
+
+  // Handle transition delete
+  const handleTransitionDelete = async () => {
+    if (!transitionToDelete) return;
+    setTransitionSaving(true);
+    setBoardsError(null);
+    try {
+      await stateTransitionsApi.deleteFromBoard(
+        transitionToDelete.boardId,
+        transitionToDelete.transition.id
+      );
+      setDeleteTransitionConfirmOpen(false);
+      setTransitionToDelete(null);
+      setSuccessMessage(t('settings.boards.transitions.save.deleteSuccess', 'Transition deleted successfully'));
+      await fetchTransitions(transitionToDelete.boardId);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to delete transition:', err);
+      setBoardsError(
+        err instanceof Error
+          ? err.message
+          : t('settings.boards.transitions.errors.deleteFailed', 'Failed to delete transition')
+      );
+    } finally {
+      setTransitionSaving(false);
+    }
+  };
+
+  // Drag and drop sensors for column reordering
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Handle column drag end for reordering
+  const handleColumnDragEnd = async (boardId: string, event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const columns = columnsMap.get(boardId) || [];
+    const oldIndex = columns.findIndex((col) => col.id === active.id);
+    const newIndex = columns.findIndex((col) => col.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    // Optimistically update the UI
+    const newColumns = arrayMove(columns, oldIndex, newIndex);
+    setColumnsMap((prev) => new Map(prev).set(boardId, newColumns));
+
+    // Persist the new order to the server
+    try {
+      const columnIds = newColumns.map((col) => col.id);
+      await boardsApi.reorderColumns(boardId, columnIds);
+    } catch (err) {
+      console.error('Failed to reorder columns:', err);
+      // Revert on error
+      setColumnsMap((prev) => new Map(prev).set(boardId, columns));
+      setBoardsError(t('settings.boards.columns.errors.reorderFailed'));
+    }
+  };
+
+  // Sortable column item component
+  const SortableColumnItem = ({
+    column,
+    boardId,
+  }: {
+    column: KanbanColumn;
+    boardId: string;
+  }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: column.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="flex items-center gap-2 p-2 border rounded bg-muted/30"
+      >
+        <button
+          type="button"
+          className="touch-none cursor-grab active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <div
+          className="w-3 h-3 rounded-full flex-shrink-0"
+          style={{ backgroundColor: column.color || '#6b7280' }}
+        />
+        <div className="flex-1 min-w-0">
+          <span className="font-medium text-sm">{column.name}</span>
+          <span className="text-xs text-muted-foreground ml-2">
+            ({column.slug})
+          </span>
+          {column.is_initial && (
+            <span className="ml-2 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded">
+              {t('settings.boards.columns.initial')}
+            </span>
+          )}
+          {column.is_terminal && (
+            <span className="ml-2 text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 px-1.5 py-0.5 rounded">
+              {t('settings.boards.columns.terminal')}
+            </span>
+          )}
+          {column.starts_workflow && (
+            <span className="ml-2 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 px-1.5 py-0.5 rounded">
+              {t('settings.boards.columns.startsWorkflow', 'Workflow')}
+            </span>
+          )}
+          {column.agent_id && (
+            <span className="ml-2 text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 px-1.5 py-0.5 rounded">
+              {agents.find((a) => a.id === column.agent_id)?.name ||
+                t('settings.boards.columns.unknownAgent')}
+            </span>
+          )}
+          {column.deliverable && (
+            <span className="ml-2 text-xs bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300 px-1.5 py-0.5 rounded" title={column.deliverable}>
+              {t('settings.boards.columns.hasDeliverable', 'Deliverable')}
+            </span>
+          )}
+          <span className="ml-2 text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 px-1.5 py-0.5 rounded">
+            {t(`settings.boards.columns.status.${column.status}`)}
+          </span>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => openEditColumnDialog(boardId, column)}
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setColumnToDelete({ boardId, column });
+            setDeleteColumnConfirmOpen(true);
+          }}
+        >
+          <Trash2 className="h-3 w-3 text-destructive" />
+        </Button>
+      </div>
+    );
+  };
+
   // Render columns for a board
   const renderColumns = (boardId: string) => {
     const isLoading = columnsLoadingMap.get(boardId);
@@ -370,51 +652,104 @@ export function BoardSettings() {
     }
 
     return (
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={(event) => handleColumnDragEnd(boardId, event)}
+      >
+        <SortableContext
+          items={columns.map((col) => col.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-2">
+            {columns.map((column) => (
+              <SortableColumnItem
+                key={column.id}
+                column={column}
+                boardId={boardId}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    );
+  };
+
+  // Render transitions for a board
+  const renderTransitions = (boardId: string) => {
+    const isLoading = transitionsLoadingMap.get(boardId);
+    const transitions = transitionsMap.get(boardId) || [];
+
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="ml-2 text-sm text-muted-foreground">
+            {t('settings.boards.transitions.loading', 'Loading transitions...')}
+          </span>
+        </div>
+      );
+    }
+
+    if (transitions.length === 0) {
+      return (
+        <div className="text-center py-4 text-muted-foreground">
+          <GitBranch className="h-8 w-8 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">{t('settings.boards.transitions.empty', 'No transitions defined')}</p>
+          <p className="text-xs mt-1">{t('settings.boards.transitions.emptyHelp', 'Define transitions to control workflow routing')}</p>
+        </div>
+      );
+    }
+
+    return (
       <div className="space-y-2">
-        {columns.map((column) => (
+        {transitions.map((transition) => (
           <div
-            key={column.id}
+            key={transition.id}
             className="flex items-center gap-2 p-2 border rounded bg-muted/30"
           >
-            <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-            <div
-              className="w-3 h-3 rounded-full flex-shrink-0"
-              style={{ backgroundColor: column.color || '#6b7280' }}
-            />
-            <div className="flex-1 min-w-0">
-              <span className="font-medium text-sm">{column.name}</span>
-              <span className="text-xs text-muted-foreground ml-2">
-                ({column.slug})
-              </span>
-              {column.is_initial && (
-                <span className="ml-2 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded">
-                  {t('settings.boards.columns.initial')}
+            <GitBranch className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <div className="flex-1 min-w-0 flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">{transition.from_column_name}</span>
+              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+              <span className="text-sm font-medium text-green-600 dark:text-green-400">{transition.to_column_name}</span>
+              {transition.name && (
+                <span className="text-xs text-muted-foreground ml-2">
+                  "{transition.name}"
                 </span>
               )}
-              {column.is_terminal && (
-                <span className="ml-2 text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 px-1.5 py-0.5 rounded">
-                  {t('settings.boards.columns.terminal')}
+              {transition.condition_key && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 px-1.5 py-0.5 rounded">
+                  if {transition.condition_key}={transition.condition_value}
                 </span>
               )}
-              {column.agent_id && (
+              {transition.else_column_name && (
+                <span className="ml-2 text-xs bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300 px-1.5 py-0.5 rounded">
+                  else → {transition.else_column_name}
+                </span>
+              )}
+              {transition.escalation_column_name && (
+                <span className="ml-2 text-xs bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 px-1.5 py-0.5 rounded">
+                  escalate → {transition.escalation_column_name}
+                </span>
+              )}
+              {transition.max_failures !== null && (
                 <span className="ml-2 text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 px-1.5 py-0.5 rounded">
-                  {agents.find((a) => a.id === column.agent_id)?.name || t('settings.boards.columns.unknownAgent')}
+                  max {String(transition.max_failures)} failures
+                </span>
+              )}
+              {transition.requires_confirmation && (
+                <span className="ml-2 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded">
+                  {t('settings.boards.transitions.requiresConfirm', 'confirm')}
                 </span>
               )}
             </div>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => openEditColumnDialog(boardId, column)}
-            >
-              <Pencil className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
               onClick={() => {
-                setColumnToDelete({ boardId, column });
-                setDeleteColumnConfirmOpen(true);
+                setTransitionToDelete({ boardId, transition });
+                setDeleteTransitionConfirmOpen(true);
               }}
             >
               <Trash2 className="h-3 w-3 text-destructive" />
@@ -514,6 +849,7 @@ export function BoardSettings() {
                   </div>
                   {expandedBoards.has(board.id) && (
                     <div className="px-4 pb-4 pt-0 border-t">
+                      {/* Columns Section */}
                       <div className="flex items-center justify-between py-3">
                         <h5 className="text-sm font-medium">
                           {t('settings.boards.columns.title')}
@@ -528,6 +864,23 @@ export function BoardSettings() {
                         </Button>
                       </div>
                       {renderColumns(board.id)}
+
+                      {/* Transitions Section */}
+                      <div className="flex items-center justify-between py-3 mt-4 border-t">
+                        <h5 className="text-sm font-medium">
+                          {t('settings.boards.transitions.title', 'State Transitions')}
+                        </h5>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openCreateTransitionDialog(board.id)}
+                          disabled={(columnsMap.get(board.id) || []).length < 2}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          {t('settings.boards.transitions.add', 'Add Transition')}
+                        </Button>
+                      </div>
+                      {renderTransitions(board.id)}
                     </div>
                   )}
                 </div>
@@ -763,6 +1116,63 @@ export function BoardSettings() {
                   {t('settings.boards.columns.form.isTerminal')}
                 </Label>
               </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="column-starts-workflow"
+                  checked={columnForm.starts_workflow || false}
+                  onCheckedChange={(checked) =>
+                    setColumnForm({
+                      ...columnForm,
+                      starts_workflow: checked === true,
+                    })
+                  }
+                />
+                <Label
+                  htmlFor="column-starts-workflow"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  {t('settings.boards.columns.form.startsWorkflow', 'Starts Workflow (creates attempt)')}
+                </Label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="column-status">
+                {t('settings.boards.columns.form.status')} *
+              </Label>
+              <Select
+                value={columnForm.status || 'todo'}
+                onValueChange={(value) =>
+                  setColumnForm({
+                    ...columnForm,
+                    status: value as TaskStatus,
+                  })
+                }
+              >
+                <SelectTrigger id="column-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todo">
+                    {t('settings.boards.columns.status.todo')}
+                  </SelectItem>
+                  <SelectItem value="inprogress">
+                    {t('settings.boards.columns.status.inprogress')}
+                  </SelectItem>
+                  <SelectItem value="inreview">
+                    {t('settings.boards.columns.status.inreview')}
+                  </SelectItem>
+                  <SelectItem value="done">
+                    {t('settings.boards.columns.status.done')}
+                  </SelectItem>
+                  <SelectItem value="cancelled">
+                    {t('settings.boards.columns.status.cancelled')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t('settings.boards.columns.form.statusHelper')}
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -795,6 +1205,27 @@ export function BoardSettings() {
               </Select>
               <p className="text-xs text-muted-foreground">
                 {t('settings.boards.columns.form.agentHelper')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="column-deliverable">
+                {t('settings.boards.columns.form.deliverable', 'Expected Deliverable')}
+              </Label>
+              <Textarea
+                id="column-deliverable"
+                placeholder={t('settings.boards.columns.form.deliverablePlaceholder', 'Describe what should be produced before moving to the next column...')}
+                className="min-h-[80px] font-mono text-sm"
+                value={columnForm.deliverable || ''}
+                onChange={(e) =>
+                  setColumnForm({
+                    ...columnForm,
+                    deliverable: e.target.value || null,
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('settings.boards.columns.form.deliverableHelper', 'The agent will be instructed to produce this output before moving on. This helps prevent agents from going beyond their scope.')}
               </p>
             </div>
           </div>
@@ -853,6 +1284,278 @@ export function BoardSettings() {
               disabled={columnSaving}
             >
               {columnSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('common:buttons.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transition Create Dialog */}
+      <Dialog open={transitionDialogOpen} onOpenChange={setTransitionDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t('settings.boards.transitions.dialog.createTitle', 'Create State Transition')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('settings.boards.transitions.dialog.createDescription', 'Define a routing rule between columns. Projects using this board will inherit these transitions.')}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="transition-from">
+                {t('settings.boards.transitions.form.fromColumn', 'From Column')} *
+              </Label>
+              <Select
+                value={transitionForm.from_column_id}
+                onValueChange={(value) =>
+                  setTransitionForm({ ...transitionForm, from_column_id: value })
+                }
+              >
+                <SelectTrigger id="transition-from">
+                  <SelectValue placeholder={t('settings.boards.transitions.form.selectColumn', 'Select column')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(columnsMap.get(transitionBoardId || '') || []).map((col) => (
+                    <SelectItem key={col.id} value={col.id}>
+                      {col.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="transition-to">
+                {t('settings.boards.transitions.form.toColumn', 'To Column')} *
+              </Label>
+              <Select
+                value={transitionForm.to_column_id}
+                onValueChange={(value) =>
+                  setTransitionForm({ ...transitionForm, to_column_id: value })
+                }
+              >
+                <SelectTrigger id="transition-to">
+                  <SelectValue placeholder={t('settings.boards.transitions.form.selectColumn', 'Select column')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(columnsMap.get(transitionBoardId || '') || [])
+                    .filter((col) => col.id !== transitionForm.from_column_id)
+                    .map((col) => (
+                      <SelectItem key={col.id} value={col.id}>
+                        {col.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="transition-name">
+                {t('settings.boards.transitions.form.name', 'Name (optional)')}
+              </Label>
+              <Input
+                id="transition-name"
+                placeholder={t('settings.boards.transitions.form.namePlaceholder', 'e.g., "Approve", "Reject"')}
+                value={transitionForm.name || ''}
+                onChange={(e) =>
+                  setTransitionForm({
+                    ...transitionForm,
+                    name: e.target.value || null,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t('settings.boards.transitions.form.conditionTitle', 'Condition (optional)')}</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                {t('settings.boards.transitions.form.conditionHelp', 'Route based on decision file value (e.g., decision=approve)')}
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder={t('settings.boards.transitions.form.conditionKey', 'key')}
+                  value={transitionForm.condition_key || ''}
+                  onChange={(e) =>
+                    setTransitionForm({
+                      ...transitionForm,
+                      condition_key: e.target.value || null,
+                    })
+                  }
+                  className="flex-1"
+                />
+                <span className="flex items-center text-muted-foreground">=</span>
+                <Input
+                  placeholder={t('settings.boards.transitions.form.conditionValue', 'value')}
+                  value={transitionForm.condition_value || ''}
+                  onChange={(e) =>
+                    setTransitionForm({
+                      ...transitionForm,
+                      condition_value: e.target.value || null,
+                    })
+                  }
+                  className="flex-1"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="transition-else">
+                {t('settings.boards.transitions.form.elseColumn', 'Else Column (on condition failure)')}
+              </Label>
+              <Select
+                value={transitionForm.else_column_id || 'none'}
+                onValueChange={(value) =>
+                  setTransitionForm({ ...transitionForm, else_column_id: value === 'none' ? null : value })
+                }
+              >
+                <SelectTrigger id="transition-else">
+                  <SelectValue placeholder={t('settings.boards.transitions.form.selectColumn', 'Select column')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('settings.boards.transitions.form.noneOptional', '(none)')}</SelectItem>
+                  {(columnsMap.get(transitionBoardId || '') || [])
+                    .filter((col) => col.id !== transitionForm.from_column_id && col.id !== transitionForm.to_column_id)
+                    .map((col) => (
+                      <SelectItem key={col.id} value={col.id}>
+                        {col.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t('settings.boards.transitions.form.elseHelp', 'Where to go when condition doesn\'t match')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="transition-escalation">
+                {t('settings.boards.transitions.form.escalationColumn', 'Escalation Column')}
+              </Label>
+              <Select
+                value={transitionForm.escalation_column_id || 'none'}
+                onValueChange={(value) =>
+                  setTransitionForm({ ...transitionForm, escalation_column_id: value === 'none' ? null : value })
+                }
+              >
+                <SelectTrigger id="transition-escalation">
+                  <SelectValue placeholder={t('settings.boards.transitions.form.selectColumn', 'Select column')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('settings.boards.transitions.form.noneOptional', '(none)')}</SelectItem>
+                  {(columnsMap.get(transitionBoardId || '') || [])
+                    .filter((col) => col.id !== transitionForm.from_column_id)
+                    .map((col) => (
+                      <SelectItem key={col.id} value={col.id}>
+                        {col.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t('settings.boards.transitions.form.escalationHelp', 'Where to go when max failures is reached')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="transition-max-failures">
+                {t('settings.boards.transitions.form.maxFailures', 'Max Failures (before escalation)')}
+              </Label>
+              <Input
+                id="transition-max-failures"
+                type="number"
+                min="1"
+                placeholder={t('settings.boards.transitions.form.maxFailuresPlaceholder', 'e.g., 3')}
+                value={transitionForm.max_failures ? String(transitionForm.max_failures) : ''}
+                onChange={(e) =>
+                  setTransitionForm({
+                    ...transitionForm,
+                    // Use number, not BigInt - BigInt can't be JSON serialized
+                    max_failures: e.target.value ? parseInt(e.target.value, 10) : null,
+                  } as CreateStateTransition)
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('settings.boards.transitions.form.maxFailuresHelp', 'After this many trips through the else path, escalate instead')}
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="transition-requires-confirmation"
+                checked={transitionForm.requires_confirmation || false}
+                onCheckedChange={(checked) =>
+                  setTransitionForm({
+                    ...transitionForm,
+                    requires_confirmation: checked === true,
+                  })
+                }
+              />
+              <Label
+                htmlFor="transition-requires-confirmation"
+                className="text-sm font-normal cursor-pointer"
+              >
+                {t('settings.boards.transitions.form.requiresConfirmation', 'Requires confirmation')}
+              </Label>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTransitionDialogOpen(false)}
+              disabled={transitionSaving}
+            >
+              {t('common:buttons.cancel')}
+            </Button>
+            <Button
+              onClick={handleTransitionSave}
+              disabled={
+                transitionSaving ||
+                !transitionForm.from_column_id ||
+                !transitionForm.to_column_id ||
+                transitionForm.from_column_id === transitionForm.to_column_id
+              }
+            >
+              {transitionSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('common:buttons.create')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transition Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteTransitionConfirmOpen}
+        onOpenChange={setDeleteTransitionConfirmOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t('settings.boards.transitions.dialog.deleteTitle', 'Delete Transition')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('settings.boards.transitions.dialog.deleteDescription', 'Are you sure you want to delete this transition? This may affect workflow routing for projects using this board.')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteTransitionConfirmOpen(false);
+                setTransitionToDelete(null);
+              }}
+              disabled={transitionSaving}
+            >
+              {t('common:buttons.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleTransitionDelete}
+              disabled={transitionSaving}
+            >
+              {transitionSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('common:buttons.delete')}
             </Button>
           </DialogFooter>

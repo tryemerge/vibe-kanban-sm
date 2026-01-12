@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!: Uuid\",\n                      board_id as \"board_id!: Uuid\",\n                      name,\n                      slug,\n                      position as \"position!: i32\",\n                      color,\n                      is_initial as \"is_initial!: bool\",\n                      is_terminal as \"is_terminal!: bool\",\n                      starts_workflow as \"starts_workflow!: bool\",\n                      status as \"status!: TaskStatus\",\n                      agent_id as \"agent_id: Uuid\",\n                      deliverable,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM kanban_columns\n               WHERE board_id = $1 AND slug = $2",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "board_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "slug",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "position!: i32",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "color",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_initial!: bool",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_terminal!: bool",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "starts_workflow!: bool",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "status!: TaskStatus",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "agent_id: Uuid",
+        "ordinal": 10,
+        "type_info": "Blob"
+      },
+      {
+        "name": "deliverable",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 13,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "d57cdfc309e6bae075fc79eb2cc1486ab5e5e40e20ce88030afa414d8731123a"
+}

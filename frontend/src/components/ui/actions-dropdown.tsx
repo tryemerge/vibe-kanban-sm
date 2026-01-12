@@ -21,6 +21,7 @@ import { EditBranchNameDialog } from '@/components/dialogs/tasks/EditBranchNameD
 import { ShareDialog } from '@/components/dialogs/tasks/ShareDialog';
 import { ReassignDialog } from '@/components/dialogs/tasks/ReassignDialog';
 import { StopShareTaskDialog } from '@/components/dialogs/tasks/StopShareTaskDialog';
+import { CancelAttemptDialog } from '@/components/dialogs/tasks/CancelAttemptDialog';
 import { useProject } from '@/contexts/ProjectContext';
 import { openTaskForm } from '@/lib/openTaskForm';
 
@@ -140,6 +141,20 @@ export function ActionsDropdown({
       currentBranchName: attempt.branch,
     });
   };
+
+  const handleCancelAttempt = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!attempt?.id || !projectId) return;
+    CancelAttemptDialog.show({
+      attemptId: attempt.id,
+      projectId,
+      onSuccess: () => {
+        // Navigate back to project tasks after cancelling
+        navigate(`/projects/${projectId}/tasks`);
+      },
+    });
+  };
+
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!task || isShared) return;
@@ -221,6 +236,13 @@ export function ActionsDropdown({
                 onClick={handleEditBranchName}
               >
                 {t('actionsMenu.editBranchName')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!attempt?.id || !projectId || !!attempt?.cancelled_at}
+                onClick={handleCancelAttempt}
+                className="text-destructive"
+              >
+                {t('actionsMenu.cancelAttempt')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>

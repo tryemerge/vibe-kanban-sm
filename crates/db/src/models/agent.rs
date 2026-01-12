@@ -21,6 +21,9 @@ pub struct Agent {
     pub description: Option<String>,
     pub context_files: Option<String>,  // JSON array of ContextFile
     pub executor: String,               // Executor type: CLAUDE_CODE, GEMINI, etc.
+    pub color: Option<String>,          // Hex color for visual identification
+    pub start_command: Option<String>,  // Initial instruction when auto-starting in a column
+    pub deliverable: Option<String>,    // What the agent should produce before handoff
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -37,6 +40,9 @@ pub struct CreateAgent {
     pub description: Option<String>,
     pub context_files: Option<Vec<ContextFile>>,
     pub executor: Option<String>,
+    pub color: Option<String>,
+    pub start_command: Option<String>,
+    pub deliverable: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -49,6 +55,9 @@ pub struct UpdateAgent {
     pub description: Option<String>,
     pub context_files: Option<Vec<ContextFile>>,
     pub executor: Option<String>,
+    pub color: Option<String>,
+    pub start_command: Option<String>,
+    pub deliverable: Option<String>,
 }
 
 impl Agent {
@@ -65,6 +74,9 @@ impl Agent {
                 description,
                 context_files,
                 executor,
+                color,
+                start_command,
+                deliverable,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM agents
@@ -87,6 +99,9 @@ impl Agent {
                 description,
                 context_files,
                 executor,
+                color,
+                start_command,
+                deliverable,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM agents
@@ -118,8 +133,8 @@ impl Agent {
 
         sqlx::query_as!(
             Agent,
-            r#"INSERT INTO agents (id, name, role, system_prompt, capabilities, tools, description, context_files, executor)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            r#"INSERT INTO agents (id, name, role, system_prompt, capabilities, tools, description, context_files, executor, color, start_command, deliverable)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                RETURNING
                 id as "id!: Uuid",
                 name,
@@ -130,6 +145,9 @@ impl Agent {
                 description,
                 context_files,
                 executor,
+                color,
+                start_command,
+                deliverable,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>""#,
             agent_id,
@@ -140,7 +158,10 @@ impl Agent {
             tools_json,
             data.description,
             context_files_json,
-            executor
+            executor,
+            data.color,
+            data.start_command,
+            data.deliverable
         )
         .fetch_one(pool)
         .await
@@ -176,12 +197,16 @@ impl Agent {
             .flatten()
             .or(existing.context_files);
         let executor = data.executor.unwrap_or(existing.executor);
+        let color = data.color.or(existing.color);
+        let start_command = data.start_command.or(existing.start_command);
+        let deliverable = data.deliverable.or(existing.deliverable);
 
         sqlx::query_as!(
             Agent,
             r#"UPDATE agents
                SET name = $2, role = $3, system_prompt = $4, capabilities = $5, tools = $6,
-                   description = $7, context_files = $8, executor = $9, updated_at = datetime('now', 'subsec')
+                   description = $7, context_files = $8, executor = $9, color = $10, start_command = $11,
+                   deliverable = $12, updated_at = datetime('now', 'subsec')
                WHERE id = $1
                RETURNING
                 id as "id!: Uuid",
@@ -193,6 +218,9 @@ impl Agent {
                 description,
                 context_files,
                 executor,
+                color,
+                start_command,
+                deliverable,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -203,7 +231,10 @@ impl Agent {
             tools_json,
             description,
             context_files_json,
-            executor
+            executor,
+            color,
+            start_command,
+            deliverable
         )
         .fetch_one(pool)
         .await

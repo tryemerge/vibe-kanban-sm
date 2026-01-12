@@ -54,7 +54,7 @@ pub fn normalize_logs(
                                 error_type: NormalizedEntryError::Other,
                             },
                             content: error.message,
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         };
                         add_normalized_entry(&msg_store, &entry_index_provider, entry);
                         continue;
@@ -65,7 +65,7 @@ pub fn normalize_logs(
                             timestamp: None,
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: strip_ansi_escapes::strip_str(trimmed).to_string(),
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         };
 
                         add_normalized_entry(&msg_store, &entry_index_provider, entry);
@@ -91,7 +91,7 @@ pub fn normalize_logs(
                             timestamp: None,
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: format!("model: {model}"),
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         };
                         add_normalized_entry(&msg_store, &entry_index_provider, entry);
                     }
@@ -112,7 +112,7 @@ pub fn normalize_logs(
                         timestamp: None,
                         entry_type,
                         content: text.clone(),
-                        metadata: None,
+                        metadata: None, agent_id: None, agent_color: None,
                     };
 
                     add_normalized_entry(&msg_store, &entry_index_provider, entry);
@@ -646,7 +646,7 @@ pub fn normalize_logs(
                         timestamp: None,
                         entry_type: NormalizedEntryType::AssistantMessage,
                         content: final_text.clone(),
-                        metadata: None,
+                        metadata: None, agent_id: None, agent_color: None,
                     };
                     add_normalized_entry(&msg_store, &entry_index_provider, entry);
                     sent_completion = true;
@@ -659,7 +659,7 @@ pub fn normalize_logs(
                             error_type: NormalizedEntryError::Other,
                         },
                         content: message.clone(),
-                        metadata: None,
+                        metadata: None, agent_id: None, agent_color: None,
                     };
                     add_normalized_entry(&msg_store, &state.entry_index, entry);
                 }
@@ -679,7 +679,7 @@ fn normalize_stderr_logs(msg_store: Arc<MsgStore>, entry_index_provider: EntryIn
                     error_type: NormalizedEntryError::Other,
                 },
                 content,
-                metadata: None,
+                metadata: None, agent_id: None, agent_color: None,
             }))
             .transform_lines(Box::new(|lines| {
                 lines.iter_mut().for_each(|line| {
@@ -1024,7 +1024,7 @@ impl ToNormalizedEntry for FileReadState {
                 status: self.status.clone(),
             },
             content: self.path.clone(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }
@@ -1050,7 +1050,7 @@ impl ToNormalizedEntry for FileEditState {
                 status: self.status.clone(),
             },
             content: self.path.clone(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }
@@ -1092,7 +1092,7 @@ impl ToNormalizedEntry for CommandRunState {
                 status: self.status.clone(),
             },
             content: self.command.clone(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }
@@ -1123,7 +1123,7 @@ impl ToNormalizedEntry for TodoManagementState {
                 status: self.status.clone(),
             },
             content,
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }
@@ -1147,7 +1147,7 @@ impl ToNormalizedEntry for SearchState {
                 status: self.status.clone(),
             },
             content: self.query.clone(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }
@@ -1171,7 +1171,7 @@ impl ToNormalizedEntry for WebFetchState {
                 status: self.status.clone(),
             },
             content: self.url.clone(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }
@@ -1205,7 +1205,7 @@ impl ToNormalizedEntry for GenericToolState {
                 status: self.status.clone(),
             },
             content: self.name.clone(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }

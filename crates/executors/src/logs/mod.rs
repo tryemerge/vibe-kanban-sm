@@ -85,6 +85,11 @@ pub enum NormalizedEntryType {
         status: ToolStatus,
     },
     SystemMessage,
+    AgentSwitch {
+        agent_name: String,
+        agent_color: Option<String>,
+        column_name: String,
+    },
     ErrorMessage {
         error_type: NormalizedEntryError,
     },
@@ -104,9 +109,39 @@ pub struct NormalizedEntry {
     pub content: String,
     #[ts(skip)]
     pub metadata: Option<serde_json::Value>,
+    /// Agent ID if this entry was produced during agent-context execution
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    /// Agent color (hex) for UI styling
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_color: Option<String>,
 }
 
 impl NormalizedEntry {
+    /// Create a new NormalizedEntry with agent fields set to None
+    pub fn new(
+        timestamp: Option<String>,
+        entry_type: NormalizedEntryType,
+        content: String,
+        metadata: Option<serde_json::Value>,
+    ) -> Self {
+        Self {
+            timestamp,
+            entry_type,
+            content,
+            metadata,
+            agent_id: None,
+            agent_color: None,
+        }
+    }
+
+    /// Set agent context on this entry
+    pub fn with_agent(mut self, agent_id: Option<String>, agent_color: Option<String>) -> Self {
+        self.agent_id = agent_id;
+        self.agent_color = agent_color;
+        self
+    }
+
     pub fn with_tool_status(&self, status: ToolStatus) -> Option<Self> {
         if let NormalizedEntryType::ToolUse {
             tool_name,

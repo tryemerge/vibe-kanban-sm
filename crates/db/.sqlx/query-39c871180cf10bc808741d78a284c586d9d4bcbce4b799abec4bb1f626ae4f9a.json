@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures)\n               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\n               RETURNING id as \"id!: Uuid\",\n                         board_id as \"board_id: Uuid\",\n                         project_id as \"project_id: Uuid\",\n                         task_id as \"task_id: Uuid\",\n                         from_column_id as \"from_column_id!: Uuid\",\n                         to_column_id as \"to_column_id!: Uuid\",\n                         else_column_id as \"else_column_id: Uuid\",\n                         escalation_column_id as \"escalation_column_id: Uuid\",\n                         name,\n                         requires_confirmation as \"requires_confirmation!: bool\",\n                         condition_key,\n                         condition_value,\n                         max_failures,\n                         created_at as \"created_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "board_id: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id: Uuid",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "task_id: Uuid",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "from_column_id!: Uuid",
+        "ordinal": 4,
+        "type_info": "Blob"
+      },
+      {
+        "name": "to_column_id!: Uuid",
+        "ordinal": 5,
+        "type_info": "Blob"
+      },
+      {
+        "name": "else_column_id: Uuid",
+        "ordinal": 6,
+        "type_info": "Blob"
+      },
+      {
+        "name": "escalation_column_id: Uuid",
+        "ordinal": 7,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "requires_confirmation!: bool",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "condition_key",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "condition_value",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "max_failures",
+        "ordinal": 12,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 13,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "39c871180cf10bc808741d78a284c586d9d4bcbce4b799abec4bb1f626ae4f9a"
+}

@@ -406,7 +406,7 @@ mod tests {
                 timestamp: None, // Avoid creating artificial timestamps during normalization
                 entry_type: NormalizedEntryType::SystemMessage,
                 content: content.to_string(),
-                metadata: None,
+                metadata: None, agent_id: None, agent_color: None,
             }
         };
 
@@ -435,14 +435,14 @@ mod tests {
                         status: ToolStatus::Success,
                     },
                     content,
-                    metadata: None,
+                    metadata: None, agent_id: None, agent_color: None,
                 }
             } else {
                 NormalizedEntry {
                     timestamp: None,
                     entry_type: NormalizedEntryType::SystemMessage,
                     content: content.to_string(),
-                    metadata: None,
+                    metadata: None, agent_id: None, agent_color: None,
                 }
             }
         };
@@ -463,7 +463,7 @@ mod tests {
                 timestamp: None,
                 entry_type: NormalizedEntryType::SystemMessage,
                 content,
-                metadata: None,
+                metadata: None, agent_id: None, agent_color: None,
             }
         };
 

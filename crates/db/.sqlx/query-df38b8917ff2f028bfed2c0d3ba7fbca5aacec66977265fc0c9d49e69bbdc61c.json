@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) as \"count!: i64\"\n               FROM task_events\n               WHERE task_id = $1\n                 AND event_type = 'else_transition'\n                 AND from_column_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "df38b8917ff2f028bfed2c0d3ba7fbca5aacec66977265fc0c9d49e69bbdc61c"
+}

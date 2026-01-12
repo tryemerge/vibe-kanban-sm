@@ -4,6 +4,8 @@ use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
 
+use super::task::TaskStatus;
+
 /// A customizable Kanban column representing a task state
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct KanbanColumn {
@@ -15,7 +17,12 @@ pub struct KanbanColumn {
     pub color: Option<String>,
     pub is_initial: bool,
     pub is_terminal: bool,
+    /// When true, entering this column creates a new attempt/workspace
+    pub starts_workflow: bool,
+    pub status: TaskStatus, // Workflow status this column maps to
     pub agent_id: Option<Uuid>, // Agent assigned to handle tasks in this column
+    /// What the agent should produce before moving to the next column
+    pub deliverable: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -30,7 +37,10 @@ pub struct CreateKanbanColumn {
     pub color: Option<String>,
     pub is_initial: Option<bool>,
     pub is_terminal: Option<bool>,
+    pub starts_workflow: Option<bool>,
+    pub status: Option<TaskStatus>, // Defaults to 'todo' if not specified
     pub agent_id: Option<Uuid>,
+    pub deliverable: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -41,7 +51,16 @@ pub struct UpdateKanbanColumn {
     pub color: Option<String>,
     pub is_initial: Option<bool>,
     pub is_terminal: Option<bool>,
-    pub agent_id: Option<Uuid>,
+    pub starts_workflow: Option<bool>,
+    pub status: Option<TaskStatus>,
+    /// Agent ID - uses double Option to distinguish between "not provided" (None) and "explicitly null" (Some(None))
+    /// - None: Keep existing value (field not in request)
+    /// - Some(None): Clear the agent (field is null in request)
+    /// - Some(Some(uuid)): Set to new agent
+    #[serde(default, deserialize_with = "crate::serde_helpers::deserialize_optional_nullable")]
+    #[ts(optional, type = "string | null")]
+    pub agent_id: Option<Option<Uuid>>,
+    pub deliverable: Option<String>,
 }
 
 impl KanbanColumn {
@@ -60,7 +79,10 @@ impl KanbanColumn {
                       color,
                       is_initial as "is_initial!: bool",
                       is_terminal as "is_terminal!: bool",
+                      starts_workflow as "starts_workflow!: bool",
+                      status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
+                      deliverable,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -84,7 +106,10 @@ impl KanbanColumn {
                       color,
                       is_initial as "is_initial!: bool",
                       is_terminal as "is_terminal!: bool",
+                      starts_workflow as "starts_workflow!: bool",
+                      status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
+                      deliverable,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -111,7 +136,10 @@ impl KanbanColumn {
                       color,
                       is_initial as "is_initial!: bool",
                       is_terminal as "is_terminal!: bool",
+                      starts_workflow as "starts_workflow!: bool",
+                      status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
+                      deliverable,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -138,7 +166,10 @@ impl KanbanColumn {
                       color,
                       is_initial as "is_initial!: bool",
                       is_terminal as "is_terminal!: bool",
+                      starts_workflow as "starts_workflow!: bool",
+                      status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
+                      deliverable,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -162,11 +193,13 @@ impl KanbanColumn {
         let id = Uuid::new_v4();
         let is_initial = data.is_initial.unwrap_or(false);
         let is_terminal = data.is_terminal.unwrap_or(false);
+        let starts_workflow = data.starts_workflow.unwrap_or(false);
+        let status = data.status.clone().unwrap_or(TaskStatus::Todo);
 
         sqlx::query_as!(
             KanbanColumn,
-            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, agent_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id!: Uuid",
                          name,
@@ -175,7 +208,10 @@ impl KanbanColumn {
                          color,
                          is_initial as "is_initial!: bool",
                          is_terminal as "is_terminal!: bool",
+                         starts_workflow as "starts_workflow!: bool",
+                         status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
+                         deliverable,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -186,7 +222,10 @@ impl KanbanColumn {
             data.color,
             is_initial,
             is_terminal,
-            data.agent_id
+            starts_workflow,
+            status,
+            data.agent_id,
+            data.deliverable
         )
         .fetch_one(executor)
         .await
@@ -208,12 +247,22 @@ impl KanbanColumn {
         let color = data.color.clone().or(existing.color);
         let is_initial = data.is_initial.unwrap_or(existing.is_initial);
         let is_terminal = data.is_terminal.unwrap_or(existing.is_terminal);
-        let agent_id = data.agent_id.or(existing.agent_id);
+        let starts_workflow = data.starts_workflow.unwrap_or(existing.starts_workflow);
+        let status = data.status.clone().unwrap_or(existing.status);
+        // Handle Option<Option<Uuid>> for agent_id:
+        // - None: keep existing value (field not in request)
+        // - Some(None): clear the agent (explicitly set to null)
+        // - Some(Some(uuid)): set to new agent
+        let agent_id = match &data.agent_id {
+            None => existing.agent_id,
+            Some(inner) => inner.clone(),
+        };
+        let deliverable = data.deliverable.clone().or(existing.deliverable);
 
         sqlx::query_as!(
             KanbanColumn,
             r#"UPDATE kanban_columns
-               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, agent_id = $8,
+               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, starts_workflow = $8, status = $9, agent_id = $10, deliverable = $11,
                    updated_at = datetime('now', 'subsec')
                WHERE id = $1
                RETURNING id as "id!: Uuid",
@@ -224,7 +273,10 @@ impl KanbanColumn {
                          color,
                          is_initial as "is_initial!: bool",
                          is_terminal as "is_terminal!: bool",
+                         starts_workflow as "starts_workflow!: bool",
+                         status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
+                         deliverable,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -234,7 +286,10 @@ impl KanbanColumn {
             color,
             is_initial,
             is_terminal,
-            agent_id
+            starts_workflow,
+            status,
+            agent_id,
+            deliverable
         )
         .fetch_one(pool)
         .await

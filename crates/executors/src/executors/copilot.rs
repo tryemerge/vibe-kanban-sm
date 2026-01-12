@@ -242,7 +242,7 @@ impl Copilot {
                 timestamp: None,
                 entry_type: NormalizedEntryType::AssistantMessage,
                 content,
-                metadata: None,
+                metadata: None, agent_id: None, agent_color: None,
             }))
             .transform_lines(Box::new(|lines| {
                 lines.iter_mut().for_each(|line| {

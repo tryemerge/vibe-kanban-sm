@@ -106,6 +106,8 @@ impl ToNormalizedEntry for CommandState {
                 tool_call_id: self.call_id.clone(),
             })
             .ok(),
+            agent_id: None,
+            agent_color: None,
         }
     }
 }
@@ -132,7 +134,7 @@ impl ToNormalizedEntry for McpToolState {
                 status: self.status.clone(),
             },
             content: self.invocation.tool.clone(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }
@@ -165,7 +167,7 @@ impl ToNormalizedEntry for WebSearchState {
                 .query
                 .clone()
                 .unwrap_or_else(|| "Web search".to_string()),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         }
     }
 }
@@ -203,6 +205,8 @@ impl ToNormalizedEntry for PatchEntry {
                 tool_call_id: self.call_id.clone(),
             })
             .ok(),
+            agent_id: None,
+            agent_color: None,
         }
     }
 }
@@ -268,7 +272,7 @@ impl LogState {
                 StreamingTextKind::Thinking => NormalizedEntryType::Thinking,
             },
             content: content.clone(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         };
         (normalized_entry, index, is_new)
     }
@@ -648,7 +652,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                             timestamp: None,
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: format!("Background event: {message}"),
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         },
                     );
                 }
@@ -665,7 +669,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 error_type: NormalizedEntryError::Other,
                             },
                             content: format!("Stream error: {message} {codex_error_info:?}"),
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         },
                     );
                 }
@@ -894,7 +898,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 status: ToolStatus::Success,
                             },
                             content: relative_path.to_string(),
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         },
                     );
                 }
@@ -934,7 +938,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 status: ToolStatus::Success,
                             },
                             content,
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         },
                     );
                 }
@@ -948,7 +952,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 error_type: NormalizedEntryError::Other,
                             },
                             content: message,
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         },
                     );
                 }
@@ -965,7 +969,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 error_type: NormalizedEntryError::Other,
                             },
                             content: format!("Error: {message} {codex_error_info:?}"),
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         },
                     );
                 }
@@ -982,7 +986,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                             timestamp: None,
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: "Context compacted".to_string(),
-                            metadata: None,
+                            metadata: None, agent_id: None, agent_color: None,
                         },
                     );
                 }
@@ -1059,7 +1063,7 @@ fn handle_model_params(
             timestamp: None,
             entry_type: NormalizedEntryType::SystemMessage,
             content: params.join("  ").to_string(),
-            metadata: None,
+            metadata: None, agent_id: None, agent_color: None,
         },
     );
 }
@@ -1119,7 +1123,7 @@ impl ToNormalizedEntry for Error {
                     error_type: NormalizedEntryError::Other,
                 },
                 content: error.clone(),
-                metadata: None,
+                metadata: None, agent_id: None, agent_color: None,
             },
             Error::AuthRequired { error } => NormalizedEntry {
                 timestamp: None,
@@ -1127,7 +1131,7 @@ impl ToNormalizedEntry for Error {
                     error_type: NormalizedEntryError::SetupRequired,
                 },
                 content: error.clone(),
-                metadata: None,
+                metadata: None, agent_id: None, agent_color: None,
             },
         }
     }
@@ -1191,7 +1195,7 @@ impl ToNormalizedEntryOpt for Approval {
                     .unwrap_or_else(|| "User denied this tool use request".to_string())
                     .trim()
                     .to_string(),
-                metadata: None,
+                metadata: None, agent_id: None, agent_color: None,
             }),
             ApprovalStatus::TimedOut => Some(NormalizedEntry {
                 timestamp: None,
@@ -1199,7 +1203,7 @@ impl ToNormalizedEntryOpt for Approval {
                     error_type: NormalizedEntryError::Other,
                 },
                 content: format!("Approval timed out for tool {tool_name}"),
-                metadata: None,
+                metadata: None, agent_id: None, agent_color: None,
             }),
         }
     }

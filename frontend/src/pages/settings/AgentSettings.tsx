@@ -114,6 +114,9 @@ export function AgentSettings() {
     description: null,
     context_files: null,
     executor: 'CLAUDE_CODE',
+    color: null,
+    start_command: null,
+    deliverable: null,
   });
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [subagentToDelete, setSubagentToDelete] = useState<Agent | null>(null);
@@ -150,6 +153,9 @@ export function AgentSettings() {
       description: null,
       context_files: null,
       executor: 'CLAUDE_CODE',
+      color: null,
+      start_command: null,
+      deliverable: null,
     });
     setSubagentDialogOpen(true);
   };
@@ -166,6 +172,9 @@ export function AgentSettings() {
       description: agent.description,
       context_files: agent.context_files ? JSON.parse(agent.context_files) : null,
       executor: agent.executor,
+      color: agent.color,
+      start_command: agent.start_command,
+      deliverable: agent.deliverable,
     });
     setSubagentDialogOpen(true);
   };
@@ -185,6 +194,9 @@ export function AgentSettings() {
           description: subagentForm.description,
           context_files: subagentForm.context_files,
           executor: subagentForm.executor,
+          color: subagentForm.color,
+          start_command: subagentForm.start_command,
+          deliverable: subagentForm.deliverable,
         };
         await agentsApi.update(editingSubagent.id, updateData);
       } else {
@@ -979,21 +991,27 @@ export function AgentSettings() {
                   key={agent.id}
                   className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-medium truncate">{agent.name}</h4>
-                      <span className="text-xs px-2 py-0.5 bg-secondary rounded-full">
-                        {agent.executor}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {agent.role}
-                    </p>
-                    {agent.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {agent.description}
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: agent.color || '#6b7280' }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium truncate">{agent.name}</h4>
+                        <span className="text-xs px-2 py-0.5 bg-secondary rounded-full">
+                          {agent.executor}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {agent.role}
                       </p>
-                    )}
+                      {agent.description && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {agent.description}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 ml-4">
                     <Button
@@ -1060,29 +1078,57 @@ export function AgentSettings() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="subagent-executor">Executor</Label>
-              <Select
-                value={subagentForm.executor || 'CLAUDE_CODE'}
-                onValueChange={(value) =>
-                  setSubagentForm({ ...subagentForm, executor: value })
-                }
-              >
-                <SelectTrigger id="subagent-executor">
-                  <SelectValue placeholder="Select executor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CLAUDE_CODE">Claude Code</SelectItem>
-                  <SelectItem value="GEMINI">Gemini</SelectItem>
-                  <SelectItem value="CODEX">Codex</SelectItem>
-                  <SelectItem value="AMP">Amp</SelectItem>
-                  <SelectItem value="CURSOR_AGENT">Cursor Agent</SelectItem>
-                  <SelectItem value="OPENCODE">Opencode</SelectItem>
-                  <SelectItem value="QWEN_CODE">Qwen Code</SelectItem>
-                  <SelectItem value="COPILOT">Copilot</SelectItem>
-                  <SelectItem value="DROID">Droid</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="subagent-executor">Executor</Label>
+                <Select
+                  value={subagentForm.executor || 'CLAUDE_CODE'}
+                  onValueChange={(value) =>
+                    setSubagentForm({ ...subagentForm, executor: value })
+                  }
+                >
+                  <SelectTrigger id="subagent-executor">
+                    <SelectValue placeholder="Select executor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CLAUDE_CODE">Claude Code</SelectItem>
+                    <SelectItem value="GEMINI">Gemini</SelectItem>
+                    <SelectItem value="CODEX">Codex</SelectItem>
+                    <SelectItem value="AMP">Amp</SelectItem>
+                    <SelectItem value="CURSOR_AGENT">Cursor Agent</SelectItem>
+                    <SelectItem value="OPENCODE">Opencode</SelectItem>
+                    <SelectItem value="QWEN_CODE">Qwen Code</SelectItem>
+                    <SelectItem value="COPILOT">Copilot</SelectItem>
+                    <SelectItem value="DROID">Droid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="subagent-color">Color</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="subagent-color"
+                    type="color"
+                    className="w-12 h-10 p-1 cursor-pointer"
+                    value={subagentForm.color || '#6b7280'}
+                    onChange={(e) =>
+                      setSubagentForm({ ...subagentForm, color: e.target.value })
+                    }
+                  />
+                  <Input
+                    placeholder="#6b7280"
+                    value={subagentForm.color || ''}
+                    onChange={(e) =>
+                      setSubagentForm({
+                        ...subagentForm,
+                        color: e.target.value || null,
+                      })
+                    }
+                    className="flex-1"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1114,6 +1160,56 @@ export function AgentSettings() {
                   })
                 }
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="subagent-start-command">Execution Instructions</Label>
+              <Textarea
+                id="subagent-start-command"
+                placeholder="Provide a detailed list of exactly what the agent should do:
+
+1. First, analyze the task requirements
+2. Review relevant code files
+3. Make necessary changes
+4. Write tests if applicable
+5. Commit with a clear message"
+                className="min-h-[120px] font-mono text-sm"
+                value={subagentForm.start_command || ''}
+                onChange={(e) =>
+                  setSubagentForm({
+                    ...subagentForm,
+                    start_command: e.target.value || null,
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Best provided as a detailed list of exactly what the agent should do when starting work on a task.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="subagent-deliverable">Expected Deliverable</Label>
+              <Textarea
+                id="subagent-deliverable"
+                placeholder="Describe what the agent should produce before handing off:
+
+e.g., 'A detailed implementation plan written to PLAN.md that includes:
+- Architecture decisions with rationale
+- List of files to create/modify
+- Step-by-step implementation steps
+- Estimated complexity for each step'"
+                className="min-h-[100px] font-mono text-sm"
+                value={subagentForm.deliverable || ''}
+                onChange={(e) =>
+                  setSubagentForm({
+                    ...subagentForm,
+                    deliverable: e.target.value || null,
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Defines what the agent should produce and when to stop. The agent will be told to commit and stop once this deliverable is ready.
+              </p>
             </div>
 
             <div className="space-y-2">

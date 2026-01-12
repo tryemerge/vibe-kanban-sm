@@ -1,14 +1,17 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { useProject } from '@/contexts/ProjectContext';
 import { useTaskAttemptsWithSessions } from '@/hooks/useTaskAttempts';
 import { useTaskAttemptWithSession } from '@/hooks/useTaskAttempt';
-import { useNavigateWithSearch } from '@/hooks';
+import { useNavigateWithSearch, useProjectColumns } from '@/hooks';
 import { paths } from '@/lib/paths';
+import { tasksApi } from '@/lib/api';
 import type { TaskWithAttemptStatus } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { NewCardContent } from '../ui/new-card';
 import { Button } from '../ui/button';
-import { PlusIcon } from 'lucide-react';
+import { PlusIcon, Play, XCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import { CreateAttemptDialog } from '@/components/dialogs/tasks/CreateAttemptDialog';
 import WYSIWYGEditor from '@/components/ui/wysiwyg';
 import { DataTable, type ColumnDef } from '@/components/ui/table';
@@ -21,6 +24,10 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
   const { t } = useTranslation('tasks');
   const navigate = useNavigateWithSearch();
   const { projectId } = useProject();
+  const queryClient = useQueryClient();
+  const [isMoving, setIsMoving] = useState<'start' | 'cancel' | null>(null);
+
+  const { data: columns = [] } = useProjectColumns(projectId);
 
   const {
     data: attempts = [],
@@ -30,6 +37,69 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
 
   const { data: parentAttempt, isLoading: isParentLoading } =
     useTaskAttemptWithSession(task?.parent_workspace_id || undefined);
+
+  // Check if task is in a backlog (is_initial) or terminal column
+  const currentColumn = columns.find((col) => col.id === task?.column_id);
+  const isInBacklog = currentColumn?.is_initial ?? false;
+  const isInTerminal = currentColumn?.is_terminal ?? false;
+  const isSuccess = isInTerminal && currentColumn?.status === 'done';
+  const isCancelled = isInTerminal && currentColumn?.status === 'cancelled';
+
+  // Find target columns for Start and Cancel actions
+  const workflowColumn = columns.find((col) => col.starts_workflow);
+  const cancelledColumn = columns.find(
+    (col) => col.is_terminal && col.status === 'cancelled'
+  );
+
+  const handleStartTask = async () => {
+    if (!task || !workflowColumn) return;
+    setIsMoving('start');
+    try {
+      await tasksApi.update(task.id, {
+        title: task.title,
+        description: task.description,
+        status: workflowColumn.status,
+        column_id: workflowColumn.id,
+        parent_workspace_id: task.parent_workspace_id,
+        image_ids: null,
+      });
+      // Invalidate tasks query to refresh the kanban board
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      // Navigate to the latest attempt (which will be created by backend)
+      if (projectId) {
+        navigate(paths.attempt(projectId, task.id, 'latest'));
+      }
+    } catch (err) {
+      console.error('Failed to start task:', err);
+    } finally {
+      setIsMoving(null);
+    }
+  };
+
+  const handleCancelTask = async () => {
+    if (!task || !cancelledColumn) return;
+    setIsMoving('cancel');
+    try {
+      await tasksApi.update(task.id, {
+        title: task.title,
+        description: task.description,
+        status: cancelledColumn.status,
+        column_id: cancelledColumn.id,
+        parent_workspace_id: task.parent_workspace_id,
+        image_ids: null,
+      });
+      // Invalidate tasks query to refresh the kanban board
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      // Navigate back to the kanban board
+      if (projectId) {
+        navigate(paths.projectTasks(projectId));
+      }
+    } catch (err) {
+      console.error('Failed to cancel task:', err);
+    } finally {
+      setIsMoving(null);
+    }
+  };
 
   const formatTimeAgo = (iso: string) => {
     const d = new Date(iso);
@@ -78,6 +148,17 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
 
   const attemptColumns: ColumnDef<WorkspaceWithSession>[] = [
     {
+      id: 'status',
+      header: '',
+      accessor: (attempt) =>
+        attempt.cancelled_at ? (
+          <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            {t('taskPanel.cancelled')}
+          </span>
+        ) : null,
+      className: 'pr-2 w-0',
+    },
+    {
       id: 'executor',
       header: '',
       accessor: (attempt) => attempt.session?.executor || 'Base Agent',
@@ -107,6 +188,55 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
               <WYSIWYGEditor value={descriptionContent} disabled />
             )}
           </div>
+
+          {/* Terminal status indicator - show Success or Cancelled */}
+          {isSuccess && (
+            <div className="mt-4 flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="font-medium">{t('taskPanel.success', 'Completed Successfully')}</span>
+            </div>
+          )}
+          {isCancelled && (
+            <div className="mt-4 flex items-center gap-2 text-muted-foreground">
+              <XCircle className="h-5 w-5" />
+              <span className="font-medium">{t('taskPanel.taskCancelled', 'Task Cancelled')}</span>
+            </div>
+          )}
+
+          {/* Backlog action buttons - only show when task is in backlog column */}
+          {isInBacklog && (
+            <div className="mt-6 flex gap-3">
+              {workflowColumn && (
+                <Button
+                  onClick={handleStartTask}
+                  disabled={isMoving !== null}
+                  className="flex-1"
+                >
+                  {isMoving === 'start' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="mr-2 h-4 w-4" />
+                  )}
+                  {t('taskPanel.startTask', 'Start')}
+                </Button>
+              )}
+              {cancelledColumn && (
+                <Button
+                  variant="outline"
+                  onClick={handleCancelTask}
+                  disabled={isMoving !== null}
+                  className="flex-1"
+                >
+                  {isMoving === 'cancel' ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="mr-2 h-4 w-4" />
+                  )}
+                  {t('taskPanel.cancelTask', 'Cancel')}
+                </Button>
+              )}
+            </div>
+          )}
 
           <div className="mt-6 flex-shrink-0 space-y-4">
             {task.parent_workspace_id && (

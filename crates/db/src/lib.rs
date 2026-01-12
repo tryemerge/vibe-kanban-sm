@@ -7,6 +7,7 @@ use sqlx::{
 use utils::assets::asset_dir;
 
 pub mod models;
+pub mod serde_helpers;
 
 #[derive(Clone)]
 pub struct DBService {

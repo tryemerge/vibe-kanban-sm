@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use ts_rs::TS;
@@ -95,5 +98,59 @@ impl Tag {
             .execute(pool)
             .await?;
         Ok(result.rows_affected())
+    }
+
+    /// Expands @tagname references in text by replacing them with tag content.
+    /// Returns the original text if no tags are found or if there's an error.
+    /// Unknown tags are left as-is (not expanded, not an error).
+    pub async fn expand_tags(pool: &SqlitePool, text: &str) -> String {
+        // Pattern matches @tagname where tagname is non-whitespace, non-@ characters
+        let tag_pattern = match Regex::new(r"@([^\s@]+)") {
+            Ok(re) => re,
+            Err(_) => return text.to_string(),
+        };
+
+        // Find all unique tag names referenced in the text
+        let tag_names: Vec<String> = tag_pattern
+            .captures_iter(text)
+            .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if tag_names.is_empty() {
+            return text.to_string();
+        }
+
+        // Fetch all tags from the database
+        let tags = match Self::find_all(pool).await {
+            Ok(t) => t,
+            Err(_) => return text.to_string(),
+        };
+
+        // Build a map of tag_name -> content for quick lookup
+        let tag_map: HashMap<&str, &str> = tags
+            .iter()
+            .map(|t| (t.tag_name.as_str(), t.content.as_str()))
+            .collect();
+
+        // Replace each @tagname with its content (if found)
+        let result = tag_pattern.replace_all(text, |caps: &regex::Captures| {
+            let tag_name = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            match tag_map.get(tag_name) {
+                Some(content) => (*content).to_string(),
+                None => caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string(),
+            }
+        });
+
+        result.into_owned()
+    }
+
+    /// Helper to expand tags in an Option<String>, returning None if input is None
+    pub async fn expand_tags_optional(pool: &SqlitePool, text: Option<&str>) -> Option<String> {
+        match text {
+            Some(t) => Some(Self::expand_tags(pool, t).await),
+            None => None,
+        }
     }
 }

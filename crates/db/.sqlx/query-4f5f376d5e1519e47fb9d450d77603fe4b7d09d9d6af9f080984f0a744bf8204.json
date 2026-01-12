@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) as \"count!: i64\"\n               FROM state_transitions\n               WHERE task_id = $1\n                  OR (project_id = $2 AND task_id IS NULL)\n                  OR (board_id = $3 AND project_id IS NULL AND task_id IS NULL)",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4f5f376d5e1519e47fb9d450d77603fe4b7d09d9d6af9f080984f0a744bf8204"
+}

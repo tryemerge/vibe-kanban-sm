@@ -718,13 +718,27 @@ export function ProjectTasks() {
       if (!projectId) return;
       setSelectedSharedTaskId(null);
 
-      if (attemptIdToShow) {
+      // Check if task is in a backlog (is_initial) or terminal (done/cancelled) column
+      // These columns should show the task panel with attempts list
+      const taskColumn = projectColumns?.find((col) => col.id === task.column_id);
+      const isInBacklog = taskColumn?.is_initial ?? false;
+      const isInTerminal = taskColumn?.is_terminal ?? false;
+      const showSummaryView = isInBacklog || isInTerminal;
+
+      if (showSummaryView) {
+        // Show task panel with summary and attempts list
+        navigateWithSearch(paths.task(projectId, task.id));
+      } else if (attemptIdToShow) {
         navigateWithSearch(paths.attempt(projectId, task.id, attemptIdToShow));
+      } else if (task.latest_attempt_id) {
+        // Navigate directly to the latest attempt (active execution view)
+        navigateWithSearch(paths.attempt(projectId, task.id, task.latest_attempt_id));
       } else {
-        navigateWithSearch(`${paths.task(projectId, task.id)}/attempts/latest`);
+        // No attempts yet, show task details
+        navigateWithSearch(paths.task(projectId, task.id));
       }
     },
-    [projectId, navigateWithSearch]
+    [projectId, navigateWithSearch, projectColumns]
   );
 
   const handleViewSharedTask = useCallback(

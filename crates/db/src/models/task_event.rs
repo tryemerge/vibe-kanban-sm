@@ -30,6 +30,9 @@ pub enum TaskEventType {
     TaskCreated,
     /// Task status changed
     StatusChange,
+    /// Transition took the else path (condition didn't match)
+    /// Used for counting failures toward escalation
+    ElseTransition,
 }
 
 /// What triggered this event
@@ -107,6 +110,8 @@ pub struct TaskEventWithNames {
     pub event: TaskEvent,
     pub from_column_name: Option<String>,
     pub to_column_name: Option<String>,
+    pub agent_name: Option<String>,
+    pub agent_color: Option<String>,
 }
 
 /// Create a new task event
@@ -243,10 +248,13 @@ impl TaskEvent {
                 e.actor_id,
                 e.created_at as "created_at!: DateTime<Utc>",
                 fc.name as "from_column_name?",
-                tc.name as "to_column_name?"
+                tc.name as "to_column_name?",
+                a.name as "agent_name?",
+                a.color as "agent_color?"
             FROM task_events e
             LEFT JOIN kanban_columns fc ON e.from_column_id = fc.id
             LEFT JOIN kanban_columns tc ON e.to_column_id = tc.id
+            LEFT JOIN agents a ON tc.agent_id = a.id
             WHERE e.task_id = $1
             ORDER BY e.created_at DESC"#,
             task_id
@@ -277,6 +285,8 @@ impl TaskEvent {
                 },
                 from_column_name: r.from_column_name,
                 to_column_name: r.to_column_name,
+                agent_name: r.agent_name,
+                agent_color: r.agent_color,
             })
             .collect())
     }
@@ -320,6 +330,50 @@ impl TaskEvent {
             .execute(pool)
             .await?;
         Ok(result.rows_affected())
+    }
+
+    /// Count how many times a task has transitioned FROM a specific column
+    /// Used for loop prevention in conditional transitions
+    pub async fn count_column_transitions(
+        pool: &SqlitePool,
+        task_id: Uuid,
+        from_column_id: Uuid,
+    ) -> Result<i64, sqlx::Error> {
+        let count = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!: i64"
+               FROM task_events
+               WHERE task_id = $1
+                 AND event_type = 'column_enter'
+                 AND from_column_id = $2"#,
+            task_id,
+            from_column_id
+        )
+        .fetch_one(pool)
+        .await?;
+
+        Ok(count)
+    }
+
+    /// Count how many times a task took the else path FROM a specific column
+    /// Used for escalation logic - escalate after N failures
+    pub async fn count_else_transitions(
+        pool: &SqlitePool,
+        task_id: Uuid,
+        from_column_id: Uuid,
+    ) -> Result<i64, sqlx::Error> {
+        let count = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!: i64"
+               FROM task_events
+               WHERE task_id = $1
+                 AND event_type = 'else_transition'
+                 AND from_column_id = $2"#,
+            task_id,
+            from_column_id
+        )
+        .fetch_one(pool)
+        .await?;
+
+        Ok(count)
     }
 }
 
@@ -467,6 +521,27 @@ impl CreateTaskEvent {
             metadata: None,
             actor_type: Some(actor_type),
             actor_id,
+        }
+    }
+
+    /// Create an else transition event (condition didn't match, took else path)
+    /// Used for counting failures toward escalation
+    pub fn else_transition(task_id: Uuid, from_column_id: Uuid) -> Self {
+        Self {
+            task_id,
+            event_type: TaskEventType::ElseTransition,
+            from_column_id: Some(from_column_id),
+            to_column_id: None,
+            workspace_id: None,
+            session_id: None,
+            executor: None,
+            automation_rule_id: None,
+            trigger_type: Some(EventTriggerType::Automation),
+            commit_hash: None,
+            commit_message: None,
+            metadata: None,
+            actor_type: Some(ActorType::System),
+            actor_id: None,
         }
     }
 }

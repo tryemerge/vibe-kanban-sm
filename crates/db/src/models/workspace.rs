@@ -53,6 +53,9 @@ pub struct Workspace {
     pub branch: String,
     pub agent_working_dir: Option<String>,
     pub setup_completed_at: Option<DateTime<Utc>>,
+    /// When set, this attempt has been cancelled (but history is preserved)
+    #[ts(type = "Date | null")]
+    pub cancelled_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -115,6 +118,7 @@ impl Workspace {
                               branch,
                               agent_working_dir,
                               setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                              cancelled_at AS "cancelled_at: DateTime<Utc>",
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
                        FROM workspaces
@@ -133,6 +137,7 @@ impl Workspace {
                               branch,
                               agent_working_dir,
                               setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                              cancelled_at AS "cancelled_at: DateTime<Utc>",
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
                        FROM workspaces
@@ -161,6 +166,7 @@ impl Workspace {
                        w.branch,
                        w.agent_working_dir,
                        w.setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                       w.cancelled_at      AS "cancelled_at: DateTime<Utc>",
                        w.created_at        AS "created_at!: DateTime<Utc>",
                        w.updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces w
@@ -243,11 +249,39 @@ impl Workspace {
                        branch,
                        agent_working_dir,
                        setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                       cancelled_at      AS "cancelled_at: DateTime<Utc>",
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces
                WHERE   id = $1"#,
             id
+        )
+        .fetch_optional(pool)
+        .await
+    }
+
+    /// Find the most recent active (non-cancelled) workspace for a task
+    pub async fn find_active_for_task(
+        pool: &SqlitePool,
+        task_id: Uuid,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Workspace,
+            r#"SELECT  id                AS "id!: Uuid",
+                       task_id           AS "task_id!: Uuid",
+                       container_ref,
+                       branch,
+                       agent_working_dir,
+                       setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                       cancelled_at      AS "cancelled_at: DateTime<Utc>",
+                       created_at        AS "created_at!: DateTime<Utc>",
+                       updated_at        AS "updated_at!: DateTime<Utc>"
+               FROM    workspaces
+               WHERE   task_id = $1
+                 AND   cancelled_at IS NULL
+               ORDER BY created_at DESC
+               LIMIT 1"#,
+            task_id
         )
         .fetch_optional(pool)
         .await
@@ -262,6 +296,7 @@ impl Workspace {
                        branch,
                        agent_working_dir,
                        setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                       cancelled_at      AS "cancelled_at: DateTime<Utc>",
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces
@@ -300,6 +335,7 @@ impl Workspace {
                 w.branch as "branch!",
                 w.agent_working_dir,
                 w.setup_completed_at as "setup_completed_at: DateTime<Utc>",
+                w.cancelled_at as "cancelled_at: DateTime<Utc>",
                 w.created_at as "created_at!: DateTime<Utc>",
                 w.updated_at as "updated_at!: DateTime<Utc>"
             FROM workspaces w
@@ -343,7 +379,7 @@ impl Workspace {
             Workspace,
             r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
                VALUES ($1, $2, $3, $4, $5, $6)
-               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", cancelled_at as "cancelled_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             task_id,
             Option::<String>::None,
@@ -368,6 +404,27 @@ impl Workspace {
         .execute(pool)
         .await?;
 
+        Ok(())
+    }
+
+    /// Delete a workspace by ID
+    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query!("DELETE FROM workspaces WHERE id = $1", id)
+            .execute(pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Mark a workspace as cancelled (preserves history but marks as no longer active)
+    pub async fn set_cancelled(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+        let now = Utc::now();
+        sqlx::query!(
+            "UPDATE workspaces SET cancelled_at = $1, container_ref = NULL, updated_at = $1 WHERE id = $2",
+            now,
+            id
+        )
+        .execute(pool)
+        .await?;
         Ok(())
     }
 

@@ -83,3 +83,39 @@ DATABASE_URL="sqlite:///Users/the_dusky/code/emerge/vibe-kanban-sm/dev_assets/db
 - Use `INSERT OR IGNORE` for seed data to handle re-runs gracefully
 - Use direct `VALUES()` instead of `SELECT ... WHERE NOT EXISTS` for simpler FK-safe inserts
 - If a migration fails on the user's dev database, the migration entry may not be in `_sqlx_migrations` — fix the migration and have the user restart
+
+## SQLite Limitations & Common Errors
+
+### "unable to open database file" (code 14)
+This error means the parent directory doesn't exist, NOT that the database file is missing. SQLite can create the file but not the directory.
+
+**Solution**: Ensure parent directories exist before running SQLx commands:
+```bash
+mkdir -p ~/.vibe-kanban/data
+```
+
+**Note**: `pnpm run prepare-db` creates its own temp DB at `crates/db/prepare_db.sqlite` so this error shouldn't affect normal development.
+
+### SQLite does NOT support ALTER COLUMN
+You cannot change NOT NULL to nullable or vice versa with ALTER TABLE. To change column nullability:
+
+```sql
+-- WRONG: This doesn't work in SQLite
+ALTER TABLE foo ALTER COLUMN bar DROP NOT NULL;
+
+-- CORRECT: Recreate the table
+CREATE TABLE foo_new (
+    id BLOB PRIMARY KEY,
+    bar TEXT  -- now nullable
+);
+INSERT INTO foo_new SELECT * FROM foo;
+DROP TABLE foo;
+ALTER TABLE foo_new RENAME TO foo;
+```
+
+### SQLx Type Annotations
+When a column's nullability changes, update SQLx query annotations:
+- `"column!: Type"` = NOT NULL, returns `Type`
+- `"column: Type"` = nullable, returns `Option<Type>`
+
+If SQLx still infers wrong types, it's reading from the actual DB schema. Run migrations first, then `pnpm run prepare-db`.

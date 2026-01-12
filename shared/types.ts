@@ -28,11 +28,106 @@ export type CreateBoard = { name: string, description: string | null, };
 
 export type UpdateBoard = { name: string | null, description: string | null, };
 
-export type KanbanColumn = { id: string, board_id: string, name: string, slug: string, position: number, color: string | null, is_initial: boolean, is_terminal: boolean, agent_id: string | null, created_at: Date, updated_at: Date, };
+export type KanbanColumn = { id: string, board_id: string, name: string, slug: string, position: number, color: string | null, is_initial: boolean, is_terminal: boolean, 
+/**
+ * When true, entering this column creates a new attempt/workspace
+ */
+starts_workflow: boolean, status: TaskStatus, agent_id: string | null, 
+/**
+ * What the agent should produce before moving to the next column
+ */
+deliverable: string | null, created_at: Date, updated_at: Date, };
 
-export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, agent_id: string | null, };
+export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, agent_id: string | null, deliverable: string | null, };
 
-export type UpdateKanbanColumn = { name: string | null, slug: string | null, position: number | null, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, agent_id: string | null, };
+export type UpdateKanbanColumn = { name: string | null, slug: string | null, position: number | null, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, 
+/**
+ * Agent ID - uses double Option to distinguish between "not provided" (None) and "explicitly null" (Some(None))
+ * - None: Keep existing value (field not in request)
+ * - Some(None): Clear the agent (field is null in request)
+ * - Some(Some(uuid)): Set to new agent
+ */
+agent_id?: string | null, deliverable: string | null, };
+
+export type StateTransition = { id: string, 
+/**
+ * Board ID for board-level transitions (NULL for project/task level)
+ */
+board_id: string | null, 
+/**
+ * Project ID for project-level transitions (NULL for board/task level)
+ */
+project_id: string | null, 
+/**
+ * Task ID for task-level transitions (NULL for board/project level)
+ */
+task_id: string | null, from_column_id: string, 
+/**
+ * Where to go when condition matches (success path)
+ */
+to_column_id: string, 
+/**
+ * Where to go when condition doesn't match (else path)
+ */
+else_column_id: string | null, 
+/**
+ * Where to go when max_failures is reached (escalation path)
+ */
+escalation_column_id: string | null, name: string | null, requires_confirmation: boolean, 
+/**
+ * JSON key to check in .vibe/decision.json (e.g., "decision")
+ */
+condition_key: string | null, 
+/**
+ * Value to match for this transition (e.g., "approve" or "reject")
+ */
+condition_value: string | null, 
+/**
+ * Number of times the else path can be taken before escalation
+ */
+max_failures: bigint | null, created_at: Date, };
+
+export type StateTransitionWithColumns = { id: string, board_id: string | null, project_id: string | null, task_id: string | null, from_column_id: string, from_column_name: string, 
+/**
+ * Where to go when condition matches (success path)
+ */
+to_column_id: string, to_column_name: string, 
+/**
+ * Where to go when condition doesn't match (else path)
+ */
+else_column_id: string | null, else_column_name: string | null, 
+/**
+ * Where to go when max_failures is reached (escalation path)
+ */
+escalation_column_id: string | null, escalation_column_name: string | null, name: string | null, requires_confirmation: boolean, condition_key: string | null, condition_value: string | null, 
+/**
+ * Number of times the else path can be taken before escalation
+ */
+max_failures: bigint | null, 
+/**
+ * Computed scope for UI display
+ */
+scope: TransitionScope, created_at: Date, };
+
+export type CreateStateTransition = { from_column_id: string, 
+/**
+ * Where to go when condition matches (success path)
+ */
+to_column_id: string, 
+/**
+ * Where to go when condition doesn't match (else path)
+ */
+else_column_id: string | null, 
+/**
+ * Where to go when max_failures is reached (escalation path)
+ */
+escalation_column_id: string | null, name: string | null, requires_confirmation: boolean | null, condition_key: string | null, condition_value: string | null, 
+/**
+ * Number of times the else path can be taken before escalation
+ */
+max_failures: bigint | null, };
+
+export type TransitionScope = "board" | "project" | "task";
 
 export type Repo = { id: string, path: string, name: string, display_name: string, created_at: Date, updated_at: Date, };
 
@@ -58,7 +153,7 @@ export type TaskStatus = "todo" | "inprogress" | "inreview" | "done" | "cancelle
 
 export type Task = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
 
-export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
+export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, latest_attempt_id: string | null, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
 
 export type TaskRelationships = { parent_task: Task | null, current_workspace: Workspace, children: Array<Task>, };
 
@@ -82,7 +177,11 @@ export type Image = { id: string, file_path: string, original_name: string, mime
 
 export type CreateImage = { file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, };
 
-export type Workspace = { id: string, task_id: string, container_ref: string | null, branch: string, agent_working_dir: string | null, setup_completed_at: string | null, created_at: string, updated_at: string, };
+export type Workspace = { id: string, task_id: string, container_ref: string | null, branch: string, agent_working_dir: string | null, setup_completed_at: string | null, 
+/**
+ * When set, this attempt has been cancelled (but history is preserved)
+ */
+cancelled_at: Date | null, created_at: string, updated_at: string, };
 
 export type Session = { id: string, workspace_id: string, executor: string | null, created_at: string, updated_at: string, };
 
@@ -454,7 +553,19 @@ executor_profile_id: ExecutorProfileId,
  * Optional relative path to execute the agent in (relative to container_ref).
  * If None, uses the container_ref directory directly.
  */
-working_dir: string | null, };
+working_dir: string | null, 
+/**
+ * Optional agent system prompt to prepend (establishes persona/role)
+ */
+agent_system_prompt: string | null, 
+/**
+ * Optional agent start command to append (initial instruction)
+ */
+agent_start_command: string | null, 
+/**
+ * Optional deliverable description - tells the agent what to produce and when to stop
+ */
+agent_deliverable: string | null, };
 
 export type CodingAgentFollowUpRequest = { prompt: string, session_id: string, 
 /**
@@ -471,9 +582,17 @@ export type CommandExitStatus = { "type": "exit_code", code: number, } | { "type
 
 export type CommandRunResult = { exit_status: CommandExitStatus | null, output: string | null, };
 
-export type NormalizedEntry = { timestamp: string | null, entry_type: NormalizedEntryType, content: string, };
+export type NormalizedEntry = { timestamp: string | null, entry_type: NormalizedEntryType, content: string, 
+/**
+ * Agent ID if this entry was produced during agent-context execution
+ */
+agent_id?: string | null, 
+/**
+ * Agent color (hex) for UI styling
+ */
+agent_color?: string | null, };
 
-export type NormalizedEntryType = { "type": "user_message" } | { "type": "user_feedback", denied_tool: string, } | { "type": "assistant_message" } | { "type": "tool_use", tool_name: string, action_type: ActionType, status: ToolStatus, } | { "type": "system_message" } | { "type": "error_message", error_type: NormalizedEntryError, } | { "type": "thinking" } | { "type": "loading" } | { "type": "next_action", failed: boolean, execution_processes: number, needs_setup: boolean, };
+export type NormalizedEntryType = { "type": "user_message" } | { "type": "user_feedback", denied_tool: string, } | { "type": "assistant_message" } | { "type": "tool_use", tool_name: string, action_type: ActionType, status: ToolStatus, } | { "type": "system_message" } | { "type": "agent_switch", agent_name: string, agent_color: string | null, column_name: string, } | { "type": "error_message", error_type: NormalizedEntryError, } | { "type": "thinking" } | { "type": "loading" } | { "type": "next_action", failed: boolean, execution_processes: number, needs_setup: boolean, };
 
 export type FileChange = { "action": "write", content: string, } | { "action": "delete" } | { "action": "rename", new_path: string, } | { "action": "edit", 
 /**
@@ -505,11 +624,11 @@ export type PatchType = { "type": "NORMALIZED_ENTRY", "content": NormalizedEntry
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;
 
-export type Agent = { id: string, name: string, role: string, system_prompt: string, capabilities: string | null, tools: string | null, description: string | null, context_files: string | null, executor: string, created_at: Date, updated_at: Date, };
+export type Agent = { id: string, name: string, role: string, system_prompt: string, capabilities: string | null, tools: string | null, description: string | null, context_files: string | null, executor: string, color: string | null, start_command: string | null, deliverable: string | null, created_at: Date, updated_at: Date, };
 
-export type CreateAgent = { name: string, role: string, system_prompt: string, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, };
+export type CreateAgent = { name: string, role: string, system_prompt: string, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, color: string | null, start_command: string | null, deliverable: string | null, };
 
-export type UpdateAgent = { name: string | null, role: string | null, system_prompt: string | null, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, };
+export type UpdateAgent = { name: string | null, role: string | null, system_prompt: string | null, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, color: string | null, start_command: string | null, deliverable: string | null, };
 
 export type ContextFile = { pattern: string, instruction: string | null, };
 
@@ -543,7 +662,7 @@ export type WebhookConfig = { url: string, method: string | null, headers: JsonV
 
 export type NotifyConfig = { channel: string, webhook_url: string, message_template: string, };
 
-export type TaskEventType = "column_enter" | "column_exit" | "agent_start" | "agent_complete" | "agent_failed" | "commit" | "manual_action" | "task_created" | "status_change";
+export type TaskEventType = "column_enter" | "column_exit" | "agent_start" | "agent_complete" | "agent_failed" | "commit" | "manual_action" | "task_created" | "status_change" | "else_transition";
 
 export type EventTriggerType = "manual" | "automation" | "drag_drop" | "system";
 
@@ -551,7 +670,7 @@ export type ActorType = "user" | "agent" | "system";
 
 export type TaskEvent = { id: string, task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType, actor_id: string | null, created_at: Date, };
 
-export type TaskEventWithNames = { from_column_name: string | null, to_column_name: string | null, id: string, task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType, actor_id: string | null, created_at: Date, };
+export type TaskEventWithNames = { from_column_name: string | null, to_column_name: string | null, agent_name: string | null, agent_color: string | null, id: string, task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType, actor_id: string | null, created_at: Date, };
 
 export type CreateTaskEvent = { task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType | null, actor_id: string | null, };
 
