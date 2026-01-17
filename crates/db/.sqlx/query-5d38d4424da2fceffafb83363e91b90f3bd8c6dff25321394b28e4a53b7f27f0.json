@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                artifact_type,\n                path,\n                title,\n                content,\n                metadata,\n                source_task_id as \"source_task_id: Uuid\",\n                source_commit_hash,\n                scope,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM context_artifacts\n               WHERE project_id = $1 AND artifact_type = $2\n               ORDER BY updated_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "artifact_type",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "path",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "content",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "metadata",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "source_task_id: Uuid",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "source_commit_hash",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "scope",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5d38d4424da2fceffafb83363e91b90f3bd8c6dff25321394b28e4a53b7f27f0"
+}

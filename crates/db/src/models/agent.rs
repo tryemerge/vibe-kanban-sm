@@ -23,7 +23,8 @@ pub struct Agent {
     pub executor: String,               // Executor type: CLAUDE_CODE, GEMINI, etc.
     pub color: Option<String>,          // Hex color for visual identification
     pub start_command: Option<String>,  // Initial instruction when auto-starting in a column
-    pub deliverable: Option<String>,    // What the agent should produce before handoff
+    pub is_template: bool,              // Whether this is a template agent
+    pub template_group_id: Option<String>, // Links template entities together
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -42,7 +43,6 @@ pub struct CreateAgent {
     pub executor: Option<String>,
     pub color: Option<String>,
     pub start_command: Option<String>,
-    pub deliverable: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -57,7 +57,6 @@ pub struct UpdateAgent {
     pub executor: Option<String>,
     pub color: Option<String>,
     pub start_command: Option<String>,
-    pub deliverable: Option<String>,
 }
 
 impl Agent {
@@ -76,11 +75,44 @@ impl Agent {
                 executor,
                 color,
                 start_command,
-                deliverable,
+                is_template as "is_template!: bool",
+                template_group_id,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM agents
+               WHERE is_template = FALSE
                ORDER BY created_at DESC"#
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn find_by_template_group(
+        pool: &SqlitePool,
+        group_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Agent,
+            r#"SELECT
+                id as "id!: Uuid",
+                name,
+                role,
+                system_prompt,
+                capabilities,
+                tools,
+                description,
+                context_files,
+                executor,
+                color,
+                start_command,
+                is_template as "is_template!: bool",
+                template_group_id,
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>"
+               FROM agents
+               WHERE template_group_id = $1
+               ORDER BY created_at ASC"#,
+            group_id
         )
         .fetch_all(pool)
         .await
@@ -101,7 +133,8 @@ impl Agent {
                 executor,
                 color,
                 start_command,
-                deliverable,
+                is_template as "is_template!: bool",
+                template_group_id,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM agents
@@ -133,8 +166,8 @@ impl Agent {
 
         sqlx::query_as!(
             Agent,
-            r#"INSERT INTO agents (id, name, role, system_prompt, capabilities, tools, description, context_files, executor, color, start_command, deliverable)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            r#"INSERT INTO agents (id, name, role, system_prompt, capabilities, tools, description, context_files, executor, color, start_command, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, NULL)
                RETURNING
                 id as "id!: Uuid",
                 name,
@@ -147,7 +180,8 @@ impl Agent {
                 executor,
                 color,
                 start_command,
-                deliverable,
+                is_template as "is_template!: bool",
+                template_group_id,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>""#,
             agent_id,
@@ -160,8 +194,7 @@ impl Agent {
             context_files_json,
             executor,
             data.color,
-            data.start_command,
-            data.deliverable
+            data.start_command
         )
         .fetch_one(pool)
         .await
@@ -199,14 +232,13 @@ impl Agent {
         let executor = data.executor.unwrap_or(existing.executor);
         let color = data.color.or(existing.color);
         let start_command = data.start_command.or(existing.start_command);
-        let deliverable = data.deliverable.or(existing.deliverable);
 
         sqlx::query_as!(
             Agent,
             r#"UPDATE agents
                SET name = $2, role = $3, system_prompt = $4, capabilities = $5, tools = $6,
                    description = $7, context_files = $8, executor = $9, color = $10, start_command = $11,
-                   deliverable = $12, updated_at = datetime('now', 'subsec')
+                   updated_at = datetime('now', 'subsec')
                WHERE id = $1
                RETURNING
                 id as "id!: Uuid",
@@ -220,7 +252,8 @@ impl Agent {
                 executor,
                 color,
                 start_command,
-                deliverable,
+                is_template as "is_template!: bool",
+                template_group_id,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -233,8 +266,7 @@ impl Agent {
             context_files_json,
             executor,
             color,
-            start_command,
-            deliverable
+            start_command
         )
         .fetch_one(pool)
         .await

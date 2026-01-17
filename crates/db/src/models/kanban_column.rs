@@ -23,6 +23,8 @@ pub struct KanbanColumn {
     pub agent_id: Option<Uuid>, // Agent assigned to handle tasks in this column
     /// What the agent should produce before moving to the next column
     pub deliverable: Option<String>,
+    pub is_template: bool,
+    pub template_group_id: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -83,10 +85,12 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      is_template as "is_template!: bool",
+                      template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
-               WHERE board_id = $1
+               WHERE board_id = $1 AND is_template = FALSE
                ORDER BY position ASC"#,
             board_id
         )
@@ -110,6 +114,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      is_template as "is_template!: bool",
+                      template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -140,6 +146,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      is_template as "is_template!: bool",
+                      template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -170,6 +178,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      is_template as "is_template!: bool",
+                      template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
@@ -195,11 +205,13 @@ impl KanbanColumn {
         let is_terminal = data.is_terminal.unwrap_or(false);
         let starts_workflow = data.starts_workflow.unwrap_or(false);
         let status = data.status.clone().unwrap_or(TaskStatus::Todo);
+        let is_template = false; // Regular columns are never templates
+        let template_group_id: Option<String> = None;
 
         sqlx::query_as!(
             KanbanColumn,
-            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id!: Uuid",
                          name,
@@ -212,6 +224,8 @@ impl KanbanColumn {
                          status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
                          deliverable,
+                         is_template as "is_template!: bool",
+                         template_group_id,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -225,7 +239,9 @@ impl KanbanColumn {
             starts_workflow,
             status,
             data.agent_id,
-            data.deliverable
+            data.deliverable,
+            is_template,
+            template_group_id
         )
         .fetch_one(executor)
         .await
@@ -277,6 +293,8 @@ impl KanbanColumn {
                          status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
                          deliverable,
+                         is_template as "is_template!: bool",
+                         template_group_id,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -324,5 +342,48 @@ impl KanbanColumn {
                 .execute(pool)
                 .await?;
         Ok(result.rows_affected())
+    }
+
+    /// Delete all columns for a board (used when applying templates)
+    pub async fn delete_by_board(pool: &SqlitePool, board_id: Uuid) -> Result<u64, sqlx::Error> {
+        let result: sqlx::sqlite::SqliteQueryResult = sqlx::query!(
+            "DELETE FROM kanban_columns WHERE board_id = $1 AND is_template = FALSE",
+            board_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Find all template columns by template group ID
+    pub async fn find_by_template_group(
+        pool: &SqlitePool,
+        template_group_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            KanbanColumn,
+            r#"SELECT id as "id!: Uuid",
+                      board_id as "board_id!: Uuid",
+                      name,
+                      slug,
+                      position as "position!: i32",
+                      color,
+                      is_initial as "is_initial!: bool",
+                      is_terminal as "is_terminal!: bool",
+                      starts_workflow as "starts_workflow!: bool",
+                      status as "status!: TaskStatus",
+                      agent_id as "agent_id: Uuid",
+                      deliverable,
+                      is_template as "is_template!: bool",
+                      template_group_id,
+                      created_at as "created_at!: DateTime<Utc>",
+                      updated_at as "updated_at!: DateTime<Utc>"
+               FROM kanban_columns
+               WHERE template_group_id = $1
+               ORDER BY position ASC"#,
+            template_group_id
+        )
+        .fetch_all(pool)
+        .await
     }
 }

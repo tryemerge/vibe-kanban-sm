@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO boards (id, name, description, is_template, template_group_id, template_name, template_description, template_icon)\n               VALUES ($1, $2, $3, FALSE, NULL, NULL, NULL, NULL)\n               RETURNING id as \"id!: Uuid\",\n                         name,\n                         description,\n                         is_template as \"is_template!: bool\",\n                         template_group_id,\n                         template_name,\n                         template_description,\n                         template_icon,\n                         created_at as \"created_at!: DateTime<Utc>\",\n                         updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_template!: bool",
+        "ordinal": 3,
+        "type_info": "Bool"
+      },
+      {
+        "name": "template_group_id",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "template_name",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "template_description",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "template_icon",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "0810b951da8a461bb500ce4419bcece140f4e84f29cb83fa8972635290a4d3fc"
+}

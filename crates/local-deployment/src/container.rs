@@ -21,6 +21,7 @@ use db::{
         repo::Repo,
         scratch::{DraftFollowUpData, Scratch, ScratchType},
         task::{Task, TaskStatus},
+        task_event::{CreateTaskEvent, TaskEvent},
         workspace::Workspace,
         workspace_repo::WorkspaceRepo,
     },
@@ -63,6 +64,13 @@ use utils::{
 use uuid::Uuid;
 
 use crate::{command, copy};
+
+/// Info about a successful commit
+pub struct CommitInfo {
+    pub repo_name: String,
+    pub commit_hash: String,
+    pub commit_message: String,
+}
 
 #[derive(Clone)]
 pub struct LocalContainerService {
@@ -152,6 +160,22 @@ impl LocalContainerService {
             .await
             .unwrap_or_default();
 
+        // Capture context before deletion (if not already captured)
+        if workspace.final_context.is_none() {
+            let context = Self::build_final_context(&workspace_dir, &repositories).await;
+            if let Some(ctx) = context {
+                if let Err(e) =
+                    Workspace::save_final_context(&db.pool, workspace.id, Some(&ctx), None).await
+                {
+                    tracing::warn!(
+                        "Failed to save final context for workspace {}: {}",
+                        workspace.id,
+                        e
+                    );
+                }
+            }
+        }
+
         if repositories.is_empty() {
             tracing::warn!(
                 "No repositories found for workspace {}, cleaning up workspace directory only",
@@ -176,6 +200,53 @@ impl LocalContainerService {
 
         // Clear container_ref so this workspace won't be picked up again
         let _ = Workspace::clear_container_ref(&db.pool, workspace.id).await;
+    }
+
+    /// Build final context from the workspace before deletion
+    /// Captures git commit history and any summary files
+    async fn build_final_context(workspace_dir: &Path, repositories: &[Repo]) -> Option<String> {
+        let git = GitCli::new();
+        let mut context_parts = Vec::new();
+
+        for repo in repositories {
+            let repo_path = workspace_dir.join(&repo.name);
+            if !repo_path.exists() {
+                continue;
+            }
+
+            // Get recent commits (last 50)
+            if let Ok(log) = git.get_log(&repo_path, 50) {
+                if !log.is_empty() {
+                    context_parts.push(format!("## Commits in {}\n\n{}", repo.name, log));
+                }
+            }
+
+            // Check for summary/context files the agent might have created
+            let summary_paths = [
+                ".vibe/summary.md",
+                ".vibe/context.md",
+                ".vibe/decision.json",
+            ];
+            for summary_path in summary_paths {
+                let full_path = repo_path.join(summary_path);
+                if full_path.exists() {
+                    if let Ok(content) = tokio::fs::read_to_string(&full_path).await {
+                        if !content.trim().is_empty() {
+                            context_parts.push(format!(
+                                "## {} (from {})\n\n{}",
+                                summary_path, repo.name, content
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        if context_parts.is_empty() {
+            None
+        } else {
+            Some(context_parts.join("\n\n---\n\n"))
+        }
     }
 
     pub async fn cleanup_expired_workspaces(db: &DBService) -> Result<(), DeploymentError> {
@@ -311,8 +382,9 @@ impl LocalContainerService {
     }
 
     /// Commit changes to each repo. Logs failures but continues with other repos.
-    fn commit_repos(&self, repos_with_changes: Vec<(Repo, PathBuf)>, message: &str) -> bool {
-        let mut any_committed = false;
+    /// Returns info about each successful commit (repo name, hash, message).
+    fn commit_repos(&self, repos_with_changes: Vec<(Repo, PathBuf)>, message: &str) -> Vec<CommitInfo> {
+        let mut commits = Vec::new();
 
         for (repo, worktree_path) in repos_with_changes {
             tracing::debug!(
@@ -323,8 +395,15 @@ impl LocalContainerService {
 
             match self.git().commit(&worktree_path, message) {
                 Ok(true) => {
-                    any_committed = true;
                     tracing::info!("Committed changes in repo '{}'", repo.name);
+                    // Get the commit hash from HEAD after the commit
+                    if let Ok(head) = self.git().get_head_info(&worktree_path) {
+                        commits.push(CommitInfo {
+                            repo_name: repo.name.clone(),
+                            commit_hash: head.oid,
+                            commit_message: message.to_string(),
+                        });
+                    }
                 }
                 Ok(false) => {
                     tracing::warn!("No changes committed in repo '{}' (unexpected)", repo.name);
@@ -335,7 +414,7 @@ impl LocalContainerService {
             }
         }
 
-        any_committed
+        commits
     }
 
     /// Spawn a background task that polls the child process for completion and
@@ -414,6 +493,38 @@ impl LocalContainerService {
                 // Update executor session summary if available
                 if let Err(e) = container.update_executor_session_summary(&exec_id).await {
                     tracing::warn!("Failed to update executor session summary: {}", e);
+                }
+
+                // Record agent complete/failed event for CodingAgent runs
+                if matches!(
+                    ctx.execution_process.run_reason,
+                    ExecutionProcessRunReason::CodingAgent
+                ) {
+                    let is_success = matches!(
+                        ctx.execution_process.status,
+                        ExecutionProcessStatus::Completed
+                    ) && exit_code == Some(0);
+                    let event = if is_success {
+                        CreateTaskEvent::agent_complete(
+                            ctx.task.id,
+                            ctx.workspace.id,
+                            ctx.session.id,
+                        )
+                    } else {
+                        CreateTaskEvent::agent_failed(
+                            ctx.task.id,
+                            ctx.workspace.id,
+                            ctx.session.id,
+                            Some(format!("Agent execution failed with exit code {:?}", exit_code)),
+                        )
+                    };
+                    if let Err(e) = TaskEvent::create(&db.pool, &event).await {
+                        tracing::error!(
+                            "Failed to record agent event for task {}: {}",
+                            ctx.task.id,
+                            e
+                        );
+                    }
                 }
 
                 let success = matches!(
@@ -840,6 +951,8 @@ impl LocalContainerService {
                 executor_profile_id: executor_profile_id.clone(),
                 working_dir,
                 agent_system_prompt: None,
+                agent_project_context: None,
+                agent_workflow_history: None,
                 agent_start_command: None,
                 agent_deliverable: None,
             })
@@ -1315,7 +1428,27 @@ impl ContainerService for LocalContainerService {
             return Ok(false);
         }
 
-        Ok(self.commit_repos(repos_with_changes, &message))
+        let commits = self.commit_repos(repos_with_changes, &message);
+        let any_committed = !commits.is_empty();
+
+        // Record commit events for each successful commit
+        for commit in commits {
+            let event = CreateTaskEvent::commit(
+                ctx.task.id,
+                ctx.workspace.id,
+                commit.commit_hash,
+                commit.commit_message,
+            );
+            if let Err(e) = TaskEvent::create(&self.db.pool, &event).await {
+                tracing::error!(
+                    "Failed to record commit event for task {}: {}",
+                    ctx.task.id,
+                    e
+                );
+            }
+        }
+
+        Ok(any_committed)
     }
 
     /// Copy files from the original project directory to the worktree.

@@ -375,6 +375,89 @@ impl TaskEvent {
 
         Ok(count)
     }
+
+    /// Build a workflow history summary for a task, showing work done in prior columns.
+    /// This is used to provide context to agents about what has been accomplished.
+    /// Returns a markdown-formatted string with column sections and commit history.
+    pub async fn build_workflow_history(
+        pool: &SqlitePool,
+        task_id: Uuid,
+    ) -> Result<String, sqlx::Error> {
+        // Query all relevant events for this task ordered by time
+        let events = sqlx::query!(
+            r#"SELECT
+                e.id as "id!: Uuid",
+                e.event_type as "event_type!: TaskEventType",
+                e.to_column_id as "to_column_id: Uuid",
+                e.commit_hash,
+                e.commit_message,
+                e.created_at as "created_at!: DateTime<Utc>",
+                c.name as "column_name?",
+                a.name as "agent_name?"
+            FROM task_events e
+            LEFT JOIN kanban_columns c ON e.to_column_id = c.id
+            LEFT JOIN agents a ON c.agent_id = a.id
+            WHERE e.task_id = $1
+              AND e.event_type IN ('column_enter', 'commit')
+            ORDER BY e.created_at ASC"#,
+            task_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        if events.is_empty() {
+            return Ok(String::new());
+        }
+
+        let mut history = String::from("## Prior Work\n\n");
+        let mut column_commits: Vec<(String, String)> = Vec::new();
+
+        for event in events {
+            match event.event_type {
+                TaskEventType::ColumnEnter => {
+                    // Flush previous column's commits
+                    if !column_commits.is_empty() {
+                        for (hash, msg) in &column_commits {
+                            let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
+                            history.push_str(&format!("- `{}`: {}\n", short_hash, msg));
+                        }
+                        column_commits.clear();
+                    }
+
+                    // Start new column section
+                    if let Some(ref col_name) = event.column_name {
+                        history.push_str("\n### ");
+                        history.push_str(col_name);
+                        if let Some(ref agent_name) = event.agent_name {
+                            history.push_str(&format!(" ({})", agent_name));
+                        }
+                        history.push('\n');
+                    }
+                }
+                TaskEventType::Commit => {
+                    if let (Some(hash), Some(msg)) = (event.commit_hash, event.commit_message) {
+                        column_commits.push((hash, msg));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Flush any remaining commits
+        if !column_commits.is_empty() {
+            for (hash, msg) in &column_commits {
+                let short_hash = if hash.len() > 7 { &hash[..7] } else { hash };
+                history.push_str(&format!("- `{}`: {}\n", short_hash, msg));
+            }
+        }
+
+        // If no meaningful content was generated, return empty
+        if history == "## Prior Work\n\n" {
+            return Ok(String::new());
+        }
+
+        Ok(history)
+    }
 }
 
 // Helper functions for creating specific event types

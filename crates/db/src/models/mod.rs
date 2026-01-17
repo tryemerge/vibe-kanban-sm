@@ -3,6 +3,7 @@ pub mod automation_execution;
 pub mod automation_rule;
 pub mod board;
 pub mod coding_agent_turn;
+pub mod context_artifact;
 pub mod execution_process;
 pub mod execution_process_logs;
 pub mod execution_process_repo_state;

@@ -6,9 +6,9 @@ use axum::{
 };
 use db::models::{
     agent::Agent, automation_rule::AutomationRule, board::Board,
-    execution_process::ExecutionProcess, kanban_column::KanbanColumn, project::Project,
-    session::Session, state_transition::StateTransition, tag::Tag, task::Task,
-    workspace::Workspace,
+    context_artifact::ContextArtifact, execution_process::ExecutionProcess,
+    kanban_column::KanbanColumn, project::Project, session::Session,
+    state_transition::StateTransition, tag::Tag, task::Task, workspace::Workspace,
 };
 use deployment::Deployment;
 use uuid::Uuid;
@@ -287,5 +287,27 @@ pub async fn load_board_middleware(
     };
 
     request.extensions_mut().insert(board);
+    Ok(next.run(request).await)
+}
+
+pub async fn load_context_artifact_middleware(
+    State(deployment): State<DeploymentImpl>,
+    Path(artifact_id): Path<Uuid>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let artifact = match ContextArtifact::find_by_id(&deployment.db().pool, artifact_id).await {
+        Ok(Some(artifact)) => artifact,
+        Ok(None) => {
+            tracing::warn!("ContextArtifact {} not found", artifact_id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch context artifact {}: {}", artifact_id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    request.extensions_mut().insert(artifact);
     Ok(next.run(request).await)
 }

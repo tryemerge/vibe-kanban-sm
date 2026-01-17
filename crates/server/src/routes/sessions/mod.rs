@@ -201,6 +201,8 @@ pub async fn follow_up(
                 executor_profile_id: executor_profile_id.clone(),
                 working_dir,
                 agent_system_prompt: None,
+                agent_project_context: None,
+                agent_workflow_history: None,
                 agent_start_command: None,
                 agent_deliverable: None,
             },

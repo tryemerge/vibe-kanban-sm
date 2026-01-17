@@ -1,0 +1,104 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE agents\n               SET name = $2, role = $3, system_prompt = $4, capabilities = $5, tools = $6,\n                   description = $7, context_files = $8, executor = $9, color = $10, start_command = $11,\n                   updated_at = datetime('now', 'subsec')\n               WHERE id = $1\n               RETURNING\n                id as \"id!: Uuid\",\n                name,\n                role,\n                system_prompt,\n                capabilities,\n                tools,\n                description,\n                context_files,\n                executor,\n                color,\n                start_command,\n                is_template as \"is_template!: bool\",\n                template_group_id,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "role",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "system_prompt",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "capabilities",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "tools",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "context_files",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "executor",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "color",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "start_command",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_template!: bool",
+        "ordinal": 11,
+        "type_info": "Bool"
+      },
+      {
+        "name": "template_group_id",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 14,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "4e861df0cc63253def4c39cb92d200f046ce0fe1e5727894234bfffd35d0eee7"
+}

@@ -42,6 +42,8 @@ pub struct StateTransition {
     pub condition_value: Option<String>,
     /// Number of times the else path can be taken before escalation
     pub max_failures: Option<i64>,
+    pub is_template: bool,
+    pub template_group_id: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
 }
@@ -124,6 +126,8 @@ impl StateTransition {
                       condition_key,
                       condition_value,
                       max_failures,
+                      is_template as "is_template!: bool",
+                      template_group_id,
                       created_at as "created_at!: DateTime<Utc>"
                FROM state_transitions
                WHERE id = $1"#,
@@ -153,9 +157,11 @@ impl StateTransition {
                       condition_key,
                       condition_value,
                       max_failures,
+                      is_template as "is_template!: bool",
+                      template_group_id,
                       created_at as "created_at!: DateTime<Utc>"
                FROM state_transitions
-               WHERE board_id = $1 AND project_id IS NULL AND task_id IS NULL"#,
+               WHERE board_id = $1 AND project_id IS NULL AND task_id IS NULL AND is_template = FALSE"#,
             board_id
         )
         .fetch_all(pool)
@@ -182,6 +188,8 @@ impl StateTransition {
                       condition_key,
                       condition_value,
                       max_failures,
+                      is_template as "is_template!: bool",
+                      template_group_id,
                       created_at as "created_at!: DateTime<Utc>"
                FROM state_transitions
                WHERE project_id = $1 AND task_id IS NULL"#,
@@ -211,6 +219,8 @@ impl StateTransition {
                       condition_key,
                       condition_value,
                       max_failures,
+                      is_template as "is_template!: bool",
+                      template_group_id,
                       created_at as "created_at!: DateTime<Utc>"
                FROM state_transitions
                WHERE task_id = $1"#,
@@ -241,9 +251,10 @@ impl StateTransition {
                         ELSE 3
                     END as priority
                 FROM state_transitions
-                WHERE task_id = $1
+                WHERE is_template = FALSE
+                  AND (task_id = $1
                    OR (project_id = $2 AND task_id IS NULL)
-                   OR (board_id = $3 AND project_id IS NULL AND task_id IS NULL)
+                   OR (board_id = $3 AND project_id IS NULL AND task_id IS NULL))
             ),
             ranked AS (
                 SELECT *,
@@ -266,6 +277,8 @@ impl StateTransition {
                    condition_key,
                    condition_value,
                    max_failures,
+                   is_template as "is_template!: bool",
+                   template_group_id,
                    created_at as "created_at!: DateTime<Utc>"
             FROM ranked
             WHERE rn = 1"#,
@@ -295,7 +308,8 @@ impl StateTransition {
                         ELSE 3
                     END as priority
                 FROM state_transitions
-                WHERE from_column_id = $1
+                WHERE is_template = FALSE
+                  AND from_column_id = $1
                   AND (task_id = $2
                        OR (project_id = $3 AND task_id IS NULL)
                        OR (board_id = $4 AND project_id IS NULL AND task_id IS NULL))
@@ -321,6 +335,8 @@ impl StateTransition {
                    condition_key,
                    condition_value,
                    max_failures,
+                   is_template as "is_template!: bool",
+                   template_group_id,
                    created_at as "created_at!: DateTime<Utc>"
             FROM ranked
             WHERE rn = 1"#,
@@ -514,11 +530,13 @@ impl StateTransition {
     {
         let id = Uuid::new_v4();
         let requires_confirmation = data.requires_confirmation.unwrap_or(false);
+        let is_template = false;
+        let template_group_id: Option<String> = None;
 
         sqlx::query_as!(
             StateTransition,
-            r#"INSERT INTO state_transitions (id, board_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            r#"INSERT INTO state_transitions (id, board_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id: Uuid",
                          project_id as "project_id: Uuid",
@@ -532,6 +550,8 @@ impl StateTransition {
                          condition_key,
                          condition_value,
                          max_failures,
+                         is_template as "is_template!: bool",
+                         template_group_id,
                          created_at as "created_at!: DateTime<Utc>""#,
             id,
             board_id,
@@ -543,7 +563,9 @@ impl StateTransition {
             requires_confirmation,
             data.condition_key,
             data.condition_value,
-            data.max_failures
+            data.max_failures,
+            is_template,
+            template_group_id
         )
         .fetch_one(executor)
         .await
@@ -560,11 +582,13 @@ impl StateTransition {
     {
         let id = Uuid::new_v4();
         let requires_confirmation = data.requires_confirmation.unwrap_or(false);
+        let is_template = false;
+        let template_group_id: Option<String> = None;
 
         sqlx::query_as!(
             StateTransition,
-            r#"INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            r#"INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id: Uuid",
                          project_id as "project_id: Uuid",
@@ -578,6 +602,8 @@ impl StateTransition {
                          condition_key,
                          condition_value,
                          max_failures,
+                         is_template as "is_template!: bool",
+                         template_group_id,
                          created_at as "created_at!: DateTime<Utc>""#,
             id,
             project_id,
@@ -589,7 +615,9 @@ impl StateTransition {
             requires_confirmation,
             data.condition_key,
             data.condition_value,
-            data.max_failures
+            data.max_failures,
+            is_template,
+            template_group_id
         )
         .fetch_one(executor)
         .await
@@ -606,11 +634,13 @@ impl StateTransition {
     {
         let id = Uuid::new_v4();
         let requires_confirmation = data.requires_confirmation.unwrap_or(false);
+        let is_template = false;
+        let template_group_id: Option<String> = None;
 
         sqlx::query_as!(
             StateTransition,
-            r#"INSERT INTO state_transitions (id, task_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            r#"INSERT INTO state_transitions (id, task_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id: Uuid",
                          project_id as "project_id: Uuid",
@@ -624,6 +654,8 @@ impl StateTransition {
                          condition_key,
                          condition_value,
                          max_failures,
+                         is_template as "is_template!: bool",
+                         template_group_id,
                          created_at as "created_at!: DateTime<Utc>""#,
             id,
             task_id,
@@ -635,7 +667,9 @@ impl StateTransition {
             requires_confirmation,
             data.condition_key,
             data.condition_value,
-            data.max_failures
+            data.max_failures,
+            is_template,
+            template_group_id
         )
         .fetch_one(executor)
         .await
@@ -680,5 +714,36 @@ impl StateTransition {
         .execute(pool)
         .await?;
         Ok(result.rows_affected())
+    }
+
+    /// Find all template transitions by template group ID
+    pub async fn find_by_template_group(
+        pool: &SqlitePool,
+        template_group_id: &str,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            StateTransition,
+            r#"SELECT id as "id!: Uuid",
+                      board_id as "board_id: Uuid",
+                      project_id as "project_id: Uuid",
+                      task_id as "task_id: Uuid",
+                      from_column_id as "from_column_id!: Uuid",
+                      to_column_id as "to_column_id!: Uuid",
+                      else_column_id as "else_column_id: Uuid",
+                      escalation_column_id as "escalation_column_id: Uuid",
+                      name,
+                      requires_confirmation as "requires_confirmation!: bool",
+                      condition_key,
+                      condition_value,
+                      max_failures,
+                      is_template as "is_template!: bool",
+                      template_group_id,
+                      created_at as "created_at!: DateTime<Utc>"
+               FROM state_transitions
+               WHERE template_group_id = $1"#,
+            template_group_id
+        )
+        .fetch_all(pool)
+        .await
     }
 }

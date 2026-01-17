@@ -56,6 +56,10 @@ pub struct Workspace {
     /// When set, this attempt has been cancelled (but history is preserved)
     #[ts(type = "Date | null")]
     pub cancelled_at: Option<DateTime<Utc>>,
+    /// Final context captured before worktree deletion - what the agent learned/decided
+    pub final_context: Option<String>,
+    /// Brief summary of what was accomplished in this attempt
+    pub completion_summary: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -119,6 +123,8 @@ impl Workspace {
                               agent_working_dir,
                               setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                               cancelled_at AS "cancelled_at: DateTime<Utc>",
+                              final_context,
+                              completion_summary,
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
                        FROM workspaces
@@ -138,6 +144,8 @@ impl Workspace {
                               agent_working_dir,
                               setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                               cancelled_at AS "cancelled_at: DateTime<Utc>",
+                              final_context,
+                              completion_summary,
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
                        FROM workspaces
@@ -167,6 +175,8 @@ impl Workspace {
                        w.agent_working_dir,
                        w.setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                        w.cancelled_at      AS "cancelled_at: DateTime<Utc>",
+                       w.final_context,
+                       w.completion_summary,
                        w.created_at        AS "created_at!: DateTime<Utc>",
                        w.updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces w
@@ -250,6 +260,8 @@ impl Workspace {
                        agent_working_dir,
                        setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                        cancelled_at      AS "cancelled_at: DateTime<Utc>",
+                       final_context,
+                       completion_summary,
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces
@@ -274,6 +286,8 @@ impl Workspace {
                        agent_working_dir,
                        setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                        cancelled_at      AS "cancelled_at: DateTime<Utc>",
+                       final_context,
+                       completion_summary,
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces
@@ -297,6 +311,8 @@ impl Workspace {
                        agent_working_dir,
                        setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                        cancelled_at      AS "cancelled_at: DateTime<Utc>",
+                       final_context,
+                       completion_summary,
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces
@@ -336,6 +352,8 @@ impl Workspace {
                 w.agent_working_dir,
                 w.setup_completed_at as "setup_completed_at: DateTime<Utc>",
                 w.cancelled_at as "cancelled_at: DateTime<Utc>",
+                w.final_context,
+                w.completion_summary,
                 w.created_at as "created_at!: DateTime<Utc>",
                 w.updated_at as "updated_at!: DateTime<Utc>"
             FROM workspaces w
@@ -379,7 +397,7 @@ impl Workspace {
             Workspace,
             r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
                VALUES ($1, $2, $3, $4, $5, $6)
-               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", cancelled_at as "cancelled_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", cancelled_at as "cancelled_at: DateTime<Utc>", final_context, completion_summary, created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             task_id,
             Option::<String>::None,
@@ -450,5 +468,23 @@ impl Workspace {
             task_id: result.task_id,
             project_id: result.project_id,
         })
+    }
+
+    /// Save final context and completion summary before worktree deletion
+    pub async fn save_final_context(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+        final_context: Option<&str>,
+        completion_summary: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "UPDATE workspaces SET final_context = $1, completion_summary = $2, updated_at = datetime('now', 'subsec') WHERE id = $3",
+            final_context,
+            completion_summary,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 }

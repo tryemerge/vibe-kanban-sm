@@ -104,6 +104,8 @@ import {
   StateTransition,
   StateTransitionWithColumns,
   CreateStateTransition,
+  TemplateInfo,
+  ApplyTemplateResponse,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -1611,5 +1613,27 @@ export const taskEventsApi = {
       body: JSON.stringify({ ...data, task_id: taskId }),
     });
     return handleApiResponse<TaskEvent>(response);
+  },
+};
+
+// Workflow Templates API
+export const templatesApi = {
+  list: async (): Promise<TemplateInfo[]> => {
+    const response = await makeRequest('/api/workflow-templates');
+    return handleApiResponse<TemplateInfo[]>(response);
+  },
+
+  applyToProject: async (
+    projectId: string,
+    templateBoardId: string
+  ): Promise<ApplyTemplateResponse> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/apply-template`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ template_board_id: templateBoardId }),
+      }
+    );
+    return handleApiResponse<ApplyTemplateResponse>(response);
   },
 };

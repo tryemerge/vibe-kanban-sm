@@ -26,6 +26,12 @@ pub struct CodingAgentInitialRequest {
     /// Optional agent system prompt to prepend (establishes persona/role)
     #[serde(default)]
     pub agent_system_prompt: Option<String>,
+    /// Optional project context from context artifacts (ADRs, patterns, module memories)
+    #[serde(default)]
+    pub agent_project_context: Option<String>,
+    /// Optional workflow history showing prior work from other columns
+    #[serde(default)]
+    pub agent_workflow_history: Option<String>,
     /// Optional agent start command to append (initial instruction)
     #[serde(default)]
     pub agent_start_command: Option<String>,
@@ -47,6 +53,23 @@ impl CodingAgentInitialRequest {
         if let Some(system_prompt) = &self.agent_system_prompt {
             if !system_prompt.trim().is_empty() {
                 full.push_str(system_prompt.trim());
+                full.push_str("\n\n---\n\n");
+            }
+        }
+
+        // Add project context if present (ADRs, patterns, module memories from context artifacts)
+        if let Some(project_context) = &self.agent_project_context {
+            if !project_context.trim().is_empty() {
+                full.push_str("# Project Context\n\n");
+                full.push_str(project_context.trim());
+                full.push_str("\n\n---\n\n");
+            }
+        }
+
+        // Add workflow history if present (shows prior work from previous columns)
+        if let Some(workflow_history) = &self.agent_workflow_history {
+            if !workflow_history.trim().is_empty() {
+                full.push_str(workflow_history.trim());
                 full.push_str("\n\n---\n\n");
             }
         }

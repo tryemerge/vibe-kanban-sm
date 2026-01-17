@@ -11,6 +11,7 @@ use db::{
     models::{
         agent::Agent,
         coding_agent_turn::{CodingAgentTurn, CreateCodingAgentTurn},
+        context_artifact::ContextArtifact,
         execution_process::{
             CreateExecutionProcess, ExecutionContext, ExecutionProcess, ExecutionProcessRunReason,
             ExecutionProcessStatus,
@@ -89,11 +90,14 @@ pub enum ContainerError {
 /// Agent context for workflow execution
 pub struct AgentContext {
     pub system_prompt: Option<String>,
+    pub workflow_history: Option<String>,
     pub start_command: Option<String>,
     pub deliverable: Option<String>,
     pub name: String,
     pub color: Option<String>,
     pub column_name: String,
+    /// Project-level context from context artifacts (module memories, ADRs, patterns)
+    pub project_context: Option<String>,
 }
 
 /// Read the decision file (.vibe/decision.json) from a workspace
@@ -118,6 +122,48 @@ pub async fn read_decision_file(workspace: &Workspace) -> Option<serde_json::Val
             tracing::warn!("Failed to read decision file: {}", e);
             None
         }
+    }
+}
+
+/// Build project context string from context artifacts (ADRs, patterns, recent decisions)
+/// This provides project-level knowledge to agents when they start execution
+async fn build_project_context(pool: &sqlx::SqlitePool, project_id: uuid::Uuid) -> Option<String> {
+    let mut context = String::new();
+
+    // Get recent ADRs (architecture decision records)
+    if let Ok(adrs) = ContextArtifact::get_recent_adrs(pool, project_id, 5).await {
+        if !adrs.is_empty() {
+            context.push_str("## Architecture Decisions\n\n");
+            for adr in adrs {
+                context.push_str(&format!("### {}\n", adr.title));
+                context.push_str(&adr.content);
+                context.push_str("\n\n");
+            }
+        }
+    }
+
+    // Get patterns for this project
+    if let Ok(patterns) = ContextArtifact::find_by_project_and_type(
+        pool,
+        project_id,
+        &db::models::context_artifact::ArtifactType::Pattern,
+    )
+    .await
+    {
+        if !patterns.is_empty() {
+            context.push_str("## Patterns & Best Practices\n\n");
+            for pattern in patterns.iter().take(5) {
+                context.push_str(&format!("### {}\n", pattern.title));
+                context.push_str(&pattern.content);
+                context.push_str("\n\n");
+            }
+        }
+    }
+
+    if context.is_empty() {
+        None
+    } else {
+        Some(context)
     }
 }
 
@@ -709,15 +755,26 @@ pub trait ContainerService {
                 (None, None) => None,
             };
 
+            // Build workflow history showing prior work from other columns
+            let workflow_history = match TaskEvent::build_workflow_history(pool, task.id).await {
+                Ok(history) if !history.is_empty() => Some(history),
+                _ => None,
+            };
+
+            // Build project context from context artifacts (ADRs, patterns)
+            let project_context = build_project_context(pool, task.project_id).await;
+
             // Start execution with agent context
             // Deliverable comes from the column (what this stage should produce), with tags expanded
             let agent_context = AgentContext {
                 system_prompt: Some(agent.system_prompt.clone()),
+                workflow_history,
                 start_command,
                 deliverable: expanded_deliverable.clone(),
                 name: agent.name.clone(),
                 color: agent.color.clone(),
                 column_name: column_name.to_string(),
+                project_context,
             };
             self.start_workspace_with_agent_context(
                 &workspace,
@@ -1493,6 +1550,8 @@ pub trait ContainerService {
                 executor_profile_id: executor_profile_id.clone(),
                 working_dir,
                 agent_system_prompt: None,
+                agent_project_context: None,
+                agent_workflow_history: None,
                 agent_start_command: None,
                 agent_deliverable: None,
             }),
@@ -1602,6 +1661,8 @@ pub trait ContainerService {
                 executor_profile_id: executor_profile_id.clone(),
                 working_dir,
                 agent_system_prompt: agent_context.system_prompt,
+                agent_project_context: agent_context.project_context,
+                agent_workflow_history: agent_context.workflow_history,
                 agent_start_command: agent_context.start_command,
                 agent_deliverable: agent_context.deliverable,
             }),

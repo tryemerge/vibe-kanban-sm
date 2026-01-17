@@ -11,6 +11,8 @@
         "boardsDesc": "Kanban board templates",
         "agents": "Agents",
         "agentsDesc": "Coding agent configurations",
+        "templates": "Templates",
+        "templatesDesc": "Pre-built workflow templates",
         "mcp": "MCP Servers",
         "mcpDesc": "Model Context Protocol servers",
         "organizations": "Organization Settings",
@@ -510,6 +512,27 @@
         "unsavedChanges": "• You have unsaved changes",
         "discard": "Discard",
         "confirmSwitch": "You have unsaved changes. Are you sure you want to switch projects? Your changes will be lost."
+      }
+    },
+    "templates": {
+      "title": "Workflow Templates",
+      "description": "Pre-built workflow configurations to get started quickly with common development patterns.",
+      "loading": "Loading templates...",
+      "empty": "No templates available",
+      "errors": {
+        "loadFailed": "Failed to load templates",
+        "applyFailed": "Failed to apply template"
+      },
+      "apply": {
+        "title": "Apply Template",
+        "description": "Apply the \"{{name}}\" template to a project. This will configure the project's board with pre-defined columns, agents, and transitions.",
+        "button": "Apply to Project",
+        "selectProject": "Select Project",
+        "loadingProjects": "Loading projects...",
+        "projectPlaceholder": "Choose a project...",
+        "warning": "This will replace any existing columns and transitions on the selected project's board.",
+        "confirm": "Apply Template",
+        "success": "Template applied successfully! Created {{agents}} agents, {{columns}} columns, and {{transitions}} transitions."
       }
     }
   },

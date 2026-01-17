@@ -22,11 +22,13 @@ export type SearchResult = { path: string, is_file: boolean, match_type: SearchM
 
 export type SearchMatchType = "FileName" | "DirectoryName" | "FullPath";
 
-export type Board = { id: string, name: string, description: string | null, created_at: Date, updated_at: Date, };
+export type Board = { id: string, name: string, description: string | null, is_template: boolean, template_group_id: string | null, template_name: string | null, template_description: string | null, template_icon: string | null, created_at: Date, updated_at: Date, };
 
 export type CreateBoard = { name: string, description: string | null, };
 
 export type UpdateBoard = { name: string | null, description: string | null, };
+
+export type TemplateInfo = { id: string, template_group_id: string, name: string, description: string, icon: string, };
 
 export type KanbanColumn = { id: string, board_id: string, name: string, slug: string, position: number, color: string | null, is_initial: boolean, is_terminal: boolean, 
 /**
@@ -36,7 +38,7 @@ starts_workflow: boolean, status: TaskStatus, agent_id: string | null,
 /**
  * What the agent should produce before moving to the next column
  */
-deliverable: string | null, created_at: Date, updated_at: Date, };
+deliverable: string | null, is_template: boolean, template_group_id: string | null, created_at: Date, updated_at: Date, };
 
 export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, agent_id: string | null, deliverable: string | null, };
 
@@ -85,7 +87,7 @@ condition_value: string | null,
 /**
  * Number of times the else path can be taken before escalation
  */
-max_failures: bigint | null, created_at: Date, };
+max_failures: bigint | null, is_template: boolean, template_group_id: string | null, created_at: Date, };
 
 export type StateTransitionWithColumns = { id: string, board_id: string | null, project_id: string | null, task_id: string | null, from_column_id: string, from_column_name: string, 
 /**
@@ -181,7 +183,15 @@ export type Workspace = { id: string, task_id: string, container_ref: string | n
 /**
  * When set, this attempt has been cancelled (but history is preserved)
  */
-cancelled_at: Date | null, created_at: string, updated_at: string, };
+cancelled_at: Date | null, 
+/**
+ * Final context captured before worktree deletion - what the agent learned/decided
+ */
+final_context: string | null, 
+/**
+ * Brief summary of what was accomplished in this attempt
+ */
+completion_summary: string | null, created_at: string, updated_at: string, };
 
 export type Session = { id: string, workspace_id: string, executor: string | null, created_at: string, updated_at: string, };
 
@@ -348,6 +358,10 @@ export type CreateGitHubPrRequest = { title: string, body: string | null, target
 export type ImageResponse = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, created_at: string, updated_at: string, };
 
 export type ImageMetadata = { exists: boolean, file_name: string | null, path: string | null, size_bytes: bigint | null, format: string | null, proxy_url: string | null, };
+
+export type ApplyTemplateRequest = { template_board_id: string, };
+
+export type ApplyTemplateResponse = { board_id: string, agents_created: number, columns_created: number, transitions_created: number, };
 
 export type CreateTaskAttemptBody = { task_id: string, executor_profile_id: ExecutorProfileId, repos: Array<WorkspaceRepoInput>, };
 
@@ -559,6 +573,14 @@ working_dir: string | null,
  */
 agent_system_prompt: string | null, 
 /**
+ * Optional project context from context artifacts (ADRs, patterns, module memories)
+ */
+agent_project_context: string | null, 
+/**
+ * Optional workflow history showing prior work from other columns
+ */
+agent_workflow_history: string | null, 
+/**
  * Optional agent start command to append (initial instruction)
  */
 agent_start_command: string | null, 
@@ -624,11 +646,11 @@ export type PatchType = { "type": "NORMALIZED_ENTRY", "content": NormalizedEntry
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;
 
-export type Agent = { id: string, name: string, role: string, system_prompt: string, capabilities: string | null, tools: string | null, description: string | null, context_files: string | null, executor: string, color: string | null, start_command: string | null, deliverable: string | null, created_at: Date, updated_at: Date, };
+export type Agent = { id: string, name: string, role: string, system_prompt: string, capabilities: string | null, tools: string | null, description: string | null, context_files: string | null, executor: string, color: string | null, start_command: string | null, is_template: boolean, template_group_id: string | null, created_at: Date, updated_at: Date, };
 
-export type CreateAgent = { name: string, role: string, system_prompt: string, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, color: string | null, start_command: string | null, deliverable: string | null, };
+export type CreateAgent = { name: string, role: string, system_prompt: string, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, color: string | null, start_command: string | null, };
 
-export type UpdateAgent = { name: string | null, role: string | null, system_prompt: string | null, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, color: string | null, start_command: string | null, deliverable: string | null, };
+export type UpdateAgent = { name: string | null, role: string | null, system_prompt: string | null, capabilities: Array<string> | null, tools: Array<string> | null, description: string | null, context_files: Array<ContextFile> | null, executor: string | null, color: string | null, start_command: string | null, };
 
 export type ContextFile = { pattern: string, instruction: string | null, };
 
@@ -673,6 +695,20 @@ export type TaskEvent = { id: string, task_id: string, event_type: TaskEventType
 export type TaskEventWithNames = { from_column_name: string | null, to_column_name: string | null, agent_name: string | null, agent_color: string | null, id: string, task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType, actor_id: string | null, created_at: Date, };
 
 export type CreateTaskEvent = { task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType | null, actor_id: string | null, };
+
+export type ArtifactType = "module_memory" | "adr" | "decision" | "pattern" | "dependency";
+
+export type ArtifactScope = "path" | "task" | "global";
+
+export type ContextArtifact = { id: string, project_id: string, artifact_type: string, path: string | null, title: string, content: string, metadata: string | null, source_task_id: string | null, source_commit_hash: string | null, 
+/**
+ * Scope determines when this artifact is included in context
+ */
+scope: string, created_at: Date, updated_at: Date, };
+
+export type CreateContextArtifact = { project_id: string, artifact_type: ArtifactType, path: string | null, title: string, content: string, metadata: JsonValue | null, source_task_id: string | null, source_commit_hash: string | null, scope: ArtifactScope, };
+
+export type UpdateContextArtifact = { title: string | null, content: string | null, metadata: JsonValue | null, scope: ArtifactScope | null, };
 
 export const DEFAULT_PR_DESCRIPTION_PROMPT = `Update the GitHub PR that was just created with a better title and description.
 The PR number is #{pr_number} and the URL is {pr_url}.

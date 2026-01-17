@@ -640,6 +640,39 @@ impl GitCli {
         }
         Ok(files)
     }
+
+    /// Get recent commit messages from the worktree (up to max_count commits)
+    pub fn get_log(&self, worktree_path: &Path, max_count: usize) -> Result<String, GitCliError> {
+        let count_str = max_count.to_string();
+        let out = self.git(
+            worktree_path,
+            [
+                "log",
+                "--oneline",
+                "--no-decorate",
+                &format!("-{}", count_str),
+            ],
+        )?;
+        Ok(out.trim().to_string())
+    }
+
+    /// Get commit messages since a specific commit (exclusive)
+    pub fn get_log_since(
+        &self,
+        worktree_path: &Path,
+        since_commit: &str,
+    ) -> Result<String, GitCliError> {
+        let out = self.git(
+            worktree_path,
+            [
+                "log",
+                "--oneline",
+                "--no-decorate",
+                &format!("{}..HEAD", since_commit),
+            ],
+        )?;
+        Ok(out.trim().to_string())
+    }
 }
 
 // Private methods

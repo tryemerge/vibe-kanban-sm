@@ -116,7 +116,6 @@ export function AgentSettings() {
     executor: 'CLAUDE_CODE',
     color: null,
     start_command: null,
-    deliverable: null,
   });
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [subagentToDelete, setSubagentToDelete] = useState<Agent | null>(null);
@@ -155,7 +154,6 @@ export function AgentSettings() {
       executor: 'CLAUDE_CODE',
       color: null,
       start_command: null,
-      deliverable: null,
     });
     setSubagentDialogOpen(true);
   };
@@ -174,7 +172,6 @@ export function AgentSettings() {
       executor: agent.executor,
       color: agent.color,
       start_command: agent.start_command,
-      deliverable: agent.deliverable,
     });
     setSubagentDialogOpen(true);
   };
@@ -196,7 +193,6 @@ export function AgentSettings() {
           executor: subagentForm.executor,
           color: subagentForm.color,
           start_command: subagentForm.start_command,
-          deliverable: subagentForm.deliverable,
         };
         await agentsApi.update(editingSubagent.id, updateData);
       } else {
@@ -1184,31 +1180,6 @@ export function AgentSettings() {
               />
               <p className="text-xs text-muted-foreground">
                 Best provided as a detailed list of exactly what the agent should do when starting work on a task.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="subagent-deliverable">Expected Deliverable</Label>
-              <Textarea
-                id="subagent-deliverable"
-                placeholder="Describe what the agent should produce before handing off:
-
-e.g., 'A detailed implementation plan written to PLAN.md that includes:
-- Architecture decisions with rationale
-- List of files to create/modify
-- Step-by-step implementation steps
-- Estimated complexity for each step'"
-                className="min-h-[100px] font-mono text-sm"
-                value={subagentForm.deliverable || ''}
-                onChange={(e) =>
-                  setSubagentForm({
-                    ...subagentForm,
-                    deliverable: e.target.value || null,
-                  })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Defines what the agent should produce and when to stop. The agent will be told to commit and stop once this deliverable is ready.
               </p>
             </div>
 

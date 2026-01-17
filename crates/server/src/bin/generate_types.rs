@@ -23,6 +23,7 @@ fn generate_types_content() -> String {
         db::models::board::Board::decl(),
         db::models::board::CreateBoard::decl(),
         db::models::board::UpdateBoard::decl(),
+        db::models::board::TemplateInfo::decl(),
         db::models::kanban_column::KanbanColumn::decl(),
         db::models::kanban_column::CreateKanbanColumn::decl(),
         db::models::kanban_column::UpdateKanbanColumn::decl(),
@@ -129,6 +130,8 @@ fn generate_types_content() -> String {
         server::routes::task_attempts::pr::CreateGitHubPrRequest::decl(),
         server::routes::images::ImageResponse::decl(),
         server::routes::images::ImageMetadata::decl(),
+        server::routes::workflow_templates::ApplyTemplateRequest::decl(),
+        server::routes::workflow_templates::ApplyTemplateResponse::decl(),
         server::routes::task_attempts::CreateTaskAttemptBody::decl(),
         server::routes::task_attempts::WorkspaceRepoInput::decl(),
         server::routes::task_attempts::RunAgentSetupRequest::decl(),
@@ -235,6 +238,12 @@ fn generate_types_content() -> String {
         db::models::task_event::TaskEvent::decl(),
         db::models::task_event::TaskEventWithNames::decl(),
         db::models::task_event::CreateTaskEvent::decl(),
+        // Context artifact types
+        db::models::context_artifact::ArtifactType::decl(),
+        db::models::context_artifact::ArtifactScope::decl(),
+        db::models::context_artifact::ContextArtifact::decl(),
+        db::models::context_artifact::CreateContextArtifact::decl(),
+        db::models::context_artifact::UpdateContextArtifact::decl(),
     ];
 
     let body = decls

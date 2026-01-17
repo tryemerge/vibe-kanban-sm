@@ -16,6 +16,7 @@ use axum::{
 use db::models::{
     agent::Agent,
     automation_rule::{AutomationRule, TriggerType},
+    context_artifact::{ArtifactType, ContextArtifact},
     image::TaskImage,
     kanban_column::KanbanColumn,
     project::{Project, ProjectError},
@@ -133,6 +134,12 @@ pub async fn create_task(
 
     let task = Task::create(&deployment.db().pool, &payload, id).await?;
 
+    // Record task created event
+    let event = CreateTaskEvent::task_created(task.id, ActorType::User, None);
+    if let Err(e) = TaskEvent::create(&deployment.db().pool, &event).await {
+        tracing::error!("Failed to record task created event for task {}: {}", task.id, e);
+    }
+
     if let Some(image_ids) = &payload.image_ids {
         TaskImage::associate_many_dedup(&deployment.db().pool, task.id, image_ids).await?;
     }
@@ -173,6 +180,12 @@ pub async fn create_task_and_start(
 
     let task_id = Uuid::new_v4();
     let task = Task::create(pool, &payload.task, task_id).await?;
+
+    // Record task created event
+    let event = CreateTaskEvent::task_created(task.id, ActorType::User, None);
+    if let Err(e) = TaskEvent::create(pool, &event).await {
+        tracing::error!("Failed to record task created event for task {}: {}", task.id, e);
+    }
 
     if let Some(image_ids) = &payload.task.image_ids {
         TaskImage::associate_many_dedup(pool, task.id, image_ids).await?;
@@ -846,15 +859,26 @@ async fn spawn_agent_execution(
         full_prompt,
     });
 
+    // Build workflow history showing prior work from other columns
+    let workflow_history = match TaskEvent::build_workflow_history(pool, task.id).await {
+        Ok(history) if !history.is_empty() => Some(history),
+        _ => None,
+    };
+
+    // Build project context from context artifacts (ADRs, patterns)
+    let project_context = build_project_context_for_task(pool, task.project_id).await;
+
     // Start workspace with agent context
     // Deliverable comes from the column (what this stage should produce), with tags expanded
     let agent_context = AgentContext {
         system_prompt: Some(agent.system_prompt.clone()),
+        workflow_history,
         start_command,
         deliverable: expanded_deliverable.clone(),
         name: agent.name.clone(),
         color: agent.color.clone(),
         column_name: column_name.clone(),
+        project_context,
     };
     deployment
         .container()
@@ -905,6 +929,47 @@ async fn spawn_agent_execution(
     );
 
     Ok(())
+}
+
+/// Build project context string from context artifacts (ADRs, patterns)
+/// This provides project-level knowledge to agents when they start execution
+async fn build_project_context_for_task(
+    pool: &sqlx::SqlitePool,
+    project_id: uuid::Uuid,
+) -> Option<String> {
+    let mut context = String::new();
+
+    // Get recent ADRs (architecture decision records)
+    if let Ok(adrs) = ContextArtifact::get_recent_adrs(pool, project_id, 5).await {
+        if !adrs.is_empty() {
+            context.push_str("## Architecture Decisions\n\n");
+            for adr in adrs {
+                context.push_str(&format!("### {}\n", adr.title));
+                context.push_str(&adr.content);
+                context.push_str("\n\n");
+            }
+        }
+    }
+
+    // Get patterns for this project
+    if let Ok(patterns) =
+        ContextArtifact::find_by_project_and_type(pool, project_id, &ArtifactType::Pattern).await
+    {
+        if !patterns.is_empty() {
+            context.push_str("## Patterns & Best Practices\n\n");
+            for pattern in patterns.iter().take(5) {
+                context.push_str(&format!("### {}\n", pattern.title));
+                context.push_str(&pattern.content);
+                context.push_str("\n\n");
+            }
+        }
+    }
+
+    if context.is_empty() {
+        None
+    } else {
+        Some(context)
+    }
 }
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {

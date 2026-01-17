@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM kanban_columns WHERE board_id = $1 AND is_template = FALSE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "6db107aa4587de638d956e4ae2e276fc938dd5fb1254416d39771c1f56981394"
+}

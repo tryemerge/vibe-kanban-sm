@@ -34,3 +34,4 @@ export { useVariant } from './useVariant';
 export { useRetryProcess } from './useRetryProcess';
 export { useProjectColumns, findColumnBySlug, buildColumnBySlugMap } from './useProjectColumns';
 export { useTaskEvents } from './useTaskEvents';
+export { useProjects } from './useProjects';

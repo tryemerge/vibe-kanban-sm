@@ -11,6 +11,7 @@ pub mod automation_rules;
 pub mod boards;
 pub mod config;
 pub mod containers;
+pub mod context_artifacts;
 pub mod debug_events;
 pub mod filesystem;
 // pub mod github;
@@ -32,6 +33,7 @@ pub mod tags;
 pub mod task_attempts;
 pub mod task_events;
 pub mod tasks;
+pub mod workflow_templates;
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // Create routers with different middleware layers
@@ -60,6 +62,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(automation_rules::router(&deployment))
         .merge(boards::router(&deployment))
         .merge(debug_events::router(&deployment))
+        .merge(context_artifacts::router(&deployment))
+        .merge(workflow_templates::router(&deployment))
         .nest("/images", images::routes())
         .with_state(deployment);
 

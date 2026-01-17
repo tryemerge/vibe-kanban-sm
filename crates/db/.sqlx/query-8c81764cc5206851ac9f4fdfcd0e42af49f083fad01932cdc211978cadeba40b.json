@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE workspaces SET final_context = $1, completion_summary = $2, updated_at = datetime('now', 'subsec') WHERE id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "8c81764cc5206851ac9f4fdfcd0e42af49f083fad01932cdc211978cadeba40b"
+}

@@ -306,4 +306,20 @@ impl Project {
             .await?;
         Ok(result.rows_affected())
     }
+
+    /// Update the board_id for a project
+    pub async fn update_board_id(
+        pool: &SqlitePool,
+        id: Uuid,
+        board_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE projects SET board_id = $2 WHERE id = $1"#,
+            id,
+            board_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
 }

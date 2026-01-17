@@ -10,10 +10,25 @@ pub struct Board {
     pub id: Uuid,
     pub name: String,
     pub description: Option<String>,
+    pub is_template: bool,
+    pub template_group_id: Option<String>,
+    pub template_name: Option<String>,
+    pub template_description: Option<String>,
+    pub template_icon: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
     pub updated_at: DateTime<Utc>,
+}
+
+/// Template info for listing templates
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct TemplateInfo {
+    pub id: Uuid,
+    pub template_group_id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -29,17 +44,40 @@ pub struct UpdateBoard {
 }
 
 impl Board {
-    /// Find all boards
+    /// Find all non-template boards
     pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Board,
             r#"SELECT id as "id!: Uuid",
                       name,
                       description,
+                      is_template as "is_template!: bool",
+                      template_group_id,
+                      template_name,
+                      template_description,
+                      template_icon,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM boards
+               WHERE is_template = FALSE
                ORDER BY name ASC"#
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Find all template boards for the template gallery
+    pub async fn find_templates(pool: &SqlitePool) -> Result<Vec<TemplateInfo>, sqlx::Error> {
+        sqlx::query_as!(
+            TemplateInfo,
+            r#"SELECT id as "id!: Uuid",
+                      template_group_id as "template_group_id!",
+                      template_name as "name!",
+                      template_description as "description!",
+                      template_icon as "icon!"
+               FROM boards
+               WHERE is_template = TRUE
+               ORDER BY template_name ASC"#
         )
         .fetch_all(pool)
         .await
@@ -52,6 +90,11 @@ impl Board {
             r#"SELECT id as "id!: Uuid",
                       name,
                       description,
+                      is_template as "is_template!: bool",
+                      template_group_id,
+                      template_name,
+                      template_description,
+                      template_icon,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM boards
@@ -68,11 +111,16 @@ impl Board {
 
         sqlx::query_as!(
             Board,
-            r#"INSERT INTO boards (id, name, description)
-               VALUES ($1, $2, $3)
+            r#"INSERT INTO boards (id, name, description, is_template, template_group_id, template_name, template_description, template_icon)
+               VALUES ($1, $2, $3, FALSE, NULL, NULL, NULL, NULL)
                RETURNING id as "id!: Uuid",
                          name,
                          description,
+                         is_template as "is_template!: bool",
+                         template_group_id,
+                         template_name,
+                         template_description,
+                         template_icon,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -104,6 +152,11 @@ impl Board {
                RETURNING id as "id!: Uuid",
                          name,
                          description,
+                         is_template as "is_template!: bool",
+                         template_group_id,
+                         template_name,
+                         template_description,
+                         template_icon,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,

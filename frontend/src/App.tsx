@@ -18,6 +18,7 @@ import {
   OrganizationSettings,
   ProjectSettings,
   SettingsLayout,
+  TemplatesSettings,
 } from '@/pages/settings/';
 import { UserSystemProvider, useUserSystem } from '@/components/ConfigProvider';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -150,6 +151,7 @@ function AppContent() {
                   />
                   <Route path="boards" element={<BoardSettings />} />
                   <Route path="agents" element={<AgentSettings />} />
+                  <Route path="templates" element={<TemplatesSettings />} />
                   <Route path="mcp" element={<McpSettings />} />
                 </Route>
                 <Route
