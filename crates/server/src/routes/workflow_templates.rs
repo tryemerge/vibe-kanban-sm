@@ -139,6 +139,8 @@ pub async fn apply_template(
                 status: Some(tmpl_col.status.clone()),
                 agent_id: new_agent_id,
                 deliverable: tmpl_col.deliverable.clone(),
+                deliverable_variable: tmpl_col.deliverable_variable.clone(),
+                deliverable_options: tmpl_col.deliverable_options.clone(),
             },
         )
         .await?;

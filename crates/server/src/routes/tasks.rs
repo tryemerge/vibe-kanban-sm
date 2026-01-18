@@ -35,6 +35,7 @@ use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use services::services::{
     container::{AgentContext, ContainerService, build_decision_instructions, read_decision_file},
+    events::task_patch,
     git::GitService,
     share::ShareError,
     workspace_manager::WorkspaceManager,
@@ -49,6 +50,17 @@ use crate::{
     routes::task_attempts::WorkspaceRepoInput,
     routes::debug_events::{emit_debug_event, DebugEvent},
 };
+
+/// Convert a Task to TaskWithAttemptStatus with default values (for broadcasting new tasks)
+fn task_to_status(task: &Task) -> TaskWithAttemptStatus {
+    TaskWithAttemptStatus {
+        task: task.clone(),
+        has_in_progress_attempt: false,
+        last_attempt_failed: false,
+        executor: String::new(),
+        latest_attempt_id: None,
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TaskQuery {
@@ -133,6 +145,12 @@ pub async fn create_task(
     );
 
     let task = Task::create(&deployment.db().pool, &payload, id).await?;
+
+    // Broadcast task creation via WebSocket
+    deployment
+        .events()
+        .msg_store()
+        .push_patch(task_patch::add(&task_to_status(&task)));
 
     // Record task created event
     let event = CreateTaskEvent::task_created(task.id, ActorType::User, None);
@@ -262,14 +280,22 @@ pub async fn create_task_and_start(
         .await?
         .ok_or(ApiError::Database(SqlxError::RowNotFound))?;
 
-    tracing::info!("Started attempt for task {}", task.id);
-    Ok(ResponseJson(ApiResponse::success(TaskWithAttemptStatus {
+    let task_with_status = TaskWithAttemptStatus {
         task,
         has_in_progress_attempt: is_attempt_running,
         last_attempt_failed: false,
         executor: payload.executor_profile_id.executor.to_string(),
         latest_attempt_id: Some(workspace.id),
-    })))
+    };
+
+    // Broadcast task creation via WebSocket
+    deployment
+        .events()
+        .msg_store()
+        .push_patch(task_patch::add(&task_with_status));
+
+    tracing::info!("Started attempt for task {}", task_with_status.task.id);
+    Ok(ResponseJson(ApiResponse::success(task_with_status)))
 }
 
 pub async fn update_task(
@@ -506,6 +532,12 @@ pub async fn update_task(
         publisher.update_shared_task(&task).await?;
     }
 
+    // Broadcast task update via WebSocket
+    deployment
+        .events()
+        .msg_store()
+        .push_patch(task_patch::replace(&task_to_status(&task)));
+
     Ok(ResponseJson(ApiResponse::success(task)))
 }
 
@@ -593,6 +625,12 @@ pub async fn delete_task(
             task.id
         );
     }
+
+    // Broadcast task deletion via WebSocket
+    deployment
+        .events()
+        .msg_store()
+        .push_patch(task_patch::remove(task.id));
 
     deployment
         .track_if_analytics_allowed(

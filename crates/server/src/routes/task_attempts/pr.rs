@@ -11,6 +11,7 @@ use db::models::{
     repo::{Repo, RepoError},
     session::{CreateSession, Session},
     task::{Task, TaskStatus},
+    task_trigger::TriggerCondition,
     workspace::{Workspace, WorkspaceError},
     workspace_repo::WorkspaceRepo,
 };
@@ -30,7 +31,7 @@ use ts_rs::TS;
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
-use crate::{DeploymentImpl, error::ApiError};
+use crate::{DeploymentImpl, error::ApiError, routes::task_attempts::execute_task_triggers};
 
 #[derive(Debug, Deserialize, Serialize, TS)]
 pub struct CreateGitHubPrRequest {
@@ -446,6 +447,9 @@ pub async fn attach_existing_pr(
                     task.id
                 );
             }
+
+            // Execute auto-start triggers for dependent tasks
+            execute_task_triggers(&deployment, task.id, TriggerCondition::Merged).await;
         }
 
         Ok(ResponseJson(ApiResponse::success(AttachPrResponse {

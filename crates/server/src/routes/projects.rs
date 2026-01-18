@@ -21,6 +21,7 @@ use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::Deserialize;
 use services::services::{
+    events::project_patch,
     file_search_cache::SearchQuery, project::ProjectServiceError,
     remote_client::CreateRemoteProjectPayload,
 };
@@ -149,6 +150,12 @@ pub async fn unlink_project(
         .unlink_from_remote(&deployment.db().pool, &project)
         .await?;
 
+    // Broadcast project update via WebSocket
+    deployment
+        .events()
+        .msg_store()
+        .push_patch(project_patch::replace(&updated_project));
+
     Ok(ResponseJson(ApiResponse::success(updated_project)))
 }
 
@@ -203,6 +210,12 @@ async fn apply_remote_project_link(
         .link_to_remote(&deployment.db().pool, project.id, remote_project)
         .await?;
 
+    // Broadcast project update via WebSocket
+    deployment
+        .events()
+        .msg_store()
+        .push_patch(project_patch::replace(&updated_project));
+
     deployment
         .track_if_analytics_allowed(
             "project_linked_to_remote",
@@ -228,6 +241,12 @@ pub async fn create_project(
         .await
     {
         Ok(project) => {
+            // Broadcast project creation via WebSocket
+            deployment
+                .events()
+                .msg_store()
+                .push_patch(project_patch::add(&project));
+
             // Track project creation event
             deployment
                 .track_if_analytics_allowed(
@@ -271,7 +290,15 @@ pub async fn update_project(
         .update_project(&deployment.db().pool, &existing_project, payload)
         .await
     {
-        Ok(project) => Ok(ResponseJson(ApiResponse::success(project))),
+        Ok(project) => {
+            // Broadcast project update via WebSocket
+            deployment
+                .events()
+                .msg_store()
+                .push_patch(project_patch::replace(&project));
+
+            Ok(ResponseJson(ApiResponse::success(project)))
+        }
         Err(e) => {
             tracing::error!("Failed to update project: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -283,20 +310,27 @@ pub async fn delete_project(
     Extension(project): Extension<Project>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, StatusCode> {
+    let project_id = project.id;
     match deployment
         .project()
-        .delete_project(&deployment.db().pool, project.id)
+        .delete_project(&deployment.db().pool, project_id)
         .await
     {
         Ok(rows_affected) => {
             if rows_affected == 0 {
                 Err(StatusCode::NOT_FOUND)
             } else {
+                // Broadcast project deletion via WebSocket
+                deployment
+                    .events()
+                    .msg_store()
+                    .push_patch(project_patch::remove(project_id));
+
                 deployment
                     .track_if_analytics_allowed(
                         "project_deleted",
                         serde_json::json!({
-                            "project_id": project.id.to_string(),
+                            "project_id": project_id.to_string(),
                         }),
                     )
                     .await;

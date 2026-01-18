@@ -238,20 +238,30 @@ pub async fn load_automation_rule_middleware(
     Ok(next.run(request).await)
 }
 
+/// Transition path params - handles nested routes under boards or projects
+#[derive(Debug, serde::Deserialize)]
+pub struct TransitionPathParams {
+    #[serde(default)]
+    pub board_id: Option<Uuid>,
+    #[serde(default)]
+    pub project_id: Option<Uuid>,
+    pub transition_id: Uuid,
+}
+
 pub async fn load_state_transition_middleware(
     State(deployment): State<DeploymentImpl>,
-    Path(transition_id): Path<Uuid>,
+    Path(params): Path<TransitionPathParams>,
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let transition = match StateTransition::find_by_id(&deployment.db().pool, transition_id).await {
+    let transition = match StateTransition::find_by_id(&deployment.db().pool, params.transition_id).await {
         Ok(Some(transition)) => transition,
         Ok(None) => {
-            tracing::warn!("StateTransition {} not found", transition_id);
+            tracing::warn!("StateTransition {} not found", params.transition_id);
             return Err(StatusCode::NOT_FOUND);
         }
         Err(e) => {
-            tracing::error!("Failed to fetch state transition {}: {}", transition_id, e);
+            tracing::error!("Failed to fetch state transition {}: {}", params.transition_id, e);
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     };
