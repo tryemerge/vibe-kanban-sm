@@ -26,10 +26,12 @@ use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus},
     kanban_column::KanbanColumn,
     merge::{Merge, MergeStatus, PrMerge, PullRequestInfo},
+    project::Project,
     project_repo::ProjectRepo,
     repo::{Repo, RepoError},
     session::{CreateSession, Session},
-    task::{Task, TaskRelationships, TaskStatus},
+    task::{Task, TaskRelationships, TaskStatus, TaskWithAttemptStatus},
+    task_trigger::{TaskTrigger, TriggerCondition},
     workspace::{CreateWorkspace, Workspace, WorkspaceError},
     workspace_repo::{CreateWorkspaceRepo, RepoWithTargetBranch, WorkspaceRepo},
 };
@@ -46,6 +48,7 @@ use git2::BranchType;
 use serde::{Deserialize, Serialize};
 use services::services::{
     container::ContainerService,
+    events::task_patch,
     git::{ConflictOp, GitCliError, GitServiceError},
     github::GitHubService,
 };
@@ -430,6 +433,9 @@ pub async fn merge_task_attempt(
             }),
         )
         .await;
+
+    // Execute auto-start triggers for dependent tasks
+    execute_task_triggers(&deployment, task.id, TriggerCondition::Merged).await;
 
     Ok(ResponseJson(ApiResponse::success(())))
 }
@@ -1291,6 +1297,21 @@ pub async fn cancel_task_attempt(
         }
     }
 
+    // 5. Broadcast task update via WebSocket (refetch to get updated status)
+    if let Ok(Some(updated_task)) = Task::find_by_id(pool, task.id).await {
+        let task_status = TaskWithAttemptStatus {
+            task: updated_task,
+            has_in_progress_attempt: false,
+            last_attempt_failed: false,
+            executor: String::new(),
+            latest_attempt_id: None,
+        };
+        deployment
+            .events()
+            .msg_store()
+            .push_patch(task_patch::replace(&task_status));
+    }
+
     deployment
         .track_if_analytics_allowed(
             "task_attempt_cancelled",
@@ -1527,6 +1548,139 @@ pub async fn get_task_attempt_repos(
         WorkspaceRepo::find_repos_with_target_branch_for_workspace(pool, workspace.id).await?;
 
     Ok(ResponseJson(ApiResponse::success(repos)))
+}
+
+/// Execute auto-start triggers for a completed task
+/// This is called when a task is marked as done/merged
+pub async fn execute_task_triggers(
+    deployment: &DeploymentImpl,
+    completed_task_id: Uuid,
+    trigger_condition: TriggerCondition,
+) {
+    let pool = &deployment.db().pool;
+
+    // Find all triggers waiting for this task
+    let triggers = match TaskTrigger::find_by_trigger_task(pool, completed_task_id).await {
+        Ok(triggers) => triggers,
+        Err(e) => {
+            tracing::error!("Failed to find triggers for task {}: {}", completed_task_id, e);
+            return;
+        }
+    };
+
+    for trigger in triggers {
+        // Check if the condition matches
+        let matches = match (&trigger.condition(), &trigger_condition) {
+            (TriggerCondition::Completed, TriggerCondition::Completed) => true,
+            (TriggerCondition::Merged, TriggerCondition::Merged) => true,
+            (TriggerCondition::CompletedWithStatus(expected), TriggerCondition::CompletedWithStatus(actual)) => {
+                expected == actual
+            }
+            _ => false,
+        };
+
+        if !matches {
+            continue;
+        }
+
+        tracing::info!(
+            "Executing trigger {} for task {} (waiting task: {})",
+            trigger.id,
+            completed_task_id,
+            trigger.task_id
+        );
+
+        // Get the task to auto-start
+        let task = match Task::find_by_id(pool, trigger.task_id).await {
+            Ok(Some(task)) => task,
+            Ok(None) => {
+                tracing::warn!("Trigger {} references non-existent task {}", trigger.id, trigger.task_id);
+                continue;
+            }
+            Err(e) => {
+                tracing::error!("Failed to find task {} for trigger: {}", trigger.task_id, e);
+                continue;
+            }
+        };
+
+        // Find the project to get its board_id
+        let project = match Project::find_by_id(pool, task.project_id).await {
+            Ok(Some(project)) => project,
+            Ok(None) => {
+                tracing::warn!("No project found for task {}", task.id);
+                continue;
+            }
+            Err(e) => {
+                tracing::error!("Failed to find project {}: {}", task.project_id, e);
+                continue;
+            }
+        };
+
+        // Get the board from the project
+        let board_id = match project.board_id {
+            Some(id) => id,
+            None => {
+                tracing::warn!("Project {} has no board assigned", task.project_id);
+                continue;
+            }
+        };
+
+        let board = match Board::find_by_id(pool, board_id).await {
+            Ok(Some(board)) => board,
+            Ok(None) => {
+                tracing::warn!("No board found with id {}", board_id);
+                continue;
+            }
+            Err(e) => {
+                tracing::error!("Failed to find board {}: {}", board_id, e);
+                continue;
+            }
+        };
+
+        // Find the first starts_workflow column
+        let columns = match KanbanColumn::find_by_board(pool, board.id).await {
+            Ok(cols) => cols,
+            Err(e) => {
+                tracing::error!("Failed to find columns for board {}: {}", board.id, e);
+                continue;
+            }
+        };
+
+        let workflow_column = columns.iter().find(|c| c.starts_workflow);
+        let target_column = match workflow_column {
+            Some(col) => col,
+            None => {
+                tracing::warn!("No starts_workflow column found in board {}", board.id);
+                continue;
+            }
+        };
+
+        // Move the task to the workflow-starting column
+        // This will trigger the existing auto-start logic via task update
+        if let Err(e) = Task::update_column_id(pool, task.id, Some(target_column.id)).await {
+            tracing::error!(
+                "Failed to move task {} to column {}: {}",
+                task.id,
+                target_column.id,
+                e
+            );
+            continue;
+        }
+
+        tracing::info!(
+            "Task {} auto-started via trigger {} (moved to column '{}')",
+            task.id,
+            trigger.id,
+            target_column.name
+        );
+
+        // Delete non-persistent triggers after firing
+        if !trigger.is_persistent {
+            if let Err(e) = TaskTrigger::delete(pool, trigger.id).await {
+                tracing::error!("Failed to delete one-shot trigger {}: {}", trigger.id, e);
+            }
+        }
+    }
 }
 
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {

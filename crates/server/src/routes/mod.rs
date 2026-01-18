@@ -32,6 +32,7 @@ pub mod state_transitions;
 pub mod tags;
 pub mod task_attempts;
 pub mod task_events;
+pub mod task_triggers;
 pub mod tasks;
 pub mod workflow_templates;
 
@@ -44,6 +45,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(projects::router(&deployment))
         .merge(tasks::router(&deployment))
         .merge(task_events::router(&deployment))
+        .merge(task_triggers::router(&deployment))
         .merge(shared_tasks::router())
         .merge(task_attempts::router(&deployment))
         .merge(execution_processes::router(&deployment))

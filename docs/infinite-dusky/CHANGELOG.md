@@ -11,8 +11,31 @@ This changelog documents features built after forking from the original vibe-kan
 
 ### Added
 
+#### Task Auto-Start Triggers (ADR 2026-01-18-002)
+*Commit: acc9f095*
+
+- **Soft Task Dependencies**
+  - `task_triggers` table links tasks in a dependency chain
+  - Trigger conditions: `Completed`, `Merged`, `CompletedWithStatus`
+  - `is_persistent` flag for one-shot vs recurring triggers
+  - No hard blocking - users can still manually start any task
+
+- **Automatic Task Start**
+  - When trigger task completes → waiting task moves to workflow column
+  - If workflow column has an agent → execution starts automatically
+  - One-shot triggers removed after firing
+
+- **API Routes**
+  - `GET/POST /api/tasks/:task_id/triggers` - Manage triggers
+  - `DELETE /api/tasks/:task_id/triggers/:trigger_id` - Remove trigger
+
+- **Integration Points**
+  - Hooks into task completion flow
+  - Hooks into PR merge detection
+  - Records trigger events in task_events
+
 #### Structured Deliverables (ADR 2026-01-18-001)
-*Commit: 13caaf38*
+*Commit: 7c825706*
 
 - **Structured Deliverable Options on Columns**
   - `deliverable_variable` field (e.g., "decision", "review_outcome")
@@ -193,6 +216,7 @@ This changelog documents features built after forking from the original vibe-kan
 | `20260112000004` | Add template fields |
 | `20260112000005` | Seed workflow templates |
 | `20260118000001` | Add structured deliverables to columns |
+| `20260118000002` | Add task_triggers table |
 
 ---
 

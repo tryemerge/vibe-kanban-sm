@@ -186,7 +186,7 @@ impl Task {
       WHERE w.task_id = t.id
      ORDER BY s.created_at DESC
       LIMIT 1
-    )                               AS "executor!: String",
+  )                                 AS "executor: String",
 
   ( SELECT w.id
       FROM workspaces w
@@ -220,7 +220,7 @@ ORDER BY t.created_at DESC"#,
                 },
                 has_in_progress_attempt: rec.has_in_progress_attempt != 0,
                 last_attempt_failed: rec.last_attempt_failed != 0,
-                executor: rec.executor,
+                executor: rec.executor.unwrap_or_default(),
                 latest_attempt_id: rec.latest_attempt_id,
             })
             .collect();
