@@ -11,6 +11,21 @@ This changelog documents features built after forking from the original vibe-kan
 
 ### Added
 
+#### Structured Deliverables (ADR 2026-01-18-001)
+*Commit: 13caaf38*
+
+- **Structured Deliverable Options on Columns**
+  - `deliverable_variable` field (e.g., "decision", "review_outcome")
+  - `deliverable_options` JSON array (e.g., `["approve", "reject", "needs_work"]`)
+  - Replaces freeform condition values with validated options
+  - Enables Transition Builder UI to show available routing options
+
+- **Benefits**
+  - Clear contract between workflow design and agent behavior
+  - Agents know exactly what values are valid for output
+  - Reduces configuration errors from typos
+  - Foundation for automated prompt injection with decision instructions
+
 #### Kanban + State Machine Workflow System (Phase 1)
 *Commit: 5ea7cc8b*
 
@@ -177,6 +192,7 @@ This changelog documents features built after forking from the original vibe-kan
 | `20260112000003` | Add artifact scope |
 | `20260112000004` | Add template fields |
 | `20260112000005` | Seed workflow templates |
+| `20260118000001` | Add structured deliverables to columns |
 
 ---
 

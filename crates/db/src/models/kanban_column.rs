@@ -23,6 +23,10 @@ pub struct KanbanColumn {
     pub agent_id: Option<Uuid>, // Agent assigned to handle tasks in this column
     /// What the agent should produce before moving to the next column
     pub deliverable: Option<String>,
+    /// Variable name for structured deliverable (e.g., "decision")
+    pub deliverable_variable: Option<String>,
+    /// JSON array of allowed values for the deliverable variable
+    pub deliverable_options: Option<String>,
     pub is_template: bool,
     pub template_group_id: Option<String>,
     #[ts(type = "Date")]
@@ -43,6 +47,8 @@ pub struct CreateKanbanColumn {
     pub status: Option<TaskStatus>, // Defaults to 'todo' if not specified
     pub agent_id: Option<Uuid>,
     pub deliverable: Option<String>,
+    pub deliverable_variable: Option<String>,
+    pub deliverable_options: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -63,6 +69,8 @@ pub struct UpdateKanbanColumn {
     #[ts(optional, type = "string | null")]
     pub agent_id: Option<Option<Uuid>>,
     pub deliverable: Option<String>,
+    pub deliverable_variable: Option<String>,
+    pub deliverable_options: Option<String>,
 }
 
 impl KanbanColumn {
@@ -85,6 +93,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      deliverable_variable,
+                      deliverable_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -114,6 +124,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      deliverable_variable,
+                      deliverable_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -146,6 +158,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      deliverable_variable,
+                      deliverable_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -178,6 +192,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      deliverable_variable,
+                      deliverable_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -211,8 +227,8 @@ impl KanbanColumn {
 
         sqlx::query_as!(
             KanbanColumn,
-            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable, is_template, template_group_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable, deliverable_variable, deliverable_options, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id!: Uuid",
                          name,
@@ -225,6 +241,8 @@ impl KanbanColumn {
                          status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
                          deliverable,
+                         deliverable_variable,
+                         deliverable_options,
                          is_template as "is_template!: bool",
                          template_group_id,
                          created_at as "created_at!: DateTime<Utc>",
@@ -241,6 +259,8 @@ impl KanbanColumn {
             status_str,
             data.agent_id,
             data.deliverable,
+            data.deliverable_variable,
+            data.deliverable_options,
             is_template,
             template_group_id
         )
@@ -276,11 +296,13 @@ impl KanbanColumn {
             Some(inner) => inner.clone(),
         };
         let deliverable = data.deliverable.clone().or(existing.deliverable);
+        let deliverable_variable = data.deliverable_variable.clone().or(existing.deliverable_variable);
+        let deliverable_options = data.deliverable_options.clone().or(existing.deliverable_options);
 
         sqlx::query_as!(
             KanbanColumn,
             r#"UPDATE kanban_columns
-               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, starts_workflow = $8, status = $9, agent_id = $10, deliverable = $11,
+               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, starts_workflow = $8, status = $9, agent_id = $10, deliverable = $11, deliverable_variable = $12, deliverable_options = $13,
                    updated_at = NOW()
                WHERE id = $1
                RETURNING id as "id!: Uuid",
@@ -295,6 +317,8 @@ impl KanbanColumn {
                          status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
                          deliverable,
+                         deliverable_variable,
+                         deliverable_options,
                          is_template as "is_template!: bool",
                          template_group_id,
                          created_at as "created_at!: DateTime<Utc>",
@@ -309,7 +333,9 @@ impl KanbanColumn {
             starts_workflow,
             status_str,
             agent_id,
-            deliverable
+            deliverable,
+            deliverable_variable,
+            deliverable_options
         )
         .fetch_one(pool)
         .await
@@ -376,6 +402,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
+                      deliverable_variable,
+                      deliverable_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
