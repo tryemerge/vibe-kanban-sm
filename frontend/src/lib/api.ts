@@ -106,6 +106,8 @@ import {
   CreateStateTransition,
   TemplateInfo,
   ApplyTemplateResponse,
+  TaskTrigger,
+  CreateTaskTrigger,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -481,6 +483,35 @@ export const tasksApi = {
       body: JSON.stringify(data),
     });
     return handleApiResponse<Task | null>(response);
+  },
+};
+
+// Task Triggers API
+export const taskTriggersApi = {
+  list: async (taskId: string): Promise<TaskTrigger[]> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/triggers`);
+    return handleApiResponse<TaskTrigger[]>(response);
+  },
+
+  create: async (
+    taskId: string,
+    data: Omit<CreateTaskTrigger, 'task_id'>
+  ): Promise<TaskTrigger> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/triggers`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, task_id: taskId }),
+    });
+    return handleApiResponse<TaskTrigger>(response);
+  },
+
+  delete: async (taskId: string, triggerId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/triggers/${triggerId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
   },
 };
 

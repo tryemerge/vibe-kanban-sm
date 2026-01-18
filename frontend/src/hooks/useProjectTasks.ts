@@ -169,8 +169,8 @@ export const useProjectTasks = (projectId: string): UseProjectTasksResult => {
     (Object.values(grouped) as SharedTaskRecord[][]).forEach((list) => {
       list.sort(
         (a, b) =>
-          new Date(b.created_at as string).getTime() -
-          new Date(a.created_at as string).getTime()
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
       );
     });
 

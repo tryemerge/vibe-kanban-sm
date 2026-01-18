@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,7 @@ import { Alert } from '@/components/ui/alert';
 import { attemptsApi } from '@/lib/api';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
+import { taskKeys } from '@/hooks/useTask';
 
 export interface CancelAttemptDialogProps {
   attemptId: string;
@@ -22,6 +24,7 @@ export interface CancelAttemptDialogProps {
 const CancelAttemptDialogImpl =
   NiceModal.create<CancelAttemptDialogProps>(({ attemptId, onSuccess }) => {
     const modal = useModal();
+    const queryClient = useQueryClient();
     const [isCancelling, setIsCancelling] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +34,9 @@ const CancelAttemptDialogImpl =
 
       try {
         await attemptsApi.cancel(attemptId);
+        // Invalidate task queries to refresh the UI
+        queryClient.invalidateQueries({ queryKey: taskKeys.all });
+        queryClient.invalidateQueries({ queryKey: ['attempts'] });
         modal.resolve();
         modal.hide();
         onSuccess?.();

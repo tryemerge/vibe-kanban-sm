@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { TransitionBuilderDialog } from '@/components/dialogs/TransitionBuilderDialog';
 import { useTranslation } from 'react-i18next';
 import {
   Card,
@@ -117,6 +118,8 @@ export function BoardSettings() {
     status: null,
     agent_id: null,
     deliverable: null,
+    deliverable_variable: null,
+    deliverable_options: null,
   });
   const [deleteColumnConfirmOpen, setDeleteColumnConfirmOpen] = useState(false);
   const [columnToDelete, setColumnToDelete] = useState<{
@@ -156,6 +159,10 @@ export function BoardSettings() {
     boardId: string;
     transition: StateTransitionWithColumns;
   } | null>(null);
+
+  // Transition Builder Dialog state
+  const [transitionBuilderOpen, setTransitionBuilderOpen] = useState(false);
+  const [transitionBuilderBoardId, setTransitionBuilderBoardId] = useState<string | null>(null);
 
   // Fetch agents
   const fetchAgents = useCallback(async () => {
@@ -335,6 +342,8 @@ export function BoardSettings() {
       status: 'todo',
       agent_id: null,
       deliverable: null,
+      deliverable_variable: null,
+      deliverable_options: null,
     });
     setColumnDialogOpen(true);
   };
@@ -354,6 +363,8 @@ export function BoardSettings() {
       status: column.status,
       agent_id: column.agent_id ?? null,
       deliverable: column.deliverable ?? null,
+      deliverable_variable: column.deliverable_variable ?? null,
+      deliverable_options: column.deliverable_options ?? null,
     });
     setColumnDialogOpen(true);
   };
@@ -377,6 +388,8 @@ export function BoardSettings() {
           status: columnForm.status,
           agent_id: columnForm.agent_id,
           deliverable: columnForm.deliverable,
+          deliverable_variable: columnForm.deliverable_variable,
+          deliverable_options: columnForm.deliverable_options,
         };
         await boardsApi.updateColumn(columnBoardId, editingColumn.id, updateData);
         setSuccessMessage(t('settings.boards.columns.save.updateSuccess'));
@@ -870,15 +883,29 @@ export function BoardSettings() {
                         <h5 className="text-sm font-medium">
                           {t('settings.boards.transitions.title', 'State Transitions')}
                         </h5>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openCreateTransitionDialog(board.id)}
-                          disabled={(columnsMap.get(board.id) || []).length < 2}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          {t('settings.boards.transitions.add', 'Add Transition')}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setTransitionBuilderBoardId(board.id);
+                              setTransitionBuilderOpen(true);
+                            }}
+                            disabled={(columnsMap.get(board.id) || []).length < 2}
+                          >
+                            <GitBranch className="h-3 w-3 mr-1" />
+                            {t('settings.boards.transitions.builder', 'Builder')}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openCreateTransitionDialog(board.id)}
+                            disabled={(columnsMap.get(board.id) || []).length < 2}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            {t('settings.boards.transitions.add', 'Add Transition')}
+                          </Button>
+                        </div>
                       </div>
                       {renderTransitions(board.id)}
                     </div>
@@ -1228,6 +1255,59 @@ export function BoardSettings() {
                 {t('settings.boards.columns.form.deliverableHelper', 'The agent will be instructed to produce this output before moving on. This helps prevent agents from going beyond their scope.')}
               </p>
             </div>
+
+            {/* Structured Deliverable Options */}
+            <div className="space-y-4 border-t pt-4 mt-4">
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium">
+                  {t('settings.boards.columns.form.structuredDeliverable', 'Structured Decision Output')}
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  {t('settings.boards.columns.form.structuredDeliverableHelper', 'Define a variable and allowed values for the agent to set in .vibe/decision.json. Used for conditional transitions.')}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="column-deliverable-variable">
+                  {t('settings.boards.columns.form.deliverableVariable', 'Variable Name')}
+                </Label>
+                <Input
+                  id="column-deliverable-variable"
+                  placeholder={t('settings.boards.columns.form.deliverableVariablePlaceholder', 'e.g., decision, review_outcome')}
+                  value={columnForm.deliverable_variable || ''}
+                  onChange={(e) =>
+                    setColumnForm({
+                      ...columnForm,
+                      deliverable_variable: e.target.value || null,
+                    })
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="column-deliverable-options">
+                  {t('settings.boards.columns.form.deliverableOptions', 'Allowed Values (comma-separated)')}
+                </Label>
+                <Input
+                  id="column-deliverable-options"
+                  placeholder={t('settings.boards.columns.form.deliverableOptionsPlaceholder', 'e.g., approve, reject, needs_work')}
+                  value={columnForm.deliverable_options ? JSON.parse(columnForm.deliverable_options).join(', ') : ''}
+                  onChange={(e) => {
+                    const values = e.target.value
+                      .split(',')
+                      .map((v) => v.trim())
+                      .filter((v) => v.length > 0);
+                    setColumnForm({
+                      ...columnForm,
+                      deliverable_options: values.length > 0 ? JSON.stringify(values) : null,
+                    });
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('settings.boards.columns.form.deliverableOptionsHelper', 'The agent will be instructed to set the variable to one of these values.')}
+                </p>
+              </div>
+            </div>
           </div>
 
           <DialogFooter>
@@ -1561,6 +1641,21 @@ export function BoardSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Transition Builder Dialog */}
+      {transitionBuilderBoardId && (
+        <TransitionBuilderDialog
+          open={transitionBuilderOpen}
+          onOpenChange={setTransitionBuilderOpen}
+          boardId={transitionBuilderBoardId}
+          columns={columnsMap.get(transitionBuilderBoardId) || []}
+          onSuccess={() => {
+            setSuccessMessage(t('settings.boards.transitions.save.createSuccess', 'Transitions created successfully'));
+            fetchTransitions(transitionBuilderBoardId);
+            setTimeout(() => setSuccessMessage(null), 3000);
+          }}
+        />
+      )}
     </div>
   );
 }
