@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
+use sqlx::{Executor, FromRow, Postgres, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -120,7 +120,7 @@ pub struct UpdateContextArtifact {
 impl ContextArtifact {
     /// Find all artifacts for a project
     pub async fn find_by_project(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -149,7 +149,7 @@ impl ContextArtifact {
 
     /// Find artifacts by type for a project
     pub async fn find_by_project_and_type(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         artifact_type: &ArtifactType,
     ) -> Result<Vec<Self>, sqlx::Error> {
@@ -181,7 +181,7 @@ impl ContextArtifact {
 
     /// Find module memory for a specific path
     pub async fn find_module_memory(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         path: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
@@ -212,7 +212,7 @@ impl ContextArtifact {
     }
 
     /// Find artifact by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             ContextArtifact,
             r#"SELECT
@@ -238,7 +238,7 @@ impl ContextArtifact {
 
     /// Create a new artifact
     pub async fn create(
-        pool: &SqlitePool,
+        pool: &PgPool,
         data: CreateContextArtifact,
         artifact_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
@@ -284,7 +284,7 @@ impl ContextArtifact {
 
     /// Update an artifact
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         data: UpdateContextArtifact,
     ) -> Result<Self, sqlx::Error> {
@@ -308,7 +308,7 @@ impl ContextArtifact {
             ContextArtifact,
             r#"UPDATE context_artifacts
                SET title = $2, content = $3, metadata = $4, scope = $5,
-                   updated_at = datetime('now', 'subsec')
+                   updated_at = NOW()
                WHERE id = $1
                RETURNING
                 id as "id!: Uuid",
@@ -335,7 +335,7 @@ impl ContextArtifact {
 
     /// Upsert a module memory - update if exists for path, create if not
     pub async fn upsert_module_memory(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         path: &str,
         title: &str,
@@ -381,9 +381,9 @@ impl ContextArtifact {
     /// Delete an artifact
     pub async fn delete<'e, E>(executor: E, id: Uuid) -> Result<u64, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
-        let result: sqlx::sqlite::SqliteQueryResult =
+        let result: sqlx::postgres::PgQueryResult =
             sqlx::query!("DELETE FROM context_artifacts WHERE id = $1", id)
                 .execute(executor)
                 .await?;
@@ -393,7 +393,7 @@ impl ContextArtifact {
     /// Build context string from relevant artifacts for agent prompting
     /// Includes path-based artifacts for the given paths
     pub async fn build_context_for_paths(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         paths: &[String],
     ) -> Result<String, sqlx::Error> {
@@ -412,7 +412,7 @@ impl ContextArtifact {
 
     /// Build full context for agent prompting including global, task, and path artifacts
     pub async fn build_full_context(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         task_id: Option<Uuid>,
         paths: &[String],
@@ -456,10 +456,11 @@ impl ContextArtifact {
 
     /// Get recent ADRs for a project
     pub async fn get_recent_adrs(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         limit: i32,
     ) -> Result<Vec<Self>, sqlx::Error> {
+        let limit_i64 = limit as i64;
         sqlx::query_as!(
             ContextArtifact,
             r#"SELECT
@@ -480,7 +481,7 @@ impl ContextArtifact {
                ORDER BY created_at DESC
                LIMIT $2"#,
             project_id,
-            limit
+            limit_i64
         )
         .fetch_all(pool)
         .await
@@ -488,7 +489,7 @@ impl ContextArtifact {
 
     /// Find all global-scoped artifacts for a project
     pub async fn find_global_artifacts(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -517,7 +518,7 @@ impl ContextArtifact {
 
     /// Find task-scoped artifacts for a specific task
     pub async fn find_task_artifacts(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         task_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {

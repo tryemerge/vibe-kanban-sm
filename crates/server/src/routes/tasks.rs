@@ -934,7 +934,7 @@ async fn spawn_agent_execution(
 /// Build project context string from context artifacts (ADRs, patterns)
 /// This provides project-level knowledge to agents when they start execution
 async fn build_project_context_for_task(
-    pool: &sqlx::SqlitePool,
+    pool: &sqlx::PgPool,
     project_id: uuid::Uuid,
 ) -> Option<String> {
     let mut context = String::new();

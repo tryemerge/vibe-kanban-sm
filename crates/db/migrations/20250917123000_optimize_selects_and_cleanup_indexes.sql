@@ -1,4 +1,4 @@
-PRAGMA foreign_keys = ON;
+
 
 -- 1) task_attempts: filter by task_id and sort by created_at DESC
 CREATE INDEX IF NOT EXISTS idx_task_attempts_task_id_created_at

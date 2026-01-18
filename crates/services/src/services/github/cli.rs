@@ -280,7 +280,7 @@ impl GhCli {
             })?;
 
         Ok(PullRequestInfo {
-            number,
+            number: number as i32,
             url: pr_url,
             status: MergeStatus::Open,
             merged_at: None,
@@ -376,7 +376,7 @@ impl GhCli {
             .and_then(Value::as_str)
             .map(|s| s.to_string());
         Some(PullRequestInfo {
-            number,
+            number: number as i32,
             url,
             status: match state.to_ascii_uppercase().as_str() {
                 "OPEN" => MergeStatus::Open,

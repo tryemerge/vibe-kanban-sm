@@ -2,8 +2,8 @@
 -- Stores module memories, ADRs, decisions, patterns extracted from task work
 
 CREATE TABLE context_artifacts (
-    id TEXT PRIMARY KEY NOT NULL,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
 
     -- Type of artifact: 'module_memory', 'adr', 'decision', 'pattern', 'dependency'
     artifact_type TEXT NOT NULL,
@@ -21,12 +21,12 @@ CREATE TABLE context_artifacts (
     metadata TEXT,
 
     -- Provenance tracking
-    source_task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+    source_task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
     source_commit_hash TEXT,
 
     -- Timestamps
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Index for querying artifacts by project

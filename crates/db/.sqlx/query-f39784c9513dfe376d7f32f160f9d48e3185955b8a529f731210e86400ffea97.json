@@ -1,0 +1,94 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT ae.id as \"id!: Uuid\",\n                      ae.rule_id as \"rule_id!: Uuid\",\n                      ar.name as rule_name,\n                      ar.action_type,\n                      ae.task_id as \"task_id!: Uuid\",\n                      t.title as \"task_title!\",\n                      ae.workspace_id as \"workspace_id: Uuid\",\n                      ae.status,\n                      ae.trigger_context,\n                      ae.result,\n                      ae.started_at as \"started_at: DateTime<Utc>\",\n                      ae.completed_at as \"completed_at: DateTime<Utc>\",\n                      ae.created_at as \"created_at!: DateTime<Utc>\"\n               FROM automation_executions ae\n               JOIN automation_rules ar ON ar.id = ae.rule_id\n               JOIN tasks t ON t.id = ae.task_id\n               WHERE ae.task_id = $1\n               ORDER BY ae.created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "rule_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "rule_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "action_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "task_title!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "trigger_context",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "result",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "started_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "completed_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "f39784c9513dfe376d7f32f160f9d48e3185955b8a529f731210e86400ffea97"
+}

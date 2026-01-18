@@ -1,16 +1,18 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT cat.agent_session_id\n               FROM execution_processes ep\n               JOIN coding_agent_turns cat ON ep.id = cat.execution_process_id\n               WHERE ep.session_id = $1\n                 AND ep.run_reason = 'codingagent'\n                 AND ep.dropped = FALSE\n                 AND cat.agent_session_id IS NOT NULL\n               ORDER BY ep.created_at DESC\n               LIMIT 1",
   "describe": {
     "columns": [
       {
-        "name": "agent_session_id",
         "ordinal": 0,
+        "name": "agent_session_id",
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       true

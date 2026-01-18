@@ -100,7 +100,7 @@ impl PrMonitorService {
         let repo_info = GitHubRepoInfo::from_remote_url(&pr_merge.pr_info.url)?;
 
         let pr_status = github_service
-            .update_pr_status(&repo_info, pr_merge.pr_info.number)
+            .update_pr_status(&repo_info, pr_merge.pr_info.number.into())
             .await?;
 
         debug!(

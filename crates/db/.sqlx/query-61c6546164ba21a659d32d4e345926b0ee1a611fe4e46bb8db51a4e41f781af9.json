@@ -1,10 +1,14 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "UPDATE coding_agent_turns\n               SET summary = $1, updated_at = $2\n               WHERE execution_process_id = $3",
   "describe": {
     "columns": [],
     "parameters": {
-      "Right": 3
+      "Left": [
+        "Text",
+        "Timestamptz",
+        "Uuid"
+      ]
     },
     "nullable": []
   },

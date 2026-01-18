@@ -1,54 +1,56 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT\n                e.id as \"id!: Uuid\",\n                e.event_type as \"event_type!: TaskEventType\",\n                e.to_column_id as \"to_column_id: Uuid\",\n                e.commit_hash,\n                e.commit_message,\n                e.created_at as \"created_at!: DateTime<Utc>\",\n                c.name as \"column_name?\",\n                a.name as \"agent_name?\"\n            FROM task_events e\n            LEFT JOIN kanban_columns c ON e.to_column_id = c.id\n            LEFT JOIN agents a ON c.agent_id = a.id\n            WHERE e.task_id = $1\n              AND e.event_type IN ('column_enter', 'commit')\n            ORDER BY e.created_at ASC",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "event_type!: TaskEventType",
         "ordinal": 1,
+        "name": "event_type!: TaskEventType",
         "type_info": "Text"
       },
       {
-        "name": "to_column_id: Uuid",
         "ordinal": 2,
-        "type_info": "Blob"
+        "name": "to_column_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "commit_hash",
         "ordinal": 3,
+        "name": "commit_hash",
         "type_info": "Text"
       },
       {
-        "name": "commit_message",
         "ordinal": 4,
+        "name": "commit_message",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 5,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "column_name?",
         "ordinal": 6,
+        "name": "column_name?",
         "type_info": "Text"
       },
       {
-        "name": "agent_name?",
         "ordinal": 7,
+        "name": "agent_name?",
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       true,
       true,

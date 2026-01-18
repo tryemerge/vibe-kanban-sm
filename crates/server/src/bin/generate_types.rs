@@ -11,10 +11,6 @@ fn generate_types_content() -> String {
 // If you are an AI, and you absolutely have to edit this file, please confirm with the user first.";
 
     let decls: Vec<String> = vec![
-        remote::routes::tasks::SharedTaskResponse::decl(),
-        remote::routes::tasks::AssigneesQuery::decl(),
-        remote::db::tasks::SharedTask::decl(),
-        remote::db::users::UserData::decl(),
         db::models::project::Project::decl(),
         db::models::project::CreateProject::decl(),
         db::models::project::UpdateProject::decl(),

@@ -2,7 +2,7 @@
 -- Ported from vibe-factory to enable agent configuration and automation
 
 CREATE TABLE agents (
-    id              BLOB PRIMARY KEY,
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
     role            TEXT NOT NULL,              -- e.g., "Developer", "Reviewer", "Architect"
     system_prompt   TEXT NOT NULL,              -- The agent's system prompt/instructions
@@ -12,8 +12,8 @@ CREATE TABLE agents (
     context_files   TEXT,                       -- JSON array of file paths to include as context
     executor        TEXT NOT NULL DEFAULT 'CLAUDE_CODE'
                         CHECK (executor IN ('CLAUDE_CODE', 'CODEX', 'GEMINI', 'CURSOR_AGENT', 'OPENCODE')),
-    created_at      TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now', 'subsec'))
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Index for listing agents

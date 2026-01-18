@@ -1,69 +1,71 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT id as \"id!: Uuid\",\n                      project_id as \"project_id!: Uuid\",\n                      column_id as \"column_id!: Uuid\",\n                      trigger_type,\n                      action_type,\n                      action_config,\n                      enabled as \"enabled!: bool\",\n                      priority as \"priority!: i32\",\n                      name,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM automation_rules\n               WHERE id = $1",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "project_id!: Uuid",
         "ordinal": 1,
-        "type_info": "Blob"
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "column_id!: Uuid",
         "ordinal": 2,
-        "type_info": "Blob"
+        "name": "column_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "trigger_type",
         "ordinal": 3,
+        "name": "trigger_type",
         "type_info": "Text"
       },
       {
-        "name": "action_type",
         "ordinal": 4,
+        "name": "action_type",
         "type_info": "Text"
       },
       {
-        "name": "action_config",
         "ordinal": 5,
+        "name": "action_config",
         "type_info": "Text"
       },
       {
-        "name": "enabled!: bool",
         "ordinal": 6,
-        "type_info": "Integer"
+        "name": "enabled!: bool",
+        "type_info": "Bool"
       },
       {
-        "name": "priority!: i32",
         "ordinal": 7,
-        "type_info": "Integer"
+        "name": "priority!: i32",
+        "type_info": "Int4"
       },
       {
-        "name": "name",
         "ordinal": 8,
+        "name": "name",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 9,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 10,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       false,

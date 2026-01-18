@@ -3,18 +3,18 @@
 
 -- Create boards table
 CREATE TABLE boards (
-    id          BLOB PRIMARY KEY,
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        TEXT NOT NULL,                -- "Default Kanban", "Agile Sprint", etc.
     description TEXT,                         -- Optional description
-    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'subsec'))
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Add board_id to kanban_columns (nullable initially for migration)
-ALTER TABLE kanban_columns ADD COLUMN board_id BLOB REFERENCES boards(id) ON DELETE CASCADE;
+ALTER TABLE kanban_columns ADD COLUMN board_id UUID REFERENCES boards(id) ON DELETE CASCADE;
 
 -- Add board_id to projects (nullable initially, then we'll set defaults)
-ALTER TABLE projects ADD COLUMN board_id BLOB REFERENCES boards(id) ON DELETE SET NULL;
+ALTER TABLE projects ADD COLUMN board_id UUID REFERENCES boards(id) ON DELETE SET NULL;
 
 -- Create a default board for each existing project
 -- First, we need to create boards and link columns to them

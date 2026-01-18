@@ -1,59 +1,61 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT id as \"id!: Uuid\",\n                      name,\n                      dev_script,\n                      dev_script_working_dir,\n                      default_agent_working_dir,\n                      remote_project_id as \"remote_project_id: Uuid\",\n                      board_id as \"board_id: Uuid\",\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM projects\n               WHERE remote_project_id = $1\n               LIMIT 1",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "name",
         "ordinal": 1,
+        "name": "name",
         "type_info": "Text"
       },
       {
-        "name": "dev_script",
         "ordinal": 2,
+        "name": "dev_script",
         "type_info": "Text"
       },
       {
-        "name": "dev_script_working_dir",
         "ordinal": 3,
+        "name": "dev_script_working_dir",
         "type_info": "Text"
       },
       {
-        "name": "default_agent_working_dir",
         "ordinal": 4,
+        "name": "default_agent_working_dir",
         "type_info": "Text"
       },
       {
-        "name": "remote_project_id: Uuid",
         "ordinal": 5,
-        "type_info": "Blob"
+        "name": "remote_project_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "board_id: Uuid",
         "ordinal": 6,
-        "type_info": "Blob"
+        "name": "board_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 7,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 8,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       true,
       true,

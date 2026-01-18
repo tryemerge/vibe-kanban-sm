@@ -330,7 +330,7 @@ pub async fn create_github_pr(
                 && let Err(e) = trigger_pr_description_follow_up(
                     &deployment,
                     &workspace,
-                    pr_info.number,
+                    pr_info.number.into(),
                     &pr_info.url,
                 )
                 .await
@@ -390,7 +390,7 @@ pub async fn attach_existing_pr(
         return Ok(ResponseJson(ApiResponse::success(AttachPrResponse {
             pr_attached: true,
             pr_url: Some(pr_merge.pr_info.url.clone()),
-            pr_number: Some(pr_merge.pr_info.number),
+            pr_number: Some(pr_merge.pr_info.number.into()),
             pr_status: Some(pr_merge.pr_info.status.clone()),
         })));
     }
@@ -451,7 +451,7 @@ pub async fn attach_existing_pr(
         Ok(ResponseJson(ApiResponse::success(AttachPrResponse {
             pr_attached: true,
             pr_url: Some(pr_info.url),
-            pr_number: Some(pr_info.number),
+            pr_number: Some(pr_info.number.into()),
             pr_status: Some(pr_info.status),
         })))
     } else {
@@ -499,7 +499,7 @@ pub async fn get_pr_comments(
 
     // Fetch comments from GitHub
     match github_service
-        .get_pr_comments(&repo_info, pr_info.number)
+        .get_pr_comments(&repo_info, pr_info.number.into())
         .await
     {
         Ok(comments) => Ok(ResponseJson(ApiResponse::success(PrCommentsResponse {

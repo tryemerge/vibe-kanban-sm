@@ -5,7 +5,7 @@ use std::{
 
 use db::models::image::{CreateImage, Image};
 use sha2::{Digest, Sha256};
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -32,12 +32,12 @@ pub enum ImageError {
 #[derive(Clone)]
 pub struct ImageService {
     cache_dir: PathBuf,
-    pool: SqlitePool,
+    pool: PgPool,
     max_size_bytes: u64,
 }
 
 impl ImageService {
-    pub fn new(pool: SqlitePool) -> Result<Self, ImageError> {
+    pub fn new(pool: PgPool) -> Result<Self, ImageError> {
         let cache_dir = utils::cache_dir().join("images");
         fs::create_dir_all(&cache_dir)?;
         Ok(Self {
@@ -97,7 +97,7 @@ impl ImageService {
                 file_path: new_filename,
                 original_name: original_filename.to_string(),
                 mime_type,
-                size_bytes: file_size as i64,
+                size_bytes: file_size as i32,
                 hash,
             },
         )

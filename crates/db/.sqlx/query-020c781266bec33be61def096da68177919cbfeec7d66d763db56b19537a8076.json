@@ -1,69 +1,69 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT id AS \"id!: Uuid\",\n                              task_id AS \"task_id!: Uuid\",\n                              container_ref,\n                              branch,\n                              agent_working_dir,\n                              setup_completed_at AS \"setup_completed_at: DateTime<Utc>\",\n                              cancelled_at AS \"cancelled_at: DateTime<Utc>\",\n                              final_context,\n                              completion_summary,\n                              created_at AS \"created_at!: DateTime<Utc>\",\n                              updated_at AS \"updated_at!: DateTime<Utc>\"\n                       FROM workspaces\n                       ORDER BY created_at DESC",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "task_id!: Uuid",
         "ordinal": 1,
-        "type_info": "Blob"
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "container_ref",
         "ordinal": 2,
+        "name": "container_ref",
         "type_info": "Text"
       },
       {
-        "name": "branch",
         "ordinal": 3,
+        "name": "branch",
         "type_info": "Text"
       },
       {
-        "name": "agent_working_dir",
         "ordinal": 4,
+        "name": "agent_working_dir",
         "type_info": "Text"
       },
       {
-        "name": "setup_completed_at: DateTime<Utc>",
         "ordinal": 5,
-        "type_info": "Datetime"
+        "name": "setup_completed_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "cancelled_at: DateTime<Utc>",
         "ordinal": 6,
-        "type_info": "Text"
+        "name": "cancelled_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "final_context",
         "ordinal": 7,
+        "name": "final_context",
         "type_info": "Text"
       },
       {
-        "name": "completion_summary",
         "ordinal": 8,
+        "name": "completion_summary",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 9,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 10,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": []
     },
     "nullable": [
-      true,
+      false,
       false,
       true,
       false,

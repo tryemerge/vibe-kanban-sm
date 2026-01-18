@@ -1,13 +1,6 @@
 -- JSON format changed, means you can access logs from old execution_processes
+-- This migration was for migrating SQLite data - not needed for fresh PostgreSQL setup
+-- The original migration updated old executor_action JSON structure
 
-UPDATE execution_processes
-SET executor_action = json_set(
-  json_remove(executor_action, '$.typ.profile'),
-  '$.typ.profile_variant_label',
-  json_object(
-    'profile', json_extract(executor_action, '$.typ.profile'),
-    'variant', json('null')
-  )
-)
-WHERE json_type(executor_action, '$.typ') IS NOT NULL
-  AND json_type(executor_action, '$.typ.profile') = 'text';
+-- This is a no-op for PostgreSQL as there's no legacy data to migrate
+SELECT 1;

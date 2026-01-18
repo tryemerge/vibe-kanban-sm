@@ -1,10 +1,14 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "INSERT INTO task_images (id, task_id, image_id)\n                   SELECT $1, $2, $3\n                   WHERE NOT EXISTS (\n                       SELECT 1 FROM task_images WHERE task_id = $2 AND image_id = $3\n                   )",
   "describe": {
     "columns": [],
     "parameters": {
-      "Right": 3
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
     },
     "nullable": []
   },

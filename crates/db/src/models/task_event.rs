@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use sqlx::{FromRow, SqlitePool, Type};
+use sqlx::{FromRow, PgPool, Type};
 use strum_macros::{Display, EnumString};
 use ts_rs::TS;
 use uuid::Uuid;
@@ -135,13 +135,18 @@ pub struct CreateTaskEvent {
 
 impl TaskEvent {
     /// Create a new task event
-    pub async fn create(pool: &SqlitePool, data: &CreateTaskEvent) -> Result<Self, sqlx::Error> {
+    pub async fn create(pool: &PgPool, data: &CreateTaskEvent) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         let actor_type = data.actor_type.clone().unwrap_or_default();
         let metadata_json = data
             .metadata
             .as_ref()
             .map(|m| serde_json::to_string(m).unwrap_or_default());
+
+        // Convert enums to strings for PostgreSQL TEXT columns
+        let event_type_str = data.event_type.to_string();
+        let trigger_type_str = data.trigger_type.as_ref().map(|t| t.to_string());
+        let actor_type_str = actor_type.to_string();
 
         sqlx::query_as!(
             TaskEvent,
@@ -173,18 +178,18 @@ impl TaskEvent {
                 created_at as "created_at!: DateTime<Utc>""#,
             id,
             data.task_id,
-            data.event_type,
+            event_type_str,
             data.from_column_id,
             data.to_column_id,
             data.workspace_id,
             data.session_id,
             data.executor,
             data.automation_rule_id,
-            data.trigger_type,
+            trigger_type_str,
             data.commit_hash,
             data.commit_message,
             metadata_json,
-            actor_type,
+            actor_type_str,
             data.actor_id
         )
         .fetch_one(pool)
@@ -193,7 +198,7 @@ impl TaskEvent {
 
     /// Find all events for a task, ordered by creation time (newest first)
     pub async fn find_by_task_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -226,7 +231,7 @@ impl TaskEvent {
 
     /// Find events for a task with column names resolved
     pub async fn find_by_task_id_with_names(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
     ) -> Result<Vec<TaskEventWithNames>, sqlx::Error> {
         let records = sqlx::query!(
@@ -293,7 +298,7 @@ impl TaskEvent {
 
     /// Find events by workspace
     pub async fn find_by_workspace_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -325,7 +330,7 @@ impl TaskEvent {
     }
 
     /// Delete all events for a task
-    pub async fn delete_by_task_id(pool: &SqlitePool, task_id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete_by_task_id(pool: &PgPool, task_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!("DELETE FROM task_events WHERE task_id = $1", task_id)
             .execute(pool)
             .await?;
@@ -335,7 +340,7 @@ impl TaskEvent {
     /// Count how many times a task has transitioned FROM a specific column
     /// Used for loop prevention in conditional transitions
     pub async fn count_column_transitions(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
         from_column_id: Uuid,
     ) -> Result<i64, sqlx::Error> {
@@ -357,7 +362,7 @@ impl TaskEvent {
     /// Count how many times a task took the else path FROM a specific column
     /// Used for escalation logic - escalate after N failures
     pub async fn count_else_transitions(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
         from_column_id: Uuid,
     ) -> Result<i64, sqlx::Error> {
@@ -380,7 +385,7 @@ impl TaskEvent {
     /// This is used to provide context to agents about what has been accomplished.
     /// Returns a markdown-formatted string with column sections and commit history.
     pub async fn build_workflow_history(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
     ) -> Result<String, sqlx::Error> {
         // Query all relevant events for this task ordered by time

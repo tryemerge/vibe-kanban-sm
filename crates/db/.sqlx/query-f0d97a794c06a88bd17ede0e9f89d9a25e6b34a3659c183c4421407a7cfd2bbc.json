@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE automation_executions\n               SET status = 'completed', result = $2, workspace_id = $3, completed_at = NOW()\n               WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f0d97a794c06a88bd17ede0e9f89d9a25e6b34a3659c183c4421407a7cfd2bbc"
+}

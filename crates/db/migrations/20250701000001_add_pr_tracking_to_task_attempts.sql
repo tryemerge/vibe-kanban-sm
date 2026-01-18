@@ -2,4 +2,4 @@
 ALTER TABLE task_attempts ADD COLUMN pr_url TEXT;
 ALTER TABLE task_attempts ADD COLUMN pr_number INTEGER;
 ALTER TABLE task_attempts ADD COLUMN pr_status TEXT; -- open, closed, merged
-ALTER TABLE task_attempts ADD COLUMN pr_merged_at DATETIME;
+ALTER TABLE task_attempts ADD COLUMN pr_merged_at TIMESTAMPTZ;

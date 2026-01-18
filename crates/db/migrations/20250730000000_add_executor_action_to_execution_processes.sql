@@ -1,4 +1,4 @@
-PRAGMA foreign_keys = ON;
+
 
 -- Clear existing execution_processes records since we can't meaningfully migrate them
 -- (old records lack the actual script content and prompts needed for ExecutorActions)

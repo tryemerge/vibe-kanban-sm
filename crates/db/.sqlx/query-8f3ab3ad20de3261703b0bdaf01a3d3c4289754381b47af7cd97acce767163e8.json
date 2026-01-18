@@ -1,10 +1,13 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "DELETE FROM scratch WHERE id = $1 AND scratch_type = $2",
   "describe": {
     "columns": [],
     "parameters": {
-      "Right": 2
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
     },
     "nullable": []
   },

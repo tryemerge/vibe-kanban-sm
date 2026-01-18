@@ -1,54 +1,54 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT i.id as \"id!: Uuid\",\n                      i.file_path as \"file_path!\",\n                      i.original_name as \"original_name!\",\n                      i.mime_type,\n                      i.size_bytes as \"size_bytes!\",\n                      i.hash as \"hash!\",\n                      i.created_at as \"created_at!: DateTime<Utc>\",\n                      i.updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM images i\n               LEFT JOIN task_images ti ON i.id = ti.image_id\n               WHERE ti.task_id IS NULL",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "file_path!",
         "ordinal": 1,
+        "name": "file_path!",
         "type_info": "Text"
       },
       {
-        "name": "original_name!",
         "ordinal": 2,
+        "name": "original_name!",
         "type_info": "Text"
       },
       {
-        "name": "mime_type",
         "ordinal": 3,
+        "name": "mime_type",
         "type_info": "Text"
       },
       {
-        "name": "size_bytes!",
         "ordinal": 4,
-        "type_info": "Integer"
+        "name": "size_bytes!",
+        "type_info": "Int4"
       },
       {
-        "name": "hash!",
         "ordinal": 5,
+        "name": "hash!",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 6,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 7,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": []
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       true,

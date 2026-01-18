@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE automation_executions\n               SET status = 'failed', result = $2, completed_at = NOW()\n               WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5f5b63c8fe3689929db698be6fcd7efb59f3cedbe4339835ede7c85c07be5134"
+}

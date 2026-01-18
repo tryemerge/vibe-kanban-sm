@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
+use sqlx::{Executor, FromRow, Postgres, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -68,7 +68,7 @@ pub struct UpdateKanbanColumn {
 impl KanbanColumn {
     /// Find all columns for a board, ordered by position
     pub async fn find_by_board(
-        pool: &SqlitePool,
+        pool: &PgPool,
         board_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -99,7 +99,7 @@ impl KanbanColumn {
     }
 
     /// Find a column by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             KanbanColumn,
             r#"SELECT id as "id!: Uuid",
@@ -128,7 +128,7 @@ impl KanbanColumn {
 
     /// Find a column by board and slug
     pub async fn find_by_slug(
-        pool: &SqlitePool,
+        pool: &PgPool,
         board_id: Uuid,
         slug: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
@@ -161,7 +161,7 @@ impl KanbanColumn {
 
     /// Find the initial column for a board
     pub async fn find_initial(
-        pool: &SqlitePool,
+        pool: &PgPool,
         board_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -183,7 +183,7 @@ impl KanbanColumn {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM kanban_columns
-               WHERE board_id = $1 AND is_initial = 1
+               WHERE board_id = $1 AND is_initial = true
                LIMIT 1"#,
             board_id
         )
@@ -198,14 +198,15 @@ impl KanbanColumn {
         data: &CreateKanbanColumn,
     ) -> Result<Self, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let id = Uuid::new_v4();
-        let is_initial = data.is_initial.unwrap_or(false);
-        let is_terminal = data.is_terminal.unwrap_or(false);
-        let starts_workflow = data.starts_workflow.unwrap_or(false);
+        let is_initial: bool = data.is_initial.unwrap_or(false);
+        let is_terminal: bool = data.is_terminal.unwrap_or(false);
+        let starts_workflow: bool = data.starts_workflow.unwrap_or(false);
         let status = data.status.clone().unwrap_or(TaskStatus::Todo);
-        let is_template = false; // Regular columns are never templates
+        let status_str = status.to_string();
+        let is_template: bool = false; // Regular columns are never templates
         let template_group_id: Option<String> = None;
 
         sqlx::query_as!(
@@ -237,7 +238,7 @@ impl KanbanColumn {
             is_initial,
             is_terminal,
             starts_workflow,
-            status,
+            status_str,
             data.agent_id,
             data.deliverable,
             is_template,
@@ -249,7 +250,7 @@ impl KanbanColumn {
 
     /// Update a column
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         data: &UpdateKanbanColumn,
     ) -> Result<Self, sqlx::Error> {
@@ -261,10 +262,11 @@ impl KanbanColumn {
         let slug = data.slug.clone().unwrap_or(existing.slug);
         let position = data.position.unwrap_or(existing.position);
         let color = data.color.clone().or(existing.color);
-        let is_initial = data.is_initial.unwrap_or(existing.is_initial);
-        let is_terminal = data.is_terminal.unwrap_or(existing.is_terminal);
-        let starts_workflow = data.starts_workflow.unwrap_or(existing.starts_workflow);
+        let is_initial: bool = data.is_initial.unwrap_or(existing.is_initial);
+        let is_terminal: bool = data.is_terminal.unwrap_or(existing.is_terminal);
+        let starts_workflow: bool = data.starts_workflow.unwrap_or(existing.starts_workflow);
         let status = data.status.clone().unwrap_or(existing.status);
+        let status_str = status.to_string();
         // Handle Option<Option<Uuid>> for agent_id:
         // - None: keep existing value (field not in request)
         // - Some(None): clear the agent (explicitly set to null)
@@ -279,7 +281,7 @@ impl KanbanColumn {
             KanbanColumn,
             r#"UPDATE kanban_columns
                SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, starts_workflow = $8, status = $9, agent_id = $10, deliverable = $11,
-                   updated_at = datetime('now', 'subsec')
+                   updated_at = NOW()
                WHERE id = $1
                RETURNING id as "id!: Uuid",
                          board_id as "board_id!: Uuid",
@@ -305,7 +307,7 @@ impl KanbanColumn {
             is_initial,
             is_terminal,
             starts_workflow,
-            status,
+            status_str,
             agent_id,
             deliverable
         )
@@ -315,7 +317,7 @@ impl KanbanColumn {
 
     /// Reorder columns - update positions for all columns in a board
     pub async fn reorder_board(
-        pool: &SqlitePool,
+        pool: &PgPool,
         board_id: Uuid,
         column_ids: &[Uuid],
     ) -> Result<(), sqlx::Error> {
@@ -323,7 +325,7 @@ impl KanbanColumn {
             let pos = position as i32;
             sqlx::query!(
                 r#"UPDATE kanban_columns
-                   SET position = $2, updated_at = datetime('now', 'subsec')
+                   SET position = $2, updated_at = NOW()
                    WHERE id = $1 AND board_id = $3"#,
                 column_id,
                 pos,
@@ -336,8 +338,8 @@ impl KanbanColumn {
     }
 
     /// Delete a column
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result: sqlx::sqlite::SqliteQueryResult =
+    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
+        let result: sqlx::postgres::PgQueryResult =
             sqlx::query!("DELETE FROM kanban_columns WHERE id = $1", id)
                 .execute(pool)
                 .await?;
@@ -345,8 +347,8 @@ impl KanbanColumn {
     }
 
     /// Delete all columns for a board (used when applying templates)
-    pub async fn delete_by_board(pool: &SqlitePool, board_id: Uuid) -> Result<u64, sqlx::Error> {
-        let result: sqlx::sqlite::SqliteQueryResult = sqlx::query!(
+    pub async fn delete_by_board(pool: &PgPool, board_id: Uuid) -> Result<u64, sqlx::Error> {
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             "DELETE FROM kanban_columns WHERE board_id = $1 AND is_template = FALSE",
             board_id
         )
@@ -357,7 +359,7 @@ impl KanbanColumn {
 
     /// Find all template columns by template group ID
     pub async fn find_by_template_group(
-        pool: &SqlitePool,
+        pool: &PgPool,
         template_group_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(

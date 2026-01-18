@@ -10,18 +10,18 @@
 
 -- Step 1: Create new table with correct schema
 CREATE TABLE state_transitions_new (
-    id                    BLOB PRIMARY KEY,
-    board_id              BLOB REFERENCES boards(id) ON DELETE CASCADE,
-    project_id            BLOB REFERENCES projects(id) ON DELETE CASCADE,  -- Now nullable
-    task_id               BLOB REFERENCES tasks(id) ON DELETE CASCADE,
-    from_column_id        BLOB NOT NULL,
-    to_column_id          BLOB NOT NULL,
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    board_id              UUID REFERENCES boards(id) ON DELETE CASCADE,
+    project_id            UUID REFERENCES projects(id) ON DELETE CASCADE,  -- Now nullable
+    task_id               UUID REFERENCES tasks(id) ON DELETE CASCADE,
+    from_column_id        UUID NOT NULL,
+    to_column_id          UUID NOT NULL,
     name                  TEXT,
     requires_confirmation INTEGER NOT NULL DEFAULT 0,
     condition_key         TEXT,
     condition_value       TEXT,
     max_iterations        INTEGER,
-    created_at            TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY (from_column_id) REFERENCES kanban_columns(id) ON DELETE CASCADE,
     FOREIGN KEY (to_column_id) REFERENCES kanban_columns(id) ON DELETE CASCADE
 );

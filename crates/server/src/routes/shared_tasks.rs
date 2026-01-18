@@ -6,7 +6,7 @@ use axum::{
 };
 use db::models::task::Task;
 use deployment::Deployment;
-use remote::routes::tasks::SharedTaskResponse;
+use services::services::remote_types::SharedTaskResponse;
 use serde::Deserialize;
 use services::services::share::{ShareError, SharedTaskDetails};
 use ts_rs::TS;

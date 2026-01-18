@@ -1,94 +1,96 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT\n                id as \"id!: Uuid\",\n                task_id as \"task_id!: Uuid\",\n                event_type as \"event_type!: TaskEventType\",\n                from_column_id as \"from_column_id: Uuid\",\n                to_column_id as \"to_column_id: Uuid\",\n                workspace_id as \"workspace_id: Uuid\",\n                session_id as \"session_id: Uuid\",\n                executor,\n                automation_rule_id as \"automation_rule_id: Uuid\",\n                trigger_type as \"trigger_type: EventTriggerType\",\n                commit_hash,\n                commit_message,\n                metadata as \"metadata: JsonValue\",\n                actor_type as \"actor_type!: ActorType\",\n                actor_id,\n                created_at as \"created_at!: DateTime<Utc>\"\n            FROM task_events\n            WHERE task_id = $1\n            ORDER BY created_at DESC",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "task_id!: Uuid",
         "ordinal": 1,
-        "type_info": "Blob"
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "event_type!: TaskEventType",
         "ordinal": 2,
+        "name": "event_type!: TaskEventType",
         "type_info": "Text"
       },
       {
-        "name": "from_column_id: Uuid",
         "ordinal": 3,
-        "type_info": "Blob"
+        "name": "from_column_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "to_column_id: Uuid",
         "ordinal": 4,
-        "type_info": "Blob"
+        "name": "to_column_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "workspace_id: Uuid",
         "ordinal": 5,
-        "type_info": "Blob"
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "session_id: Uuid",
         "ordinal": 6,
-        "type_info": "Blob"
+        "name": "session_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "executor",
         "ordinal": 7,
+        "name": "executor",
         "type_info": "Text"
       },
       {
-        "name": "automation_rule_id: Uuid",
         "ordinal": 8,
-        "type_info": "Blob"
+        "name": "automation_rule_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "trigger_type: EventTriggerType",
         "ordinal": 9,
+        "name": "trigger_type: EventTriggerType",
         "type_info": "Text"
       },
       {
-        "name": "commit_hash",
         "ordinal": 10,
+        "name": "commit_hash",
         "type_info": "Text"
       },
       {
-        "name": "commit_message",
         "ordinal": 11,
+        "name": "commit_message",
         "type_info": "Text"
       },
       {
-        "name": "metadata: JsonValue",
         "ordinal": 12,
+        "name": "metadata: JsonValue",
         "type_info": "Text"
       },
       {
-        "name": "actor_type!: ActorType",
         "ordinal": 13,
+        "name": "actor_type!: ActorType",
         "type_info": "Text"
       },
       {
-        "name": "actor_id",
         "ordinal": 14,
+        "name": "actor_id",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 15,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       true,

@@ -1,71 +1,73 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                artifact_type,\n                path,\n                title,\n                content,\n                metadata,\n                source_task_id as \"source_task_id: Uuid\",\n                source_commit_hash,\n                scope,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM context_artifacts\n               WHERE project_id = $1\n               ORDER BY updated_at DESC",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Text"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "project_id!: Uuid",
         "ordinal": 1,
-        "type_info": "Text"
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "artifact_type",
         "ordinal": 2,
+        "name": "artifact_type",
         "type_info": "Text"
       },
       {
-        "name": "path",
         "ordinal": 3,
+        "name": "path",
         "type_info": "Text"
       },
       {
-        "name": "title",
         "ordinal": 4,
+        "name": "title",
         "type_info": "Text"
       },
       {
-        "name": "content",
         "ordinal": 5,
+        "name": "content",
         "type_info": "Text"
       },
       {
-        "name": "metadata",
         "ordinal": 6,
+        "name": "metadata",
         "type_info": "Text"
       },
       {
-        "name": "source_task_id: Uuid",
         "ordinal": 7,
-        "type_info": "Text"
+        "name": "source_task_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "source_commit_hash",
         "ordinal": 8,
+        "name": "source_commit_hash",
         "type_info": "Text"
       },
       {
-        "name": "scope",
         "ordinal": 9,
+        "name": "scope",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 10,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 11,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       false,

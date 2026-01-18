@@ -11,7 +11,6 @@ cloud = []
 utils = { path = "../utils" }
 executors = { path = "../executors" }
 db = { path = "../db" }
-remote = { path = "../remote" }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["io"] }
 axum = { workspace = true }
@@ -20,7 +19,7 @@ serde_json = { workspace = true }
 url = "2.5"
 anyhow = { workspace = true }
 tracing = { workspace = true }
-sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "sqlite-preupdate-hook", "chrono", "uuid"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "macros", "migrate"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 ts-rs = { workspace = true }

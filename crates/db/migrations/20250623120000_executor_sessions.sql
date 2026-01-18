@@ -1,13 +1,13 @@
-PRAGMA foreign_keys = ON;
+
 
 CREATE TABLE executor_sessions (
-    id                    BLOB PRIMARY KEY,
-    task_attempt_id       BLOB NOT NULL,
-    execution_process_id  BLOB NOT NULL,
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_attempt_id       UUID NOT NULL,
+    execution_process_id  UUID NOT NULL,
     session_id            TEXT,  -- External session ID from Claude/Amp
     prompt                TEXT,  -- The prompt sent to the executor
-    created_at            TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
-    updated_at            TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY (task_attempt_id) REFERENCES task_attempts(id) ON DELETE CASCADE,
     FOREIGN KEY (execution_process_id) REFERENCES execution_processes(id) ON DELETE CASCADE
 );

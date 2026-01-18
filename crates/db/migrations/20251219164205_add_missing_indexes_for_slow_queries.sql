@@ -11,4 +11,5 @@ WHERE container_ref IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_eprs_process_repo
 ON execution_process_repo_states (execution_process_id, repo_id);
 
-PRAGMA optimize;
+-- PostgreSQL equivalent of SQLite's PRAGMA optimize
+ANALYZE;

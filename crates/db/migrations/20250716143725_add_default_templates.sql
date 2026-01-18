@@ -10,7 +10,7 @@ INSERT INTO task_templates (
     created_at,
     updated_at
 ) VALUES (
-    randomblob(16),
+    gen_random_uuid(),
     NULL, -- Global template
     'Analyze codebase for potential bugs and issues',
     'Perform a comprehensive analysis of the project codebase to identify potential bugs, code smells, and areas of improvement.
@@ -51,8 +51,8 @@ INSERT INTO task_templates (
 2. Recommendations for fixes
 3. Estimated effort for addressing each issue',
     'Bug Analysis',
-    datetime('now', 'subsec'),
-    datetime('now', 'subsec')
+    NOW(),
+    NOW()
 );
 
 -- 2. Unit Test template
@@ -65,7 +65,7 @@ INSERT INTO task_templates (
     created_at,
     updated_at
 ) VALUES (
-    randomblob(16),
+    gen_random_uuid(),
     NULL, -- Global template
     'Add unit tests for [component/function]',
     'Write unit tests to improve code coverage and ensure reliability.
@@ -104,8 +104,8 @@ Achieve at least 80% coverage for the target component
 2. Updated coverage report
 3. All tests passing',
     'Add Unit Tests',
-    datetime('now', 'subsec'),
-    datetime('now', 'subsec')
+    NOW(),
+    NOW()
 );
 
 -- 3. Code Refactoring template
@@ -118,7 +118,7 @@ INSERT INTO task_templates (
     created_at,
     updated_at
 ) VALUES (
-    randomblob(16),
+    gen_random_uuid(),
     NULL, -- Global template
     'Refactor [component/module] for better maintainability',
     'Improve code structure and maintainability without changing functionality.
@@ -169,6 +169,6 @@ INSERT INTO task_templates (
 2. All tests passing
 3. Brief summary of changes made',
     'Code Refactoring',
-    datetime('now', 'subsec'),
-    datetime('now', 'subsec')
+    NOW(),
+    NOW()
 );

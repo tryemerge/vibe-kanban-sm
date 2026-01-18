@@ -1,7 +1,7 @@
 -- Create enhanced merges table with type-specific columns
 CREATE TABLE merges (
-    id              BLOB PRIMARY KEY,
-    task_attempt_id BLOB NOT NULL,
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_attempt_id UUID NOT NULL,
     merge_type      TEXT NOT NULL CHECK (merge_type IN ('direct', 'pr')),
     
     -- Direct merge fields (NULL for PR merges)
@@ -11,10 +11,10 @@ CREATE TABLE merges (
     pr_number       INTEGER,
     pr_url          TEXT,
     pr_status       TEXT CHECK (pr_status IN ('open', 'merged', 'closed')),
-    pr_merged_at    TEXT,
+    pr_merged_at    TIMESTAMPTZ,
     pr_merge_commit_sha TEXT,
     
-    created_at      TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     target_branch_name TEXT NOT NULL,
 
     -- Data integrity constraints
@@ -39,7 +39,7 @@ WHERE merge_type = 'pr' AND pr_status = 'open';
 -- Migrate existing merge_commit data to new table as direct merges
 INSERT INTO merges (id, task_attempt_id, merge_type, merge_commit, created_at, target_branch_name)
 SELECT 
-    randomblob(16),
+    gen_random_uuid(),
     id,
     'direct',
     merge_commit,
@@ -51,7 +51,7 @@ WHERE merge_commit IS NOT NULL;
 -- Migrate existing PR data from task_attempts to merges
 INSERT INTO merges (id, task_attempt_id, merge_type, pr_number, pr_url, pr_status, pr_merged_at, pr_merge_commit_sha, created_at, target_branch_name)
 SELECT 
-    randomblob(16),
+    gen_random_uuid(),
     id,
     'pr',
     pr_number,

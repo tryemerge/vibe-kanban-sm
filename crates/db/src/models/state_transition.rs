@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
+use sqlx::{Executor, FromRow, Postgres, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -41,7 +41,7 @@ pub struct StateTransition {
     /// Value to match for this transition (e.g., "approve" or "reject")
     pub condition_value: Option<String>,
     /// Number of times the else path can be taken before escalation
-    pub max_failures: Option<i64>,
+    pub max_failures: Option<i32>,
     pub is_template: bool,
     pub template_group_id: Option<String>,
     #[ts(type = "Date")]
@@ -84,7 +84,7 @@ pub struct StateTransitionWithColumns {
     pub condition_key: Option<String>,
     pub condition_value: Option<String>,
     /// Number of times the else path can be taken before escalation
-    pub max_failures: Option<i64>,
+    pub max_failures: Option<i32>,
     /// Computed scope for UI display
     pub scope: TransitionScope,
     #[ts(type = "Date")]
@@ -105,12 +105,12 @@ pub struct CreateStateTransition {
     pub condition_key: Option<String>,
     pub condition_value: Option<String>,
     /// Number of times the else path can be taken before escalation
-    pub max_failures: Option<i64>,
+    pub max_failures: Option<i32>,
 }
 
 impl StateTransition {
     /// Find a transition by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             StateTransition,
             r#"SELECT id as "id!: Uuid",
@@ -139,7 +139,7 @@ impl StateTransition {
 
     /// Find all transitions for a board (board-level only)
     pub async fn find_by_board(
-        pool: &SqlitePool,
+        pool: &PgPool,
         board_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -170,7 +170,7 @@ impl StateTransition {
 
     /// Find all transitions for a project (project-level only, not board defaults)
     pub async fn find_by_project(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -201,7 +201,7 @@ impl StateTransition {
 
     /// Find all transitions for a task (task-level only)
     pub async fn find_by_task(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -234,7 +234,7 @@ impl StateTransition {
     /// Priority: task-level > project-level > board-level
     /// Returns transitions grouped by from_column_id with highest priority wins
     pub async fn resolve_effective_transitions(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
         project_id: Uuid,
         board_id: Option<Uuid>,
@@ -292,7 +292,7 @@ impl StateTransition {
 
     /// Find transitions from a specific column for a task (with hierarchy resolution)
     pub async fn find_from_column_for_task(
-        pool: &SqlitePool,
+        pool: &PgPool,
         from_column_id: Uuid,
         task_id: Uuid,
         project_id: Uuid,
@@ -351,7 +351,7 @@ impl StateTransition {
 
     /// Find all transitions with column names for board (board-level)
     pub async fn find_by_board_with_columns(
-        pool: &SqlitePool,
+        pool: &PgPool,
         board_id: Uuid,
     ) -> Result<Vec<StateTransitionWithColumns>, sqlx::Error> {
         let records = sqlx::query!(
@@ -412,7 +412,7 @@ impl StateTransition {
 
     /// Find all transitions with column names for project (project-level only)
     pub async fn find_by_project_with_columns(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<StateTransitionWithColumns>, sqlx::Error> {
         let records = sqlx::query!(
@@ -473,7 +473,7 @@ impl StateTransition {
 
     /// Check if a transition is allowed (with hierarchy resolution)
     pub async fn is_allowed(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
         project_id: Uuid,
         board_id: Option<Uuid>,
@@ -526,11 +526,11 @@ impl StateTransition {
         data: &CreateStateTransition,
     ) -> Result<Self, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let id = Uuid::new_v4();
-        let requires_confirmation = data.requires_confirmation.unwrap_or(false);
-        let is_template = false;
+        let requires_confirmation: i32 = if data.requires_confirmation.unwrap_or(false) { 1 } else { 0 };
+        let is_template: bool = false;
         let template_group_id: Option<String> = None;
 
         sqlx::query_as!(
@@ -578,11 +578,11 @@ impl StateTransition {
         data: &CreateStateTransition,
     ) -> Result<Self, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let id = Uuid::new_v4();
-        let requires_confirmation = data.requires_confirmation.unwrap_or(false);
-        let is_template = false;
+        let requires_confirmation: i32 = if data.requires_confirmation.unwrap_or(false) { 1 } else { 0 };
+        let is_template: bool = false;
         let template_group_id: Option<String> = None;
 
         sqlx::query_as!(
@@ -630,11 +630,11 @@ impl StateTransition {
         data: &CreateStateTransition,
     ) -> Result<Self, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let id = Uuid::new_v4();
-        let requires_confirmation = data.requires_confirmation.unwrap_or(false);
-        let is_template = false;
+        let requires_confirmation: i32 = if data.requires_confirmation.unwrap_or(false) { 1 } else { 0 };
+        let is_template: bool = false;
         let template_group_id: Option<String> = None;
 
         sqlx::query_as!(
@@ -676,7 +676,7 @@ impl StateTransition {
     }
 
     /// Delete a transition
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!("DELETE FROM state_transitions WHERE id = $1", id)
             .execute(pool)
             .await?;
@@ -684,7 +684,7 @@ impl StateTransition {
     }
 
     /// Delete all transitions for a board
-    pub async fn delete_by_board(pool: &SqlitePool, board_id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete_by_board(pool: &PgPool, board_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!(
             "DELETE FROM state_transitions WHERE board_id = $1 AND project_id IS NULL AND task_id IS NULL",
             board_id
@@ -695,7 +695,7 @@ impl StateTransition {
     }
 
     /// Delete all transitions for a project
-    pub async fn delete_by_project(pool: &SqlitePool, project_id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete_by_project(pool: &PgPool, project_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!(
             "DELETE FROM state_transitions WHERE project_id = $1 AND task_id IS NULL",
             project_id
@@ -706,7 +706,7 @@ impl StateTransition {
     }
 
     /// Delete all transitions for a task
-    pub async fn delete_by_task(pool: &SqlitePool, task_id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete_by_task(pool: &PgPool, task_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!(
             "DELETE FROM state_transitions WHERE task_id = $1",
             task_id
@@ -718,7 +718,7 @@ impl StateTransition {
 
     /// Find all template transitions by template group ID
     pub async fn find_by_template_group(
-        pool: &SqlitePool,
+        pool: &PgPool,
         template_group_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(

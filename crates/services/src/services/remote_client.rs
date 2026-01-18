@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use backon::{ExponentialBuilder, Retryable};
 use chrono::Duration as ChronoDuration;
-use remote::routes::tasks::{
+use super::remote_types::{
     AssignSharedTaskRequest, CheckTasksRequest, CreateSharedTaskRequest, SharedTaskResponse,
     UpdateSharedTaskRequest,
 };

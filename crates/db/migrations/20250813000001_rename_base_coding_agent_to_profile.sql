@@ -1,4 +1,4 @@
-PRAGMA foreign_keys = ON;
+
 
 -- Rename base_coding_agent column to profile_label for better semantic clarity
 ALTER TABLE task_attempts RENAME COLUMN base_coding_agent TO profile;

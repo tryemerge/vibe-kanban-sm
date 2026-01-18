@@ -1,0 +1,83 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id as \"id!: Uuid\",\n                      project_id as \"project_id!: Uuid\",\n                      column_id as \"column_id!: Uuid\",\n                      trigger_type,\n                      action_type,\n                      action_config,\n                      enabled as \"enabled!: bool\",\n                      priority as \"priority!: i32\",\n                      name,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM automation_rules\n               WHERE column_id = $1 AND trigger_type = $2 AND enabled = true\n               ORDER BY priority ASC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "column_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "trigger_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "action_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "action_config",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "enabled!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "priority!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c2921c249152e86354ee728675e12dd28c71183f7fea01722b2a6754d2fbdec1"
+}

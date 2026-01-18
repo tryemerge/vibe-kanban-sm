@@ -8,12 +8,11 @@ DROP TABLE IF EXISTS task_attempt_activities;
 
 -- Create the new table structure with execution_process_id foreign key
 CREATE TABLE task_attempt_activities (
-    id TEXT PRIMARY KEY,
-    execution_process_id TEXT NOT NULL REFERENCES execution_processes(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    execution_process_id UUID NOT NULL REFERENCES execution_processes(id) ON DELETE CASCADE,
     status TEXT NOT NULL,
     note TEXT,
-    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (execution_process_id) REFERENCES execution_processes(id) ON DELETE CASCADE
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Create index for efficient lookups by execution_process_id

@@ -127,7 +127,7 @@ pub async fn read_decision_file(workspace: &Workspace) -> Option<serde_json::Val
 
 /// Build project context string from context artifacts (ADRs, patterns, recent decisions)
 /// This provides project-level knowledge to agents when they start execution
-async fn build_project_context(pool: &sqlx::SqlitePool, project_id: uuid::Uuid) -> Option<String> {
+async fn build_project_context(pool: &sqlx::PgPool, project_id: uuid::Uuid) -> Option<String> {
     let mut context = String::new();
 
     // Get recent ADRs (architecture decision records)
@@ -211,7 +211,7 @@ fn evaluate_transition(
 
     // Check if we should escalate (max_failures reached)
     if let Some(max_failures) = transition.max_failures {
-        if failure_count >= max_failures {
+        if failure_count >= max_failures.into() {
             // Escalation path - go to escalation_column_id if set
             if let Some(escalation_col) = transition.escalation_column_id {
                 return TransitionResult::Escalation(escalation_col);
@@ -233,7 +233,7 @@ fn evaluate_transition(
 /// Also includes feedback from a prior rejection if present in the existing decision file.
 /// Uses hierarchical resolution: task-level > project-level > board-level transitions.
 pub async fn build_decision_instructions(
-    pool: &sqlx::SqlitePool,
+    pool: &sqlx::PgPool,
     column_id: Uuid,
     task_id: Uuid,
     project_id: Uuid,

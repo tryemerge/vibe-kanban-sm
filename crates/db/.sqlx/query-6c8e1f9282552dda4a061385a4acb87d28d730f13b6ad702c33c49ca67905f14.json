@@ -1,64 +1,66 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT id as \"id!: Uuid\",\n                      name,\n                      description,\n                      is_template as \"is_template!: bool\",\n                      template_group_id,\n                      template_name,\n                      template_description,\n                      template_icon,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM boards\n               WHERE id = $1",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "name",
         "ordinal": 1,
+        "name": "name",
         "type_info": "Text"
       },
       {
-        "name": "description",
         "ordinal": 2,
+        "name": "description",
         "type_info": "Text"
       },
       {
-        "name": "is_template!: bool",
         "ordinal": 3,
+        "name": "is_template!: bool",
         "type_info": "Bool"
       },
       {
-        "name": "template_group_id",
         "ordinal": 4,
+        "name": "template_group_id",
         "type_info": "Text"
       },
       {
-        "name": "template_name",
         "ordinal": 5,
+        "name": "template_name",
         "type_info": "Text"
       },
       {
-        "name": "template_description",
         "ordinal": 6,
+        "name": "template_description",
         "type_info": "Text"
       },
       {
-        "name": "template_icon",
         "ordinal": 7,
+        "name": "template_icon",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 8,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 9,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       true,
       false,

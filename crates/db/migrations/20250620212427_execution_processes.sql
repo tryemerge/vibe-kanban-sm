@@ -1,8 +1,8 @@
-PRAGMA foreign_keys = ON;
+
 
 CREATE TABLE execution_processes (
-    id                BLOB PRIMARY KEY,
-    task_attempt_id   BLOB NOT NULL,
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_attempt_id   UUID NOT NULL,
     process_type      TEXT NOT NULL DEFAULT 'setupscript'
                          CHECK (process_type IN ('setupscript','codingagent','devserver')),
     status            TEXT NOT NULL DEFAULT 'running'
@@ -13,10 +13,10 @@ CREATE TABLE execution_processes (
     stdout            TEXT,
     stderr            TEXT,
     exit_code         INTEGER,
-    started_at        TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
-    completed_at      TEXT,
-    created_at        TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
-    updated_at        TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
+    started_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at      TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY (task_attempt_id) REFERENCES task_attempts(id) ON DELETE CASCADE
 );
 

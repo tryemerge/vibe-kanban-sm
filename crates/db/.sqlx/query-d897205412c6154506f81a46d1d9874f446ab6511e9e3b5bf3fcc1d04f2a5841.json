@@ -1,39 +1,39 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT id as \"id!: Uuid\",\n                      template_group_id as \"template_group_id!\",\n                      template_name as \"name!\",\n                      template_description as \"description!\",\n                      template_icon as \"icon!\"\n               FROM boards\n               WHERE is_template = TRUE\n               ORDER BY template_name ASC",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "template_group_id!",
         "ordinal": 1,
+        "name": "template_group_id!",
         "type_info": "Text"
       },
       {
-        "name": "name!",
         "ordinal": 2,
+        "name": "name!",
         "type_info": "Text"
       },
       {
-        "name": "description!",
         "ordinal": 3,
+        "name": "description!",
         "type_info": "Text"
       },
       {
-        "name": "icon!",
         "ordinal": 4,
+        "name": "icon!",
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": []
     },
     "nullable": [
-      true,
+      false,
       true,
       true,
       true,

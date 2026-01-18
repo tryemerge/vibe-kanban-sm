@@ -1,27 +1,25 @@
-use std::{str::FromStr, sync::Arc};
+use std::{env, sync::Arc};
 
 use sqlx::{
-    Error, Pool, Sqlite, SqlitePool,
-    sqlite::{SqliteConnectOptions, SqliteConnection, SqlitePoolOptions},
+    Error, PgPool,
+    postgres::{PgConnection, PgPoolOptions},
 };
-use utils::assets::asset_dir;
 
 pub mod models;
 pub mod serde_helpers;
 
 #[derive(Clone)]
 pub struct DBService {
-    pub pool: Pool<Sqlite>,
+    pub pool: PgPool,
 }
 
 impl DBService {
+    /// Create a new DBService connecting to PostgreSQL.
+    /// Uses DATABASE_URL environment variable.
     pub async fn new() -> Result<DBService, Error> {
-        let database_url = format!(
-            "sqlite://{}",
-            asset_dir().join("db.sqlite").to_string_lossy()
-        );
-        let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
-        let pool = SqlitePool::connect_with(options).await?;
+        let database_url = env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/vibe_kanban".to_string());
+        let pool = PgPool::connect(&database_url).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(DBService { pool })
     }
@@ -29,7 +27,7 @@ impl DBService {
     pub async fn new_with_after_connect<F>(after_connect: F) -> Result<DBService, Error>
     where
         F: for<'a> Fn(
-                &'a mut SqliteConnection,
+                &'a mut PgConnection,
             ) -> std::pin::Pin<
                 Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>,
             > + Send
@@ -40,24 +38,21 @@ impl DBService {
         Ok(DBService { pool })
     }
 
-    async fn create_pool<F>(after_connect: Option<Arc<F>>) -> Result<Pool<Sqlite>, Error>
+    async fn create_pool<F>(after_connect: Option<Arc<F>>) -> Result<PgPool, Error>
     where
         F: for<'a> Fn(
-                &'a mut SqliteConnection,
+                &'a mut PgConnection,
             ) -> std::pin::Pin<
                 Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>,
             > + Send
             + Sync
             + 'static,
     {
-        let database_url = format!(
-            "sqlite://{}",
-            asset_dir().join("db.sqlite").to_string_lossy()
-        );
-        let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
+        let database_url = env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/vibe_kanban".to_string());
 
         let pool = if let Some(hook) = after_connect {
-            SqlitePoolOptions::new()
+            PgPoolOptions::new()
                 .after_connect(move |conn, _meta| {
                     let hook = hook.clone();
                     Box::pin(async move {
@@ -65,10 +60,10 @@ impl DBService {
                         Ok(())
                     })
                 })
-                .connect_with(options)
+                .connect(&database_url)
                 .await?
         } else {
-            SqlitePool::connect_with(options).await?
+            PgPool::connect(&database_url).await?
         };
 
         sqlx::migrate!("./migrations").run(&pool).await?;

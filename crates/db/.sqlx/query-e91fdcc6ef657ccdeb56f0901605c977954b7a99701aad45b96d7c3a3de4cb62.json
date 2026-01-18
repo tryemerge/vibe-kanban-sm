@@ -1,64 +1,66 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT id as \"id!: Uuid\", project_id as \"project_id!: Uuid\", title, description, status as \"status!: TaskStatus\", column_id as \"column_id: Uuid\", parent_workspace_id as \"parent_workspace_id: Uuid\", shared_task_id as \"shared_task_id: Uuid\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM tasks\n               WHERE id = $1",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "project_id!: Uuid",
         "ordinal": 1,
-        "type_info": "Blob"
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "title",
         "ordinal": 2,
+        "name": "title",
         "type_info": "Text"
       },
       {
-        "name": "description",
         "ordinal": 3,
+        "name": "description",
         "type_info": "Text"
       },
       {
-        "name": "status!: TaskStatus",
         "ordinal": 4,
+        "name": "status!: TaskStatus",
         "type_info": "Text"
       },
       {
-        "name": "column_id: Uuid",
         "ordinal": 5,
-        "type_info": "Blob"
+        "name": "column_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "parent_workspace_id: Uuid",
         "ordinal": 6,
-        "type_info": "Blob"
+        "name": "parent_workspace_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "shared_task_id: Uuid",
         "ordinal": 7,
-        "type_info": "Blob"
+        "name": "shared_task_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 8,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 9,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       true,

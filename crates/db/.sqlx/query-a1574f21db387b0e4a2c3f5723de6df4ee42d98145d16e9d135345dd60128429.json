@@ -1,31 +1,33 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT \n                execution_id as \"execution_id!: Uuid\",\n                logs,\n                byte_size,\n                inserted_at as \"inserted_at!: DateTime<Utc>\"\n               FROM execution_process_logs \n               WHERE execution_id = $1\n               ORDER BY inserted_at ASC",
   "describe": {
     "columns": [
       {
-        "name": "execution_id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "execution_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "logs",
         "ordinal": 1,
+        "name": "logs",
         "type_info": "Text"
       },
       {
-        "name": "byte_size",
         "ordinal": 2,
-        "type_info": "Integer"
+        "name": "byte_size",
+        "type_info": "Int4"
       },
       {
-        "name": "inserted_at!: DateTime<Utc>",
         "ordinal": 3,
-        "type_info": "Text"
+        "name": "inserted_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       false,

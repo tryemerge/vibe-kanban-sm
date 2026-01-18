@@ -2,20 +2,20 @@
 -- Provides audit trail and debugging for automation system
 
 CREATE TABLE automation_executions (
-    id              BLOB PRIMARY KEY,
-    rule_id         BLOB NOT NULL,
-    task_id         BLOB NOT NULL,
-    attempt_id      BLOB,                     -- Optional: linked task attempt if agent was run
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rule_id         UUID NOT NULL,
+    task_id         UUID NOT NULL,
+    workspace_id    UUID,                     -- Optional: linked workspace if agent was run
     status          TEXT NOT NULL DEFAULT 'pending'
                         CHECK (status IN ('pending', 'running', 'completed', 'failed', 'skipped')),
     trigger_context TEXT,                     -- JSON: what triggered this (transition details)
     result          TEXT,                     -- JSON: output or error message
-    started_at      TEXT,
-    completed_at    TEXT,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
+    started_at      TIMESTAMPTZ,
+    completed_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY (rule_id) REFERENCES automation_rules(id) ON DELETE CASCADE,
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-    FOREIGN KEY (attempt_id) REFERENCES task_attempts(id) ON DELETE SET NULL
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
 );
 
 -- Indexes for efficient queries

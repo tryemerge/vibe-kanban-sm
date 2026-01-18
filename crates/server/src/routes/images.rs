@@ -46,7 +46,7 @@ impl ImageResponse {
             file_path: markdown_path,
             original_name: image.original_name,
             mime_type: image.mime_type,
-            size_bytes: image.size_bytes,
+            size_bytes: image.size_bytes.into(),
             hash: image.hash,
             created_at: image.created_at,
             updated_at: image.updated_at,
@@ -247,7 +247,7 @@ pub async fn get_task_image_metadata(
         exists: true,
         file_name: Some(image.original_name),
         path: Some(query.path),
-        size_bytes: Some(image.size_bytes),
+        size_bytes: Some(image.size_bytes.into()),
         format,
         proxy_url: Some(proxy_url),
     })))

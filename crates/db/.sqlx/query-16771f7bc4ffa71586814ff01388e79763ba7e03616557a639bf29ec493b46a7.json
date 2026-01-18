@@ -1,0 +1,116 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE agents\n               SET name = $2, role = $3, system_prompt = $4, capabilities = $5, tools = $6,\n                   description = $7, context_files = $8, executor = $9, color = $10, start_command = $11,\n                   updated_at = NOW()\n               WHERE id = $1\n               RETURNING\n                id as \"id!: Uuid\",\n                name,\n                role,\n                system_prompt,\n                capabilities,\n                tools,\n                description,\n                context_files,\n                executor,\n                color,\n                start_command,\n                is_template as \"is_template!: bool\",\n                template_group_id,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "system_prompt",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "capabilities",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "tools",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "context_files",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "executor",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "color",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "start_command",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "is_template!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 12,
+        "name": "template_group_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "16771f7bc4ffa71586814ff01388e79763ba7e03616557a639bf29ec493b46a7"
+}

@@ -1,0 +1,74 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id as \"id!: Uuid\",\n                      rule_id as \"rule_id!: Uuid\",\n                      task_id as \"task_id!: Uuid\",\n                      workspace_id as \"workspace_id: Uuid\",\n                      status,\n                      trigger_context,\n                      result,\n                      started_at as \"started_at: DateTime<Utc>\",\n                      completed_at as \"completed_at: DateTime<Utc>\",\n                      created_at as \"created_at!: DateTime<Utc>\"\n               FROM automation_executions\n               WHERE status IN ('pending', 'running')\n               ORDER BY created_at ASC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "rule_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "trigger_context",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "result",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "started_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "completed_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "1e75bcb9a36c68a86a3c8aafecd55054dce176772d9ee1bb82a833c6ef7231ee"
+}

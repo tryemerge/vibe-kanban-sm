@@ -1,54 +1,56 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT\n                    id               as \"id!: Uuid\",\n                    execution_process_id as \"execution_process_id!: Uuid\",\n                    repo_id as \"repo_id!: Uuid\",\n                    before_head_commit,\n                    after_head_commit,\n                    merge_commit,\n                    created_at as \"created_at!: DateTime<Utc>\",\n                    updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM execution_process_repo_states\n               WHERE execution_process_id = $1\n               ORDER BY created_at ASC",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "execution_process_id!: Uuid",
         "ordinal": 1,
-        "type_info": "Blob"
+        "name": "execution_process_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "repo_id!: Uuid",
         "ordinal": 2,
-        "type_info": "Blob"
+        "name": "repo_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "before_head_commit",
         "ordinal": 3,
+        "name": "before_head_commit",
         "type_info": "Text"
       },
       {
-        "name": "after_head_commit",
         "ordinal": 4,
+        "name": "after_head_commit",
         "type_info": "Text"
       },
       {
-        "name": "merge_commit",
         "ordinal": 5,
+        "name": "merge_commit",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 6,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 7,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       true,

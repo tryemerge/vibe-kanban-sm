@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool, Type};
+use sqlx::{FromRow, PgPool, Type};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -12,6 +12,17 @@ pub enum MergeStatus {
     Merged,
     Closed,
     Unknown,
+}
+
+impl std::fmt::Display for MergeStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MergeStatus::Open => write!(f, "open"),
+            MergeStatus::Merged => write!(f, "merged"),
+            MergeStatus::Closed => write!(f, "closed"),
+            MergeStatus::Unknown => write!(f, "unknown"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -44,7 +55,7 @@ pub struct PrMerge {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct PullRequestInfo {
-    pub number: i64,
+    pub number: i32,
     pub url: String,
     pub status: MergeStatus,
     pub merged_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -66,7 +77,7 @@ struct MergeRow {
     merge_type: MergeType,
     merge_commit: Option<String>,
     target_branch_name: String,
-    pr_number: Option<i64>,
+    pr_number: Option<i32>,
     pr_url: Option<String>,
     pr_status: Option<MergeStatus>,
     pr_merged_at: Option<DateTime<Utc>>,
@@ -84,7 +95,7 @@ impl Merge {
 
     /// Create a direct merge record
     pub async fn create_direct(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
         repo_id: Uuid,
         target_branch_name: &str,
@@ -125,11 +136,11 @@ impl Merge {
     }
     /// Create a new PR record (when PR is opened)
     pub async fn create_pr(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
         repo_id: Uuid,
         target_branch_name: &str,
-        pr_number: i64,
+        pr_number: i32,
         pr_url: &str,
     ) -> Result<PrMerge, sqlx::Error> {
         let id = Uuid::new_v4();
@@ -168,7 +179,7 @@ impl Merge {
     }
 
     /// Get all open PRs for monitoring
-    pub async fn get_open_prs(pool: &SqlitePool) -> Result<Vec<PrMerge>, sqlx::Error> {
+    pub async fn get_open_prs(pool: &PgPool) -> Result<Vec<PrMerge>, sqlx::Error> {
         let rows = sqlx::query_as!(
             MergeRow,
             r#"SELECT
@@ -196,16 +207,17 @@ impl Merge {
 
     /// Update PR status for a workspace
     pub async fn update_status(
-        pool: &SqlitePool,
+        pool: &PgPool,
         merge_id: Uuid,
         pr_status: MergeStatus,
         merge_commit_sha: Option<String>,
     ) -> Result<(), sqlx::Error> {
-        let merged_at = if matches!(pr_status, MergeStatus::Merged) {
+        let merged_at: Option<DateTime<Utc>> = if matches!(pr_status, MergeStatus::Merged) {
             Some(Utc::now())
         } else {
             None
         };
+        let pr_status_str = pr_status.to_string();
 
         sqlx::query!(
             r#"UPDATE merges
@@ -213,7 +225,7 @@ impl Merge {
                 pr_merge_commit_sha = $2,
                 pr_merged_at = $3
             WHERE id = $4"#,
-            pr_status,
+            pr_status_str,
             merge_commit_sha,
             merged_at,
             merge_id
@@ -225,7 +237,7 @@ impl Merge {
     }
     /// Find all merges for a workspace (returns both direct and PR merges)
     pub async fn find_by_workspace_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         // Get raw data from database
@@ -258,7 +270,7 @@ impl Merge {
 
     /// Find all merges for a workspace and specific repo
     pub async fn find_by_workspace_and_repo_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
         repo_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {

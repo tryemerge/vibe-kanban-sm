@@ -2,69 +2,69 @@
 -- Creates standard Kanban columns and migrates existing task statuses
 
 -- For each existing project, create default columns
--- We use a CTE to generate UUIDs via randomblob
+-- Generate UUIDs for new columns
 INSERT INTO kanban_columns (id, project_id, name, slug, position, color, is_initial, is_terminal)
 SELECT
-    randomblob(16),
+    gen_random_uuid(),
     p.id,
     'Backlog',
     'backlog',
     0,
     '#6b7280',  -- gray
-    1,          -- is_initial
-    0
+    TRUE,       -- is_initial
+    FALSE
 FROM projects p
 WHERE NOT EXISTS (SELECT 1 FROM kanban_columns kc WHERE kc.project_id = p.id);
 
 INSERT INTO kanban_columns (id, project_id, name, slug, position, color, is_initial, is_terminal)
 SELECT
-    randomblob(16),
+    gen_random_uuid(),
     p.id,
     'In Progress',
     'in_progress',
     1,
     '#3b82f6',  -- blue
-    0,
-    0
+    FALSE,
+    FALSE
 FROM projects p
 WHERE EXISTS (SELECT 1 FROM kanban_columns kc WHERE kc.project_id = p.id AND kc.slug = 'backlog');
 
 INSERT INTO kanban_columns (id, project_id, name, slug, position, color, is_initial, is_terminal)
 SELECT
-    randomblob(16),
+    gen_random_uuid(),
     p.id,
     'In Review',
     'in_review',
     2,
     '#8b5cf6',  -- purple
-    0,
-    0
+    FALSE,
+    FALSE
 FROM projects p
 WHERE EXISTS (SELECT 1 FROM kanban_columns kc WHERE kc.project_id = p.id AND kc.slug = 'backlog');
 
 INSERT INTO kanban_columns (id, project_id, name, slug, position, color, is_initial, is_terminal)
 SELECT
-    randomblob(16),
+    gen_random_uuid(),
     p.id,
     'Done',
     'done',
     3,
     '#22c55e',  -- green
-    0,
-    1           -- is_terminal
+    FALSE,
+    TRUE        -- is_terminal
 FROM projects p
 WHERE EXISTS (SELECT 1 FROM kanban_columns kc WHERE kc.project_id = p.id AND kc.slug = 'backlog');
 
 INSERT INTO kanban_columns (id, project_id, name, slug, position, color, is_initial, is_terminal)
 SELECT
-    randomblob(16),
+    gen_random_uuid(),
     p.id,
     'Cancelled',
     'cancelled',
     4,
     '#ef4444',  -- red
-    0,
-    1           -- is_terminal
+    FALSE,
+    TRUE        -- is_terminal
 FROM projects p
 WHERE EXISTS (SELECT 1 FROM kanban_columns kc WHERE kc.project_id = p.id AND kc.slug = 'backlog');
 
@@ -88,33 +88,33 @@ WHERE tasks.column_id IS NULL;
 -- Create default transitions (all moves allowed except from terminal states)
 -- From Backlog
 INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, name)
-SELECT randomblob(16), p.id, f.id, t.id, 'Start Work'
+SELECT gen_random_uuid(), p.id, f.id, t.id, 'Start Work'
 FROM projects p
 JOIN kanban_columns f ON f.project_id = p.id AND f.slug = 'backlog'
 JOIN kanban_columns t ON t.project_id = p.id AND t.slug = 'in_progress';
 
 -- From In Progress
 INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, name)
-SELECT randomblob(16), p.id, f.id, t.id, 'Request Review'
+SELECT gen_random_uuid(), p.id, f.id, t.id, 'Request Review'
 FROM projects p
 JOIN kanban_columns f ON f.project_id = p.id AND f.slug = 'in_progress'
 JOIN kanban_columns t ON t.project_id = p.id AND t.slug = 'in_review';
 
 INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, name)
-SELECT randomblob(16), p.id, f.id, t.id, 'Cancel'
+SELECT gen_random_uuid(), p.id, f.id, t.id, 'Cancel'
 FROM projects p
 JOIN kanban_columns f ON f.project_id = p.id AND f.slug = 'in_progress'
 JOIN kanban_columns t ON t.project_id = p.id AND t.slug = 'cancelled';
 
 -- From In Review
 INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, name)
-SELECT randomblob(16), p.id, f.id, t.id, 'Needs Changes'
+SELECT gen_random_uuid(), p.id, f.id, t.id, 'Needs Changes'
 FROM projects p
 JOIN kanban_columns f ON f.project_id = p.id AND f.slug = 'in_review'
 JOIN kanban_columns t ON t.project_id = p.id AND t.slug = 'in_progress';
 
 INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, name)
-SELECT randomblob(16), p.id, f.id, t.id, 'Approve'
+SELECT gen_random_uuid(), p.id, f.id, t.id, 'Approve'
 FROM projects p
 JOIN kanban_columns f ON f.project_id = p.id AND f.slug = 'in_review'
 JOIN kanban_columns t ON t.project_id = p.id AND t.slug = 'done';

@@ -3,18 +3,18 @@
 
 -- Create the unified drafts table
 CREATE TABLE IF NOT EXISTS drafts (
-    id                TEXT PRIMARY KEY,
-    task_attempt_id   TEXT NOT NULL,
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_attempt_id   UUID NOT NULL,
     draft_type        TEXT NOT NULL CHECK(draft_type IN ('follow_up', 'retry')),
-    retry_process_id  TEXT NULL, -- Only used for retry drafts
+    retry_process_id  UUID NULL, -- Only used for retry drafts
     prompt            TEXT NOT NULL DEFAULT '',
     queued            INTEGER NOT NULL DEFAULT 0,
     sending           INTEGER NOT NULL DEFAULT 0,
     version           INTEGER NOT NULL DEFAULT 0,
     variant           TEXT NULL,
     image_ids         TEXT NULL, -- JSON array of UUID strings
-    created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY(task_attempt_id) REFERENCES task_attempts(id) ON DELETE CASCADE,
     FOREIGN KEY(retry_process_id) REFERENCES execution_processes(id) ON DELETE CASCADE,
     -- Unique constraint: only one draft per task_attempt_id and draft_type
@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_drafts_draft_type
 CREATE INDEX IF NOT EXISTS idx_drafts_queued_sending
     ON drafts(queued, sending) WHERE queued = 1;
 
--- Migrate existing follow_up_drafts
+-- Migrate existing follow_up_drafts (if table exists)
 INSERT INTO drafts (
     id, task_attempt_id, draft_type, retry_process_id, prompt,
     queued, sending, version, variant, image_ids, created_at, updated_at
@@ -39,15 +39,24 @@ INSERT INTO drafts (
 SELECT
     id, task_attempt_id, 'follow_up', NULL, prompt,
     queued, sending, version, variant, image_ids, created_at, updated_at
-FROM follow_up_drafts;
+FROM follow_up_drafts
+ON CONFLICT DO NOTHING;
 
 -- Drop old tables
 DROP TABLE IF EXISTS follow_up_drafts;
 
--- Create trigger to keep updated_at current
-CREATE TRIGGER IF NOT EXISTS trg_drafts_updated_at
-AFTER UPDATE ON drafts
-FOR EACH ROW
+-- PostgreSQL trigger function for updated_at
+CREATE OR REPLACE FUNCTION update_drafts_updated_at()
+RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE drafts SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+    NEW.updated_at = NOW();
+    RETURN NEW;
 END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger to keep updated_at current
+DROP TRIGGER IF EXISTS trg_drafts_updated_at ON drafts;
+CREATE TRIGGER trg_drafts_updated_at
+    BEFORE UPDATE ON drafts
+    FOR EACH ROW
+    EXECUTE FUNCTION update_drafts_updated_at();

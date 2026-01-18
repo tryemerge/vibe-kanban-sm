@@ -2,13 +2,13 @@
 -- This is the state machine that controls workflow
 
 CREATE TABLE state_transitions (
-    id                    BLOB PRIMARY KEY,
-    project_id            BLOB NOT NULL,
-    from_column_id        BLOB NOT NULL,
-    to_column_id          BLOB NOT NULL,
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id            UUID NOT NULL,
+    from_column_id        UUID NOT NULL,
+    to_column_id          UUID NOT NULL,
     name                  TEXT,                       -- Optional: "Start Work", "Request Review"
     requires_confirmation INTEGER NOT NULL DEFAULT 0, -- Show confirmation dialog (boolean)
-    created_at            TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (from_column_id) REFERENCES kanban_columns(id) ON DELETE CASCADE,
     FOREIGN KEY (to_column_id) REFERENCES kanban_columns(id) ON DELETE CASCADE,

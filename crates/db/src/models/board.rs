@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -45,7 +45,7 @@ pub struct UpdateBoard {
 
 impl Board {
     /// Find all non-template boards
-    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_all(pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Board,
             r#"SELECT id as "id!: Uuid",
@@ -67,7 +67,7 @@ impl Board {
     }
 
     /// Find all template boards for the template gallery
-    pub async fn find_templates(pool: &SqlitePool) -> Result<Vec<TemplateInfo>, sqlx::Error> {
+    pub async fn find_templates(pool: &PgPool) -> Result<Vec<TemplateInfo>, sqlx::Error> {
         sqlx::query_as!(
             TemplateInfo,
             r#"SELECT id as "id!: Uuid",
@@ -84,7 +84,7 @@ impl Board {
     }
 
     /// Find a board by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Board,
             r#"SELECT id as "id!: Uuid",
@@ -106,7 +106,7 @@ impl Board {
     }
 
     /// Create a new board
-    pub async fn create(pool: &SqlitePool, data: &CreateBoard) -> Result<Self, sqlx::Error> {
+    pub async fn create(pool: &PgPool, data: &CreateBoard) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
 
         sqlx::query_as!(
@@ -133,7 +133,7 @@ impl Board {
 
     /// Update a board
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         data: &UpdateBoard,
     ) -> Result<Self, sqlx::Error> {
@@ -147,7 +147,7 @@ impl Board {
         sqlx::query_as!(
             Board,
             r#"UPDATE boards
-               SET name = $2, description = $3, updated_at = datetime('now', 'subsec')
+               SET name = $2, description = $3, updated_at = NOW()
                WHERE id = $1
                RETURNING id as "id!: Uuid",
                          name,
@@ -168,8 +168,8 @@ impl Board {
     }
 
     /// Delete a board
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result: sqlx::sqlite::SqliteQueryResult =
+    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
+        let result: sqlx::postgres::PgQueryResult =
             sqlx::query!("DELETE FROM boards WHERE id = $1", id)
                 .execute(pool)
                 .await?;

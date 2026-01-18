@@ -1,19 +1,25 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT COUNT(*) as \"count!: i64\"\n               FROM state_transitions\n               WHERE from_column_id = $1 AND to_column_id = $2\n                 AND (task_id = $3\n                      OR (project_id = $4 AND task_id IS NULL)\n                      OR (board_id = $5 AND project_id IS NULL AND task_id IS NULL))",
   "describe": {
     "columns": [
       {
-        "name": "count!: i64",
         "ordinal": 0,
-        "type_info": "Integer"
+        "name": "count!: i64",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
-      "Right": 5
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
     },
     "nullable": [
-      false
+      null
     ]
   },
   "hash": "f91250886dc0273fbdd6e93cfe0c0b39ad79b18e7e7c5c7078c6138d363d5f08"

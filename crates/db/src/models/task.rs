@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, SqlitePool, Type};
+use sqlx::{Executor, FromRow, Postgres, PgPool, Type};
 use strum_macros::{Display, EnumString};
 use ts_rs::TS;
 use uuid::Uuid;
@@ -136,12 +136,12 @@ impl Task {
         }
     }
 
-    pub async fn parent_project(&self, pool: &SqlitePool) -> Result<Option<Project>, sqlx::Error> {
+    pub async fn parent_project(&self, pool: &PgPool) -> Result<Option<Project>, sqlx::Error> {
         Project::find_by_id(pool, self.project_id).await
     }
 
     pub async fn find_by_project_id_with_attempt_status(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<TaskWithAttemptStatus>, sqlx::Error> {
         let records = sqlx::query!(
@@ -228,7 +228,7 @@ ORDER BY t.created_at DESC"#,
         Ok(tasks)
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
             r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
@@ -241,7 +241,7 @@ ORDER BY t.created_at DESC"#,
     }
 
     /// Check if a task has an in-progress attempt (running execution process)
-    pub async fn has_active_attempt(pool: &SqlitePool, task_id: Uuid) -> Result<bool, sqlx::Error> {
+    pub async fn has_active_attempt(pool: &PgPool, task_id: Uuid) -> Result<bool, sqlx::Error> {
         let result = sqlx::query_scalar!(
             r#"SELECT EXISTS (
                 SELECT 1
@@ -260,12 +260,17 @@ ORDER BY t.created_at DESC"#,
         Ok(result)
     }
 
-    pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
+    /// Find task by row number (for Electric sync compatibility)
+    /// Note: PostgreSQL doesn't have rowid, so we use a subquery with row_number
+    pub async fn find_by_rowid(pool: &PgPool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
             r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
-               FROM tasks
-               WHERE rowid = $1"#,
+               FROM (
+                   SELECT *, ROW_NUMBER() OVER (ORDER BY created_at) as rn
+                   FROM tasks
+               ) sub
+               WHERE rn = $1"#,
             rowid
         )
         .fetch_optional(pool)
@@ -277,7 +282,7 @@ ORDER BY t.created_at DESC"#,
         shared_task_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         sqlx::query_as!(
             Task,
@@ -291,7 +296,7 @@ ORDER BY t.created_at DESC"#,
         .await
     }
 
-    pub async fn find_all_shared(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_all_shared(pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
             r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
@@ -303,11 +308,12 @@ ORDER BY t.created_at DESC"#,
     }
 
     pub async fn create(
-        pool: &SqlitePool,
+        pool: &PgPool,
         data: &CreateTask,
         task_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
         let status = data.status.clone().unwrap_or_default();
+        let status_str = status.to_string();
         sqlx::query_as!(
             Task,
             r#"INSERT INTO tasks (id, project_id, title, description, status, column_id, parent_workspace_id, shared_task_id)
@@ -317,7 +323,7 @@ ORDER BY t.created_at DESC"#,
             data.project_id,
             data.title,
             data.description,
-            status,
+            status_str,
             data.column_id,
             data.parent_workspace_id,
             data.shared_task_id
@@ -327,7 +333,7 @@ ORDER BY t.created_at DESC"#,
     }
 
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         project_id: Uuid,
         title: String,
@@ -336,6 +342,7 @@ ORDER BY t.created_at DESC"#,
         column_id: Option<Uuid>,
         parent_workspace_id: Option<Uuid>,
     ) -> Result<Self, sqlx::Error> {
+        let status_str = status.to_string();
         sqlx::query_as!(
             Task,
             r#"UPDATE tasks
@@ -346,7 +353,7 @@ ORDER BY t.created_at DESC"#,
             project_id,
             title,
             description,
-            status,
+            status_str,
             column_id,
             parent_workspace_id
         )
@@ -355,14 +362,15 @@ ORDER BY t.created_at DESC"#,
     }
 
     pub async fn update_status(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         status: TaskStatus,
     ) -> Result<(), sqlx::Error> {
+        let status_str = status.to_string();
         sqlx::query!(
             "UPDATE tasks SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             id,
-            status
+            status_str
         )
         .execute(pool)
         .await?;
@@ -371,7 +379,7 @@ ORDER BY t.created_at DESC"#,
 
     /// Update the column_id field for a task (move to a different column)
     pub async fn update_column_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
         column_id: Option<Uuid>,
     ) -> Result<(), sqlx::Error> {
@@ -387,7 +395,7 @@ ORDER BY t.created_at DESC"#,
 
     /// Update the parent_workspace_id field for a task
     pub async fn update_parent_workspace_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
         parent_workspace_id: Option<Uuid>,
     ) -> Result<(), sqlx::Error> {
@@ -408,7 +416,7 @@ ORDER BY t.created_at DESC"#,
         workspace_id: Uuid,
     ) -> Result<u64, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let result = sqlx::query!(
             "UPDATE tasks SET parent_workspace_id = NULL WHERE parent_workspace_id = $1",
@@ -426,7 +434,7 @@ ORDER BY t.created_at DESC"#,
         remote_project_id: Uuid,
     ) -> Result<u64, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let result = sqlx::query!(
             r#"UPDATE tasks
@@ -443,7 +451,7 @@ ORDER BY t.created_at DESC"#,
 
     pub async fn delete<'e, E>(executor: E, id: Uuid) -> Result<u64, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
             .execute(executor)
@@ -457,7 +465,7 @@ ORDER BY t.created_at DESC"#,
         shared_task_id: Option<Uuid>,
     ) -> Result<(), sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         sqlx::query!(
             "UPDATE tasks SET shared_task_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
@@ -474,7 +482,7 @@ ORDER BY t.created_at DESC"#,
         shared_task_ids: &[Uuid],
     ) -> Result<u64, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         if shared_task_ids.is_empty() {
             return Ok(0);
@@ -495,7 +503,7 @@ ORDER BY t.created_at DESC"#,
     }
 
     pub async fn find_children_by_workspace_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         // Find only child tasks that have this workspace as their parent
@@ -512,7 +520,7 @@ ORDER BY t.created_at DESC"#,
     }
 
     pub async fn find_relationships_for_workspace(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace: &Workspace,
     ) -> Result<TaskRelationships, sqlx::Error> {
         // 1. Get the current task (task that owns this workspace)

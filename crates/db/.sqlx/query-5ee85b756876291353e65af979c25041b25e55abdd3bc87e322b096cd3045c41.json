@@ -1,10 +1,13 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "DELETE FROM project_repos WHERE project_id = $1 AND repo_id = $2",
   "describe": {
     "columns": [],
     "parameters": {
-      "Right": 2
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
     },
     "nullable": []
   },

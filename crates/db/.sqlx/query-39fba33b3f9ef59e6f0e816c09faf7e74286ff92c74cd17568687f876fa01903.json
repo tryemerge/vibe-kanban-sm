@@ -1,89 +1,91 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT\n                id as \"id!: Uuid\",\n                name,\n                role,\n                system_prompt,\n                capabilities,\n                tools,\n                description,\n                context_files,\n                executor,\n                color,\n                start_command,\n                is_template as \"is_template!: bool\",\n                template_group_id,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM agents\n               WHERE template_group_id = $1\n               ORDER BY created_at ASC",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "name",
         "ordinal": 1,
+        "name": "name",
         "type_info": "Text"
       },
       {
-        "name": "role",
         "ordinal": 2,
+        "name": "role",
         "type_info": "Text"
       },
       {
-        "name": "system_prompt",
         "ordinal": 3,
+        "name": "system_prompt",
         "type_info": "Text"
       },
       {
-        "name": "capabilities",
         "ordinal": 4,
+        "name": "capabilities",
         "type_info": "Text"
       },
       {
-        "name": "tools",
         "ordinal": 5,
+        "name": "tools",
         "type_info": "Text"
       },
       {
-        "name": "description",
         "ordinal": 6,
+        "name": "description",
         "type_info": "Text"
       },
       {
-        "name": "context_files",
         "ordinal": 7,
+        "name": "context_files",
         "type_info": "Text"
       },
       {
-        "name": "executor",
         "ordinal": 8,
+        "name": "executor",
         "type_info": "Text"
       },
       {
-        "name": "color",
         "ordinal": 9,
+        "name": "color",
         "type_info": "Text"
       },
       {
-        "name": "start_command",
         "ordinal": 10,
+        "name": "start_command",
         "type_info": "Text"
       },
       {
-        "name": "is_template!: bool",
         "ordinal": 11,
+        "name": "is_template!: bool",
         "type_info": "Bool"
       },
       {
-        "name": "template_group_id",
         "ordinal": 12,
+        "name": "template_group_id",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 13,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
         "ordinal": 14,
-        "type_info": "Text"
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Text"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       false,

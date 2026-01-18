@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
+use sqlx::{Executor, FromRow, Postgres, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -187,7 +187,7 @@ impl AutomationRule {
 
     /// Find all rules for a project
     pub async fn find_by_project(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -214,7 +214,7 @@ impl AutomationRule {
 
     /// Find all rules with column names for UI display
     pub async fn find_by_project_with_columns(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<AutomationRuleWithColumn>, sqlx::Error> {
         sqlx::query_as!(
@@ -243,7 +243,7 @@ impl AutomationRule {
 
     /// Find enabled rules for a column and trigger type (used when task moves)
     pub async fn find_triggered_rules(
-        pool: &SqlitePool,
+        pool: &PgPool,
         column_id: Uuid,
         trigger_type: TriggerType,
     ) -> Result<Vec<Self>, sqlx::Error> {
@@ -262,7 +262,7 @@ impl AutomationRule {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM automation_rules
-               WHERE column_id = $1 AND trigger_type = $2 AND enabled = 1
+               WHERE column_id = $1 AND trigger_type = $2 AND enabled = true
                ORDER BY priority ASC"#,
             column_id,
             trigger_str
@@ -272,7 +272,7 @@ impl AutomationRule {
     }
 
     /// Find a rule by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             AutomationRule,
             r#"SELECT id as "id!: Uuid",
@@ -301,13 +301,13 @@ impl AutomationRule {
         data: &CreateAutomationRule,
     ) -> Result<Self, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let id = Uuid::new_v4();
         let trigger_type = data.trigger_type.as_str();
         let action_type = data.action_type.as_str();
         let action_config = data.action_config.to_string();
-        let enabled = data.enabled.unwrap_or(true);
+        let enabled: bool = data.enabled.unwrap_or(true);
         let priority = data.priority.unwrap_or(0);
 
         sqlx::query_as!(
@@ -341,7 +341,7 @@ impl AutomationRule {
 
     /// Update an automation rule
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         data: &UpdateAutomationRule,
     ) -> Result<Self, sqlx::Error> {
@@ -364,7 +364,7 @@ impl AutomationRule {
             .as_ref()
             .map(|c| c.to_string())
             .unwrap_or(existing.action_config);
-        let enabled = data.enabled.unwrap_or(existing.enabled);
+        let enabled: bool = data.enabled.unwrap_or(existing.enabled);
         let priority = data.priority.unwrap_or(existing.priority);
         let name = data.name.clone().or(existing.name);
 
@@ -372,7 +372,7 @@ impl AutomationRule {
             AutomationRule,
             r#"UPDATE automation_rules
                SET trigger_type = $2, action_type = $3, action_config = $4, enabled = $5, priority = $6, name = $7,
-                   updated_at = datetime('now', 'subsec')
+                   updated_at = NOW()
                WHERE id = $1
                RETURNING id as "id!: Uuid",
                          project_id as "project_id!: Uuid",
@@ -399,13 +399,13 @@ impl AutomationRule {
 
     /// Toggle enabled state
     pub async fn set_enabled(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         enabled: bool,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"UPDATE automation_rules
-               SET enabled = $2, updated_at = datetime('now', 'subsec')
+               SET enabled = $2, updated_at = NOW()
                WHERE id = $1"#,
             id,
             enabled
@@ -416,8 +416,8 @@ impl AutomationRule {
     }
 
     /// Delete a rule
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result: sqlx::sqlite::SqliteQueryResult =
+    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
+        let result: sqlx::postgres::PgQueryResult =
             sqlx::query!("DELETE FROM automation_rules WHERE id = $1", id)
                 .execute(pool)
                 .await?;

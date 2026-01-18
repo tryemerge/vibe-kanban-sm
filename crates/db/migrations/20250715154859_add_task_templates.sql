@@ -1,12 +1,12 @@
 -- Add task templates tables
 CREATE TABLE task_templates (
-    id            BLOB PRIMARY KEY,
-    project_id    BLOB,  -- NULL for global templates
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id    UUID,  -- NULL for global templates
     title         TEXT NOT NULL,
     description   TEXT,
     template_name TEXT NOT NULL,  -- Display name for the template
-    created_at    TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
-    updated_at    TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
+use sqlx::{Executor, FromRow, Postgres, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -55,7 +55,7 @@ pub struct AutomationExecution {
     pub id: Uuid,
     pub rule_id: Uuid,
     pub task_id: Uuid,
-    pub attempt_id: Option<Uuid>,
+    pub workspace_id: Option<Uuid>,
     pub status: String,
     pub trigger_context: Option<String>,
     pub result: Option<String>,
@@ -74,7 +74,7 @@ pub struct AutomationExecutionWithDetails {
     pub action_type: String,
     pub task_id: Uuid,
     pub task_title: String,
-    pub attempt_id: Option<Uuid>,
+    pub workspace_id: Option<Uuid>,
     pub status: String,
     pub trigger_context: Option<String>,
     pub result: Option<String>,
@@ -106,7 +106,7 @@ impl AutomationExecution {
 
     /// Find all executions for a task
     pub async fn find_by_task(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -114,7 +114,7 @@ impl AutomationExecution {
             r#"SELECT id as "id!: Uuid",
                       rule_id as "rule_id!: Uuid",
                       task_id as "task_id!: Uuid",
-                      attempt_id as "attempt_id: Uuid",
+                      workspace_id as "workspace_id: Uuid",
                       status,
                       trigger_context,
                       result,
@@ -132,7 +132,7 @@ impl AutomationExecution {
 
     /// Find all executions with details for UI display
     pub async fn find_by_task_with_details(
-        pool: &SqlitePool,
+        pool: &PgPool,
         task_id: Uuid,
     ) -> Result<Vec<AutomationExecutionWithDetails>, sqlx::Error> {
         sqlx::query_as!(
@@ -143,7 +143,7 @@ impl AutomationExecution {
                       ar.action_type,
                       ae.task_id as "task_id!: Uuid",
                       t.title as "task_title!",
-                      ae.attempt_id as "attempt_id: Uuid",
+                      ae.workspace_id as "workspace_id: Uuid",
                       ae.status,
                       ae.trigger_context,
                       ae.result,
@@ -162,13 +162,13 @@ impl AutomationExecution {
     }
 
     /// Find pending or running executions
-    pub async fn find_active(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_active(pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             AutomationExecution,
             r#"SELECT id as "id!: Uuid",
                       rule_id as "rule_id!: Uuid",
                       task_id as "task_id!: Uuid",
-                      attempt_id as "attempt_id: Uuid",
+                      workspace_id as "workspace_id: Uuid",
                       status,
                       trigger_context,
                       result,
@@ -184,13 +184,13 @@ impl AutomationExecution {
     }
 
     /// Find by ID
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             AutomationExecution,
             r#"SELECT id as "id!: Uuid",
                       rule_id as "rule_id!: Uuid",
                       task_id as "task_id!: Uuid",
-                      attempt_id as "attempt_id: Uuid",
+                      workspace_id as "workspace_id: Uuid",
                       status,
                       trigger_context,
                       result,
@@ -213,7 +213,7 @@ impl AutomationExecution {
         trigger_context: Option<&TriggerContext>,
     ) -> Result<Self, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         let id = Uuid::new_v4();
         let trigger_json = trigger_context.map(|c| serde_json::to_string(c).unwrap());
@@ -225,7 +225,7 @@ impl AutomationExecution {
                RETURNING id as "id!: Uuid",
                          rule_id as "rule_id!: Uuid",
                          task_id as "task_id!: Uuid",
-                         attempt_id as "attempt_id: Uuid",
+                         workspace_id as "workspace_id: Uuid",
                          status,
                          trigger_context,
                          result,
@@ -242,10 +242,10 @@ impl AutomationExecution {
     }
 
     /// Mark execution as running
-    pub async fn start(pool: &SqlitePool, id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn start(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"UPDATE automation_executions
-               SET status = 'running', started_at = datetime('now', 'subsec')
+               SET status = 'running', started_at = NOW()
                WHERE id = $1"#,
             id
         )
@@ -256,19 +256,19 @@ impl AutomationExecution {
 
     /// Mark execution as completed
     pub async fn complete(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         result: Option<serde_json::Value>,
-        attempt_id: Option<Uuid>,
+        workspace_id: Option<Uuid>,
     ) -> Result<(), sqlx::Error> {
         let result_json = result.map(|r| r.to_string());
         sqlx::query!(
             r#"UPDATE automation_executions
-               SET status = 'completed', result = $2, attempt_id = $3, completed_at = datetime('now', 'subsec')
+               SET status = 'completed', result = $2, workspace_id = $3, completed_at = NOW()
                WHERE id = $1"#,
             id,
             result_json,
-            attempt_id
+            workspace_id
         )
         .execute(pool)
         .await?;
@@ -277,14 +277,14 @@ impl AutomationExecution {
 
     /// Mark execution as failed
     pub async fn fail(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         error: &str,
     ) -> Result<(), sqlx::Error> {
         let error_json = serde_json::json!({ "error": error }).to_string();
         sqlx::query!(
             r#"UPDATE automation_executions
-               SET status = 'failed', result = $2, completed_at = datetime('now', 'subsec')
+               SET status = 'failed', result = $2, completed_at = NOW()
                WHERE id = $1"#,
             id,
             error_json
@@ -296,14 +296,14 @@ impl AutomationExecution {
 
     /// Mark execution as skipped
     pub async fn skip(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         reason: &str,
     ) -> Result<(), sqlx::Error> {
         let reason_json = serde_json::json!({ "skipped": reason }).to_string();
         sqlx::query!(
             r#"UPDATE automation_executions
-               SET status = 'skipped', result = $2, completed_at = datetime('now', 'subsec')
+               SET status = 'skipped', result = $2, completed_at = NOW()
                WHERE id = $1"#,
             id,
             reason_json

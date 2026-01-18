@@ -5,7 +5,7 @@ use db::{
         task::{CreateTask, Task, TaskStatus},
     },
 };
-use remote::routes::tasks::{
+use super::super::remote_types::{
     AssignSharedTaskRequest, CreateSharedTaskRequest, SharedTaskResponse, UpdateSharedTaskRequest,
 };
 use uuid::Uuid;

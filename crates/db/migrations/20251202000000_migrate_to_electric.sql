@@ -4,7 +4,7 @@ DROP TABLE IF EXISTS shared_activity_cursors;
 DROP INDEX IF EXISTS idx_tasks_shared_task_unique;
 
 -- Add new column to hold the data
-ALTER TABLE tasks ADD COLUMN shared_task_id_new BLOB;
+ALTER TABLE tasks ADD COLUMN shared_task_id_new UUID;
 
 -- Migrate data
 UPDATE tasks SET shared_task_id_new = shared_task_id;

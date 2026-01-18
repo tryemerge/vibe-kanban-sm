@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id as \"id!: Uuid\",\n                      rule_id as \"rule_id!: Uuid\",\n                      task_id as \"task_id!: Uuid\",\n                      workspace_id as \"workspace_id: Uuid\",\n                      status,\n                      trigger_context,\n                      result,\n                      started_at as \"started_at: DateTime<Utc>\",\n                      completed_at as \"completed_at: DateTime<Utc>\",\n                      created_at as \"created_at!: DateTime<Utc>\"\n               FROM automation_executions\n               WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "rule_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "trigger_context",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "result",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "started_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "completed_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "5e51515e0bbaed1b41b2959a50afd3aa83c37062f9bbdf1abc28ee5e7a9fd6f0"
+}

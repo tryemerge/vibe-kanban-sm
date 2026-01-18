@@ -1,114 +1,116 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT\n                e.id as \"id!: Uuid\",\n                e.task_id as \"task_id!: Uuid\",\n                e.event_type as \"event_type!: TaskEventType\",\n                e.from_column_id as \"from_column_id: Uuid\",\n                e.to_column_id as \"to_column_id: Uuid\",\n                e.workspace_id as \"workspace_id: Uuid\",\n                e.session_id as \"session_id: Uuid\",\n                e.executor,\n                e.automation_rule_id as \"automation_rule_id: Uuid\",\n                e.trigger_type as \"trigger_type: EventTriggerType\",\n                e.commit_hash,\n                e.commit_message,\n                e.metadata as \"metadata: JsonValue\",\n                e.actor_type as \"actor_type!: ActorType\",\n                e.actor_id,\n                e.created_at as \"created_at!: DateTime<Utc>\",\n                fc.name as \"from_column_name?\",\n                tc.name as \"to_column_name?\",\n                a.name as \"agent_name?\",\n                a.color as \"agent_color?\"\n            FROM task_events e\n            LEFT JOIN kanban_columns fc ON e.from_column_id = fc.id\n            LEFT JOIN kanban_columns tc ON e.to_column_id = tc.id\n            LEFT JOIN agents a ON tc.agent_id = a.id\n            WHERE e.task_id = $1\n            ORDER BY e.created_at DESC",
   "describe": {
     "columns": [
       {
-        "name": "id!: Uuid",
         "ordinal": 0,
-        "type_info": "Blob"
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "task_id!: Uuid",
         "ordinal": 1,
-        "type_info": "Blob"
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "event_type!: TaskEventType",
         "ordinal": 2,
+        "name": "event_type!: TaskEventType",
         "type_info": "Text"
       },
       {
-        "name": "from_column_id: Uuid",
         "ordinal": 3,
-        "type_info": "Blob"
+        "name": "from_column_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "to_column_id: Uuid",
         "ordinal": 4,
-        "type_info": "Blob"
+        "name": "to_column_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "workspace_id: Uuid",
         "ordinal": 5,
-        "type_info": "Blob"
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "session_id: Uuid",
         "ordinal": 6,
-        "type_info": "Blob"
+        "name": "session_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "executor",
         "ordinal": 7,
+        "name": "executor",
         "type_info": "Text"
       },
       {
-        "name": "automation_rule_id: Uuid",
         "ordinal": 8,
-        "type_info": "Blob"
+        "name": "automation_rule_id: Uuid",
+        "type_info": "Uuid"
       },
       {
-        "name": "trigger_type: EventTriggerType",
         "ordinal": 9,
+        "name": "trigger_type: EventTriggerType",
         "type_info": "Text"
       },
       {
-        "name": "commit_hash",
         "ordinal": 10,
+        "name": "commit_hash",
         "type_info": "Text"
       },
       {
-        "name": "commit_message",
         "ordinal": 11,
+        "name": "commit_message",
         "type_info": "Text"
       },
       {
-        "name": "metadata: JsonValue",
         "ordinal": 12,
+        "name": "metadata: JsonValue",
         "type_info": "Text"
       },
       {
-        "name": "actor_type!: ActorType",
         "ordinal": 13,
+        "name": "actor_type!: ActorType",
         "type_info": "Text"
       },
       {
-        "name": "actor_id",
         "ordinal": 14,
+        "name": "actor_id",
         "type_info": "Text"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
         "ordinal": 15,
-        "type_info": "Text"
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
       },
       {
-        "name": "from_column_name?",
         "ordinal": 16,
+        "name": "from_column_name?",
         "type_info": "Text"
       },
       {
-        "name": "to_column_name?",
         "ordinal": 17,
+        "name": "to_column_name?",
         "type_info": "Text"
       },
       {
-        "name": "agent_name?",
         "ordinal": 18,
+        "name": "agent_name?",
         "type_info": "Text"
       },
       {
-        "name": "agent_color?",
         "ordinal": 19,
+        "name": "agent_color?",
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       true,

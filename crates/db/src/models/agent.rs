@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
+use sqlx::{Executor, FromRow, Postgres, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -60,7 +60,7 @@ pub struct UpdateAgent {
 }
 
 impl Agent {
-    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_all(pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Agent,
             r#"SELECT
@@ -88,7 +88,7 @@ impl Agent {
     }
 
     pub async fn find_by_template_group(
-        pool: &SqlitePool,
+        pool: &PgPool,
         group_id: &str,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -118,7 +118,7 @@ impl Agent {
         .await
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Agent,
             r#"SELECT
@@ -146,7 +146,7 @@ impl Agent {
     }
 
     pub async fn create(
-        pool: &SqlitePool,
+        pool: &PgPool,
         data: CreateAgent,
         agent_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
@@ -201,7 +201,7 @@ impl Agent {
     }
 
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         data: UpdateAgent,
     ) -> Result<Self, sqlx::Error> {
@@ -238,7 +238,7 @@ impl Agent {
             r#"UPDATE agents
                SET name = $2, role = $3, system_prompt = $4, capabilities = $5, tools = $6,
                    description = $7, context_files = $8, executor = $9, color = $10, start_command = $11,
-                   updated_at = datetime('now', 'subsec')
+                   updated_at = NOW()
                WHERE id = $1
                RETURNING
                 id as "id!: Uuid",
@@ -274,9 +274,9 @@ impl Agent {
 
     pub async fn delete<'e, E>(executor: E, id: Uuid) -> Result<u64, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
-        let result: sqlx::sqlite::SqliteQueryResult =
+        let result: sqlx::postgres::PgQueryResult =
             sqlx::query!("DELETE FROM agents WHERE id = $1", id)
                 .execute(executor)
                 .await?;

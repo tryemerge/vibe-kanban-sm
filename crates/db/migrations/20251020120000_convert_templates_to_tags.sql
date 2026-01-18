@@ -2,11 +2,11 @@
 -- Migrate ALL templates with snake_case conversion
 
 CREATE TABLE tags (
-    id            BLOB PRIMARY KEY,
-    tag_name      TEXT NOT NULL CHECK(INSTR(tag_name, ' ') = 0),
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tag_name      TEXT NOT NULL CHECK(POSITION(' ' IN tag_name) = 0),
     content       TEXT NOT NULL CHECK(content != ''),
-    created_at    TEXT NOT NULL DEFAULT (datetime('now', 'subsec')),
-    updated_at    TEXT NOT NULL DEFAULT (datetime('now', 'subsec'))
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Only migrate templates that have non-empty descriptions
