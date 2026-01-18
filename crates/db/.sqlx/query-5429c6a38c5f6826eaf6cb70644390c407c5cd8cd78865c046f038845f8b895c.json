@@ -1,0 +1,63 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO file_locks (id, file_path, project_id, task_id, workspace_id, expires_at)\n               VALUES ($1, $2, $3, $4, $5, $6)\n               ON CONFLICT (file_path, project_id) DO NOTHING\n               RETURNING id as \"id!: Uuid\",\n                         file_path,\n                         project_id as \"project_id!: Uuid\",\n                         task_id as \"task_id!: Uuid\",\n                         workspace_id as \"workspace_id!: Uuid\",\n                         acquired_at as \"acquired_at!: DateTime<Utc>\",\n                         expires_at as \"expires_at: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "file_path",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "workspace_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "acquired_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "expires_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "5429c6a38c5f6826eaf6cb70644390c407c5cd8cd78865c046f038845f8b895c"
+}

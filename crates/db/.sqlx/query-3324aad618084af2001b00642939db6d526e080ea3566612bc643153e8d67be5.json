@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id as \"id!: Uuid\",\n                      task_id as \"task_id!: Uuid\",\n                      trigger_task_id as \"trigger_task_id!: Uuid\",\n                      trigger_on,\n                      is_persistent as \"is_persistent!: bool\",\n                      created_at as \"created_at!: DateTime<Utc>\"\n               FROM task_triggers\n               WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "trigger_task_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "trigger_on",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_persistent!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "3324aad618084af2001b00642939db6d526e080ea3566612bc643153e8d67be5"
+}

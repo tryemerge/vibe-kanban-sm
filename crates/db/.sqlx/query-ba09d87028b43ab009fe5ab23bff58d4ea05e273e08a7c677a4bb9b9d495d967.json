@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE file_locks SET expires_at = $1, acquired_at = NOW() WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ba09d87028b43ab009fe5ab23bff58d4ea05e273e08a7c677a4bb9b9d495d967"
+}

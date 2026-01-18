@@ -4,14 +4,6 @@
 
 // If you are an AI, and you absolutely have to edit this file, please confirm with the user first.
 
-export type SharedTaskResponse = { task: SharedTask, user: UserData | null, };
-
-export type AssigneesQuery = { project_id: string, };
-
-export type SharedTask = { id: string, organization_id: string, project_id: string, creator_user_id: string | null, assignee_user_id: string | null, deleted_by_user_id: string | null, title: string, description: string | null, status: TaskStatus, deleted_at: string | null, shared_at: string | null, created_at: string, updated_at: string, };
-
-export type UserData = { user_id: string, first_name: string | null, last_name: string | null, username: string | null, };
-
 export type Project = { id: string, name: string, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, remote_project_id: string | null, board_id: string | null, created_at: Date, updated_at: Date, };
 
 export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, };
@@ -38,9 +30,17 @@ starts_workflow: boolean, status: TaskStatus, agent_id: string | null,
 /**
  * What the agent should produce before moving to the next column
  */
-deliverable: string | null, is_template: boolean, template_group_id: string | null, created_at: Date, updated_at: Date, };
+deliverable: string | null, 
+/**
+ * Variable name for structured deliverable (e.g., "decision")
+ */
+deliverable_variable: string | null, 
+/**
+ * JSON array of allowed values for the deliverable variable
+ */
+deliverable_options: string | null, is_template: boolean, template_group_id: string | null, created_at: Date, updated_at: Date, };
 
-export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, agent_id: string | null, deliverable: string | null, };
+export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, agent_id: string | null, deliverable: string | null, deliverable_variable: string | null, deliverable_options: string | null, };
 
 export type UpdateKanbanColumn = { name: string | null, slug: string | null, position: number | null, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, 
 /**
@@ -49,7 +49,7 @@ export type UpdateKanbanColumn = { name: string | null, slug: string | null, pos
  * - Some(None): Clear the agent (field is null in request)
  * - Some(Some(uuid)): Set to new agent
  */
-agent_id?: string | null, deliverable: string | null, };
+agent_id?: string | null, deliverable: string | null, deliverable_variable: string | null, deliverable_options: string | null, };
 
 export type StateTransition = { id: string, 
 /**
@@ -87,7 +87,7 @@ condition_value: string | null,
 /**
  * Number of times the else path can be taken before escalation
  */
-max_failures: bigint | null, is_template: boolean, template_group_id: string | null, created_at: Date, };
+max_failures: number | null, is_template: boolean, template_group_id: string | null, created_at: Date, };
 
 export type StateTransitionWithColumns = { id: string, board_id: string | null, project_id: string | null, task_id: string | null, from_column_id: string, from_column_name: string, 
 /**
@@ -105,7 +105,7 @@ escalation_column_id: string | null, escalation_column_name: string | null, name
 /**
  * Number of times the else path can be taken before escalation
  */
-max_failures: bigint | null, 
+max_failures: number | null, 
 /**
  * Computed scope for UI display
  */
@@ -127,7 +127,7 @@ escalation_column_id: string | null, name: string | null, requires_confirmation:
 /**
  * Number of times the else path can be taken before escalation
  */
-max_failures: bigint | null, };
+max_failures: number | null, };
 
 export type TransitionScope = "board" | "project" | "task";
 
@@ -163,6 +163,28 @@ export type CreateTask = { project_id: string, title: string, description: strin
 
 export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, column_id: string | null, parent_workspace_id: string | null, image_ids: Array<string> | null, };
 
+export type TaskTrigger = { id: string, 
+/**
+ * The task that will auto-start
+ */
+task_id: string, 
+/**
+ * The task to watch for completion
+ */
+trigger_task_id: string, 
+/**
+ * Condition for when to trigger (stored as string)
+ */
+trigger_on: string, 
+/**
+ * If true, trigger persists after firing; if false, removed after firing
+ */
+is_persistent: boolean, created_at: Date, };
+
+export type CreateTaskTrigger = { task_id: string, trigger_task_id: string, trigger_on: string, is_persistent: boolean, };
+
+export type TriggerCondition = "completed" | { "completed_with_status": string } | "merged";
+
 export type DraftFollowUpData = { message: string, variant: string | null, };
 
 export type ScratchPayload = { "type": "DRAFT_TASK", "data": string } | { "type": "DRAFT_FOLLOW_UP", "data": DraftFollowUpData };
@@ -175,9 +197,9 @@ export type CreateScratch = { payload: ScratchPayload, };
 
 export type UpdateScratch = { payload: ScratchPayload, };
 
-export type Image = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, created_at: string, updated_at: string, };
+export type Image = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: number, hash: string, created_at: string, updated_at: string, };
 
-export type CreateImage = { file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, };
+export type CreateImage = { file_path: string, original_name: string, mime_type: string | null, size_bytes: number, hash: string, };
 
 export type Workspace = { id: string, task_id: string, container_ref: string | null, branch: string, agent_working_dir: string | null, setup_completed_at: string | null, 
 /**
@@ -195,7 +217,7 @@ completion_summary: string | null, created_at: string, updated_at: string, };
 
 export type Session = { id: string, workspace_id: string, executor: string | null, created_at: string, updated_at: string, };
 
-export type ExecutionProcess = { id: string, session_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, status: ExecutionProcessStatus, exit_code: bigint | null, 
+export type ExecutionProcess = { id: string, session_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, status: ExecutionProcessStatus, exit_code: number | null, 
 /**
  * dropped: true if this process is excluded from the current
  * history view (due to restore/trimming). Hidden from logs/timeline;
@@ -217,7 +239,7 @@ export type PrMerge = { id: string, workspace_id: string, repo_id: string, creat
 
 export type MergeStatus = "open" | "merged" | "closed" | "unknown";
 
-export type PullRequestInfo = { number: bigint, url: string, status: MergeStatus, merged_at: string | null, merge_commit_sha: string | null, };
+export type PullRequestInfo = { number: number, url: string, status: MergeStatus, merged_at: string | null, merge_commit_sha: string | null, };
 
 export type ApprovalStatus = { "status": "pending" } | { "status": "approved" } | { "status": "denied", reason?: string, } | { "status": "timed_out" };
 
@@ -452,6 +474,18 @@ export type ShowcaseState = { seen_features: Array<string>, };
 export type GitBranch = { name: string, is_current: boolean, is_remote: boolean, last_commit_date: Date, };
 
 export type SharedTaskDetails = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, };
+
+export type RemoteTaskStatus = "todo" | "inprogress" | "inreview" | "done" | "cancelled";
+
+export type SharedTaskResponse = { task: SharedTask, };
+
+export type SharedTaskData = { id: string, project_id: string, title: string, description: string | null, status: RemoteTaskStatus, assignee_user_id: string | null, creator_user_id: string | null, };
+
+export type SharedTask = { id: string, organization_id: string, project_id: string, creator_user_id: string | null, assignee_user_id: string | null, deleted_by_user_id: string | null, title: string, description: string | null, status: RemoteTaskStatus, deleted_at: Date | null, shared_at: Date | null, created_at: Date, updated_at: Date, };
+
+export type UserData = { user_id: string, email: string | null, first_name: string | null, last_name: string | null, username: string | null, avatar_url: string | null, };
+
+export type AssigneesQuery = { project_id: string, };
 
 export type QueuedMessage = { 
 /**

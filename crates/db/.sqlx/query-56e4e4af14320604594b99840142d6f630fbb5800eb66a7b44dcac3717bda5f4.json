@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id as \"id!: Uuid\",\n                      board_id as \"board_id!: Uuid\",\n                      name,\n                      slug,\n                      position as \"position!: i32\",\n                      color,\n                      is_initial as \"is_initial!: bool\",\n                      is_terminal as \"is_terminal!: bool\",\n                      starts_workflow as \"starts_workflow!: bool\",\n                      status as \"status!: TaskStatus\",\n                      agent_id as \"agent_id: Uuid\",\n                      deliverable,\n                      is_template as \"is_template!: bool\",\n                      template_group_id,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM kanban_columns\n               WHERE board_id = $1 AND slug = $2",
+  "query": "UPDATE kanban_columns\n               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, starts_workflow = $8, status = $9, agent_id = $10, deliverable = $11, deliverable_variable = $12, deliverable_options = $13,\n                   updated_at = NOW()\n               WHERE id = $1\n               RETURNING id as \"id!: Uuid\",\n                         board_id as \"board_id!: Uuid\",\n                         name,\n                         slug,\n                         position as \"position!: i32\",\n                         color,\n                         is_initial as \"is_initial!: bool\",\n                         is_terminal as \"is_terminal!: bool\",\n                         starts_workflow as \"starts_workflow!: bool\",\n                         status as \"status!: TaskStatus\",\n                         agent_id as \"agent_id: Uuid\",\n                         deliverable,\n                         deliverable_variable,\n                         deliverable_options,\n                         is_template as \"is_template!: bool\",\n                         template_group_id,\n                         created_at as \"created_at!: DateTime<Utc>\",\n                         updated_at as \"updated_at!: DateTime<Utc>\"",
   "describe": {
     "columns": [
       {
@@ -65,21 +65,31 @@
       },
       {
         "ordinal": 12,
-        "name": "is_template!: bool",
-        "type_info": "Bool"
+        "name": "deliverable_variable",
+        "type_info": "Text"
       },
       {
         "ordinal": 13,
-        "name": "template_group_id",
+        "name": "deliverable_options",
         "type_info": "Text"
       },
       {
         "ordinal": 14,
+        "name": "is_template!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "template_group_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 15,
+        "ordinal": 17,
         "name": "updated_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
@@ -87,6 +97,17 @@
     "parameters": {
       "Left": [
         "Uuid",
+        "Text",
+        "Text",
+        "Int4",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text",
         "Text"
       ]
     },
@@ -103,11 +124,13 @@
       false,
       true,
       true,
+      true,
+      true,
       false,
       true,
       false,
       false
     ]
   },
-  "hash": "808feb0cd78e764cd1ca81df884bb7a4b493f503b43cf243304aebc39693046b"
+  "hash": "56e4e4af14320604594b99840142d6f630fbb5800eb66a7b44dcac3717bda5f4"
 }
