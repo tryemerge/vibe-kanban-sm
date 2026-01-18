@@ -11,8 +11,33 @@ This changelog documents features built after forking from the original vibe-kan
 
 ### Added
 
+#### Agent File Locking (ADR 2026-01-18-003)
+*Commit: 2409d310*
+
+- **File Lock Model** (`file_locks` table)
+  - Lock files/directories before modifying to prevent conflicts
+  - Unique constraint per project + file path
+  - Optional TTL with `expires_at` for automatic release
+  - Glob pattern support (e.g., `src/auth/*`, `**/*.config.js`)
+
+- **Lock Operations**
+  - `acquire()` - Claim exclusive access to file(s)
+  - `release()` - Explicitly release locks early
+  - `check_conflicts()` - Test if paths overlap with existing locks
+  - `release_by_workspace()` - Cleanup on task completion
+
+- **Automatic Release**
+  - Task marked done/cancelled
+  - Workspace deleted
+  - TTL expires
+
+- **Future Work**
+  - MCP tools for agents to acquire/release locks
+  - Deadlock detection
+  - Lock status in workspace UI
+
 #### Task Auto-Start Triggers (ADR 2026-01-18-002)
-*Commit: acc9f095*
+*Commit: 92c085ae*
 
 - **Soft Task Dependencies**
   - `task_triggers` table links tasks in a dependency chain
@@ -217,6 +242,7 @@ This changelog documents features built after forking from the original vibe-kan
 | `20260112000005` | Seed workflow templates |
 | `20260118000001` | Add structured deliverables to columns |
 | `20260118000002` | Add task_triggers table |
+| `20260118000003` | Add file_locks table |
 
 ---
 
