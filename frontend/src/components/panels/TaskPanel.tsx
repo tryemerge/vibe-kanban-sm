@@ -5,6 +5,7 @@ import { useProject } from '@/contexts/ProjectContext';
 import { useTaskAttemptsWithSessions } from '@/hooks/useTaskAttempts';
 import { useTaskAttemptWithSession } from '@/hooks/useTaskAttempt';
 import { useNavigateWithSearch, useProjectColumns } from '@/hooks';
+import { useTaskLabelAssignments, taskLabelsKeys } from '@/hooks/useTaskLabels';
 import { paths } from '@/lib/paths';
 import { tasksApi } from '@/lib/api';
 import type { TaskWithAttemptStatus } from 'shared/types';
@@ -15,6 +16,7 @@ import { PlusIcon, Play, XCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import { CreateAttemptDialog } from '@/components/dialogs/tasks/CreateAttemptDialog';
 import WYSIWYGEditor from '@/components/ui/wysiwyg';
 import { DataTable, type ColumnDef } from '@/components/ui/table';
+import { LabelPicker } from '@/components/tasks/LabelPicker';
 
 interface TaskPanelProps {
   task: TaskWithAttemptStatus | null;
@@ -37,6 +39,9 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
 
   const { data: parentAttempt, isLoading: isParentLoading } =
     useTaskAttemptWithSession(task?.parent_workspace_id || undefined);
+
+  const { getLabelsForTask } = useTaskLabelAssignments(projectId);
+  const taskLabels = task ? getLabelsForTask(task.id) : [];
 
   // Check if task is in a backlog (is_initial) or terminal column
   const currentColumn = columns.find((col) => col.id === task?.column_id);
@@ -188,6 +193,22 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
               <WYSIWYGEditor value={descriptionContent} disabled />
             )}
           </div>
+
+          {/* Labels section */}
+          {projectId && (
+            <div className="mt-4">
+              <LabelPicker
+                projectId={projectId}
+                taskId={task.id}
+                currentLabels={taskLabels}
+                onLabelsChange={() => {
+                  queryClient.invalidateQueries({
+                    queryKey: taskLabelsKeys.assignments(projectId),
+                  });
+                }}
+              />
+            </div>
+          )}
 
           {/* Terminal status indicator - show Success or Cancelled */}
           {isSuccess && (

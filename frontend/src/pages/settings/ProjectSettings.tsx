@@ -31,6 +31,7 @@ import { AutoExpandingTextarea } from '@/components/ui/auto-expanding-textarea';
 import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
 import { projectsApi, boardsApi } from '@/lib/api';
 import { repoBranchKeys } from '@/hooks/useRepoBranches';
+import { LabelsSection } from '@/components/settings/LabelsSection';
 import type { Project, ProjectRepo, Repo, UpdateProject, Board } from 'shared/types';
 
 interface ProjectFormState {
@@ -807,6 +808,9 @@ export function ProjectSettings() {
               )}
             </CardContent>
           </Card>
+
+          {/* Labels Section */}
+          <LabelsSection projectId={selectedProjectId} />
 
           <Card>
             <CardHeader>

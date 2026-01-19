@@ -46,6 +46,7 @@ import TaskKanbanBoard, {
   type KanbanColumnDef,
   type KanbanColumnItems,
 } from '@/components/tasks/TaskKanbanBoard';
+import { TaskLabelsProvider } from '@/contexts/TaskLabelsContext';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import {
   useProjectTasks,
@@ -979,19 +980,21 @@ export function ProjectTasks() {
         </Card>
       </div>
     ) : (
-      <div className="w-full h-full overflow-x-auto overflow-y-auto overscroll-x-contain">
-        <TaskKanbanBoard
-          columnDefs={columnDefs}
-          columnItems={kanbanColumnItems}
-          onDragEnd={handleDragEnd}
-          onViewTaskDetails={handleViewTaskDetails}
-          onViewSharedTask={handleViewSharedTask}
-          selectedTaskId={selectedTask?.id}
-          selectedSharedTaskId={selectedSharedTaskId}
-          onCreateTask={handleCreateNewTask}
-          projectId={projectId!}
-        />
-      </div>
+      <TaskLabelsProvider projectId={projectId}>
+        <div className="w-full h-full overflow-x-auto overflow-y-auto overscroll-x-contain">
+          <TaskKanbanBoard
+            columnDefs={columnDefs}
+            columnItems={kanbanColumnItems}
+            onDragEnd={handleDragEnd}
+            onViewTaskDetails={handleViewTaskDetails}
+            onViewSharedTask={handleViewSharedTask}
+            selectedTaskId={selectedTask?.id}
+            selectedSharedTaskId={selectedSharedTaskId}
+            onCreateTask={handleCreateNewTask}
+            projectId={projectId!}
+          />
+        </div>
+      </TaskLabelsProvider>
     );
 
   const rightHeader = selectedTask ? (

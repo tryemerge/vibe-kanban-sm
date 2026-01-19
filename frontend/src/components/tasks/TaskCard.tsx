@@ -11,6 +11,8 @@ import type { SharedTaskRecord } from '@/hooks/useProjectTasks';
 import { TaskCardHeader } from './TaskCardHeader';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks';
+import { LabelBadges } from '@/components/ui/label-badge';
+import { useTaskLabelsContextSafe } from '@/contexts/TaskLabelsContext';
 
 type Task = TaskWithAttemptStatus;
 
@@ -37,6 +39,8 @@ export function TaskCard({
   const navigate = useNavigateWithSearch();
   const [isNavigatingToParent, setIsNavigatingToParent] = useState(false);
   const { isSignedIn } = useAuth();
+  const { getLabelsForTask } = useTaskLabelsContextSafe();
+  const taskLabels = getLabelsForTask(task.id);
 
   const handleClick = useCallback(() => {
     onViewDetails(task);
@@ -138,6 +142,9 @@ export function TaskCard({
               ? `${task.description.substring(0, 130)}...`
               : task.description}
           </p>
+        )}
+        {taskLabels.length > 0 && (
+          <LabelBadges labels={taskLabels} size="sm" maxDisplay={3} />
         )}
       </div>
     </KanbanCard>

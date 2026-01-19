@@ -11,6 +11,40 @@ This changelog documents features built after forking from the original vibe-kan
 
 ### Added
 
+#### Task Labels System (ADR 2026-01-18-004)
+*Commits: a7870d39 (backend), TBD (frontend)*
+
+- **Task Labels** (`task_labels` table)
+  - Project-scoped labels with name and color
+  - Reorderable via position field
+  - Many-to-many assignment via `task_label_assignments`
+
+- **Labels Management UI** (`frontend/src/components/settings/LabelsSection.tsx`)
+  - Create, edit, delete labels in Project Settings
+  - Color picker with preset colors
+  - Inline editing with dialog forms
+
+- **Label Display on Tasks**
+  - `LabelBadge` / `LabelBadges` components for colored badges
+  - Shows up to 3 labels on TaskCard with "+N" overflow indicator
+  - Auto-contrast text color based on background luminance
+
+- **Label Assignment UI** (`frontend/src/components/tasks/LabelPicker.tsx`)
+  - Popover-based label picker in TaskPanel
+  - Toggle labels on/off with checkbox-style interface
+  - Removable badge display for assigned labels
+
+- **Bulk Loading Pattern**
+  - `GET /api/projects/:id/labels/assignments` endpoint
+  - Returns all (task_id, label) pairs for efficient loading
+  - `TaskLabelsContext` provides labels to kanban board components
+
+- **API Routes**
+  - `GET/POST /api/projects/:id/labels` - List/create labels
+  - `PUT/DELETE /api/projects/:id/labels/:id` - Update/delete labels
+  - `POST /api/projects/:id/labels/reorder` - Reorder labels
+  - `GET/POST/DELETE /api/tasks/:id/labels/:id` - Assign/remove labels
+
 #### Agent File Locking (ADR 2026-01-18-003)
 *Commit: 2409d310*
 

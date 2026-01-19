@@ -23,6 +23,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/projects/{project_id}/labels", post(create_label))
         .route("/projects/{project_id}/labels/reorder", post(reorder_labels))
         .route(
+            "/projects/{project_id}/labels/assignments",
+            get(list_project_label_assignments),
+        )
+        .route(
             "/projects/{project_id}/labels/{label_id}",
             put(update_label),
         )
@@ -50,6 +54,28 @@ async fn list_project_labels(
     let pool = &deployment.db().pool;
     let labels = TaskLabel::find_by_project(pool, project_id).await?;
     Ok(ResponseJson(ApiResponse::success(labels)))
+}
+
+/// Response type for task-label assignments
+#[derive(Debug, serde::Serialize)]
+struct TaskLabelAssignmentResponse {
+    task_id: Uuid,
+    label: TaskLabel,
+}
+
+/// List all task-label assignments for a project
+/// Returns all (task_id, label) pairs for efficient bulk loading
+async fn list_project_label_assignments(
+    Path(project_id): Path<Uuid>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<TaskLabelAssignmentResponse>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let assignments = TaskLabel::find_all_assignments_by_project(pool, project_id).await?;
+    let response: Vec<TaskLabelAssignmentResponse> = assignments
+        .into_iter()
+        .map(|(task_id, label)| TaskLabelAssignmentResponse { task_id, label })
+        .collect();
+    Ok(ResponseJson(ApiResponse::success(response)))
 }
 
 /// Create a new label for a project

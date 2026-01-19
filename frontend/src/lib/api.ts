@@ -108,6 +108,9 @@ import {
   ApplyTemplateResponse,
   TaskTrigger,
   CreateTaskTrigger,
+  TaskLabel,
+  CreateTaskLabel,
+  UpdateTaskLabel,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -1666,5 +1669,103 @@ export const templatesApi = {
       }
     );
     return handleApiResponse<ApplyTemplateResponse>(response);
+  },
+};
+
+// Response type for task-label assignments
+interface TaskLabelAssignmentResponse {
+  task_id: string;
+  label: TaskLabel;
+}
+
+// Task Labels API (project-scoped labels for organizing tasks)
+export const labelsApi = {
+  // Get all labels for a project
+  listByProject: async (projectId: string): Promise<TaskLabel[]> => {
+    const response = await makeRequest(`/api/projects/${projectId}/labels`);
+    return handleApiResponse<TaskLabel[]>(response);
+  },
+
+  // Get all task-label assignments for a project (efficient bulk loading)
+  getProjectAssignments: async (
+    projectId: string
+  ): Promise<TaskLabelAssignmentResponse[]> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/labels/assignments`
+    );
+    return handleApiResponse<TaskLabelAssignmentResponse[]>(response);
+  },
+
+  // Create a new label in a project
+  create: async (
+    projectId: string,
+    data: Omit<CreateTaskLabel, 'project_id'>
+  ): Promise<TaskLabel> => {
+    const response = await makeRequest(`/api/projects/${projectId}/labels`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, project_id: projectId }),
+    });
+    return handleApiResponse<TaskLabel>(response);
+  },
+
+  // Update a label
+  update: async (
+    projectId: string,
+    labelId: string,
+    data: UpdateTaskLabel
+  ): Promise<TaskLabel> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/labels/${labelId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<TaskLabel>(response);
+  },
+
+  // Delete a label
+  delete: async (projectId: string, labelId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/labels/${labelId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  // Get labels assigned to a task
+  getByTask: async (taskId: string): Promise<TaskLabel[]> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/labels`);
+    return handleApiResponse<TaskLabel[]>(response);
+  },
+
+  // Assign a label to a task
+  assignToTask: async (taskId: string, labelId: string): Promise<void> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/labels/${labelId}`, {
+      method: 'POST',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  // Remove a label from a task
+  removeFromTask: async (taskId: string, labelId: string): Promise<void> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/labels/${labelId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  // Reorder labels in a project
+  reorder: async (projectId: string, labelIds: string[]): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/labels/reorder`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ label_ids: labelIds }),
+      }
+    );
+    return handleApiResponse<void>(response);
   },
 };

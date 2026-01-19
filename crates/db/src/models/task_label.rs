@@ -220,4 +220,47 @@ impl TaskLabel {
         }
         Ok(())
     }
+
+    /// Get all task-label assignments for a project (efficient for bulk loading)
+    /// Returns a list of (task_id, label) tuples
+    pub async fn find_all_assignments_by_project(
+        pool: &PgPool,
+        project_id: Uuid,
+    ) -> Result<Vec<(Uuid, Self)>, sqlx::Error> {
+        let rows = sqlx::query!(
+            r#"SELECT
+                tla.task_id as "task_id!: Uuid",
+                tl.id as "id!: Uuid",
+                tl.project_id as "project_id!: Uuid",
+                tl.name,
+                tl.color,
+                tl.position as "position!: i32",
+                tl.created_at as "created_at!: DateTime<Utc>"
+            FROM task_labels tl
+            INNER JOIN task_label_assignments tla ON tla.label_id = tl.id
+            INNER JOIN tasks t ON t.id = tla.task_id
+            WHERE tl.project_id = $1
+            ORDER BY tl.position ASC, tl.name ASC"#,
+            project_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                (
+                    r.task_id,
+                    TaskLabel {
+                        id: r.id,
+                        project_id: r.project_id,
+                        name: r.name,
+                        color: r.color,
+                        position: r.position,
+                        created_at: r.created_at,
+                    },
+                )
+            })
+            .collect())
+    }
 }
