@@ -605,12 +605,20 @@ impl TaskServer {
         // Handle labels if provided
         if let Some(label_names) = labels {
             if !label_names.is_empty() {
+                tracing::debug!("Processing {} labels for task {}", label_names.len(), task.id);
+
                 // Get existing labels for the project
                 let labels_url = self.url(&format!("/api/projects/{}/labels", project_id));
-                let existing_labels: Vec<TaskLabelInfo> = self
+                let existing_labels: Vec<TaskLabelInfo> = match self
                     .send_json(self.client.get(&labels_url))
                     .await
-                    .unwrap_or_default();
+                {
+                    Ok(labels) => labels,
+                    Err(e) => {
+                        tracing::warn!("Failed to fetch existing labels for project {}: {:?}", project_id, e);
+                        vec![]
+                    }
+                };
 
                 let existing_label_map: std::collections::HashMap<String, String> = existing_labels
                     .iter()
@@ -639,17 +647,36 @@ impl TaskServer {
                             .await
                         {
                             Ok(new_label) => new_label.id,
-                            Err(_) => continue, // Skip if label creation fails
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to create label '{}' for task {}: {:?}",
+                                    label_name, task.id, e
+                                );
+                                continue;
+                            }
                         }
                     };
 
                     // Assign label to task
                     let assign_url = self.url(&format!("/api/tasks/{}/labels/{}", task.id, label_id));
-                    let _ = self
-                        .client
-                        .post(&assign_url)
-                        .send()
-                        .await;
+                    let resp = self.client.post(&assign_url).send().await;
+                    match resp {
+                        Ok(r) if !r.status().is_success() => {
+                            tracing::warn!(
+                                "Failed to assign label {} to task {}: status {}",
+                                label_id, task.id, r.status()
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to assign label {} to task {}: {:?}",
+                                label_id, task.id, e
+                            );
+                        }
+                        _ => {
+                            tracing::debug!("Assigned label {} to task {}", label_id, task.id);
+                        }
+                    }
                 }
             }
         }
