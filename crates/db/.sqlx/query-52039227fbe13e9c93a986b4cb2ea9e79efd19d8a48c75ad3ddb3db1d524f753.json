@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM task_label_assignments WHERE task_id = $1 AND label_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "52039227fbe13e9c93a986b4cb2ea9e79efd19d8a48c75ad3ddb3db1d524f753"
+}

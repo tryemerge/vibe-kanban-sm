@@ -17,10 +17,10 @@ use crate::{error::ApiError, DeploymentImpl};
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let _ = deployment; // Used to match pattern of other routers
     Router::new()
-        .route("/tasks/:task_id/triggers", get(list_task_triggers))
-        .route("/tasks/:task_id/triggers", post(create_task_trigger))
+        .route("/tasks/{task_id}/triggers", get(list_task_triggers))
+        .route("/tasks/{task_id}/triggers", post(create_task_trigger))
         .route(
-            "/tasks/:task_id/triggers/:trigger_id",
+            "/tasks/{task_id}/triggers/{trigger_id}",
             delete(delete_task_trigger),
         )
 }

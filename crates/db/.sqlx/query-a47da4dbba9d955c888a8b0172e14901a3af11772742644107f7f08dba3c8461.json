@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO task_label_assignments (task_id, label_id)\n            VALUES ($1, $2)\n            ON CONFLICT (task_id, label_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a47da4dbba9d955c888a8b0172e14901a3af11772742644107f7f08dba3c8461"
+}

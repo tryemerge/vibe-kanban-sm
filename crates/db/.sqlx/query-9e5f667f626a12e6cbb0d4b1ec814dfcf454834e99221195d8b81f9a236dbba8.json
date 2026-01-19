@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                tl.id as \"id!: Uuid\",\n                tl.project_id as \"project_id!: Uuid\",\n                tl.name,\n                tl.color,\n                tl.position as \"position!: i32\",\n                tl.created_at as \"created_at!: DateTime<Utc>\"\n            FROM task_labels tl\n            INNER JOIN task_label_assignments tla ON tla.label_id = tl.id\n            WHERE tla.task_id = $1\n            ORDER BY tl.position ASC, tl.name ASC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "color",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "position!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "9e5f667f626a12e6cbb0d4b1ec814dfcf454834e99221195d8b81f9a236dbba8"
+}

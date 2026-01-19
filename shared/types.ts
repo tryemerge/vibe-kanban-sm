@@ -185,6 +185,14 @@ export type CreateTaskTrigger = { task_id: string, trigger_task_id: string, trig
 
 export type TriggerCondition = "completed" | { "completed_with_status": string } | "merged";
 
+export type TaskLabel = { id: string, project_id: string, name: string, color: string | null, position: number, created_at: Date, };
+
+export type CreateTaskLabel = { project_id: string, name: string, color: string | null, position: number | null, };
+
+export type UpdateTaskLabel = { name: string | null, color: string | null, position: number | null, };
+
+export type TaskLabelAssignment = { task_id: string, label_id: string, created_at: Date, };
+
 export type DraftFollowUpData = { message: string, variant: string | null, };
 
 export type ScratchPayload = { "type": "DRAFT_TASK", "data": string } | { "type": "DRAFT_FOLLOW_UP", "data": DraftFollowUpData };

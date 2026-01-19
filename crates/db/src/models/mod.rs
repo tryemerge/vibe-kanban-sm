@@ -20,6 +20,7 @@ pub mod state_transition;
 pub mod tag;
 pub mod task;
 pub mod task_event;
+pub mod task_label;
 pub mod task_trigger;
 pub mod workspace;
 pub mod workspace_repo;
