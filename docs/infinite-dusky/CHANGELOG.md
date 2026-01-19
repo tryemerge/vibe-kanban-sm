@@ -12,7 +12,7 @@ This changelog documents features built after forking from the original vibe-kan
 ### Added
 
 #### Task Labels System (ADR 2026-01-18-004)
-*Commits: a7870d39 (backend), TBD (frontend)*
+*Commits: a7870d39 (backend), 49d6092f (frontend)*
 
 - **Task Labels** (`task_labels` table)
   - Project-scoped labels with name and color
