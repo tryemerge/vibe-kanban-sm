@@ -34,6 +34,8 @@ pub struct CreateTaskRequest {
     pub title: String,
     #[schemars(description = "Optional description of the task")]
     pub description: Option<String>,
+    #[schemars(description = "Optional labels to assign to the task. If a label doesn't exist, it will be created.")]
+    pub labels: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -391,7 +393,37 @@ struct ApiResponseEnvelope<T> {
     message: Option<String>,
 }
 
+/// Simplified label info for MCP operations
+#[derive(Debug, Deserialize, Default)]
+struct TaskLabelInfo {
+    id: String,
+    name: String,
+}
+
 impl TaskServer {
+    /// Generate a consistent color for a label based on its name
+    fn default_label_color(label_name: &str) -> &'static str {
+        // Predefined color palette
+        const COLORS: [&str; 9] = [
+            "#ef4444", // red
+            "#f97316", // orange
+            "#eab308", // yellow
+            "#22c55e", // green
+            "#14b8a6", // teal
+            "#3b82f6", // blue
+            "#8b5cf6", // purple
+            "#ec4899", // pink
+            "#6b7280", // gray
+        ];
+
+        // Use a simple hash of the label name to pick a color
+        let hash: usize = label_name
+            .to_lowercase()
+            .bytes()
+            .fold(0usize, |acc, b| acc.wrapping_add(b as usize));
+        COLORS[hash % COLORS.len()]
+    }
+
     fn success<T: Serialize>(data: &T) -> Result<CallToolResult, ErrorData> {
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(data)
@@ -526,6 +558,7 @@ impl TaskServer {
             project_id,
             title,
             description,
+            labels,
         }): Parameters<CreateTaskRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         // Expand @tagname references in description
@@ -551,6 +584,58 @@ impl TaskServer {
             Ok(t) => t,
             Err(e) => return Ok(e),
         };
+
+        // Handle labels if provided
+        if let Some(label_names) = labels {
+            if !label_names.is_empty() {
+                // Get existing labels for the project
+                let labels_url = self.url(&format!("/api/projects/{}/labels", project_id));
+                let existing_labels: Vec<TaskLabelInfo> = self
+                    .send_json(self.client.get(&labels_url))
+                    .await
+                    .unwrap_or_default();
+
+                let existing_label_map: std::collections::HashMap<String, String> = existing_labels
+                    .iter()
+                    .map(|l| (l.name.to_lowercase(), l.id.clone()))
+                    .collect();
+
+                for label_name in label_names {
+                    let label_name_lower = label_name.to_lowercase();
+
+                    // Check if label exists (case-insensitive)
+                    let label_id = if let Some(id) = existing_label_map.get(&label_name_lower) {
+                        id.clone()
+                    } else {
+                        // Create the label with a default color
+                        let create_label_url = self.url(&format!("/api/projects/{}/labels", project_id));
+                        let create_payload = serde_json::json!({
+                            "name": label_name,
+                            "color": Self::default_label_color(&label_name),
+                            "position": existing_labels.len()
+                        });
+
+                        match self
+                            .send_json::<TaskLabelInfo>(
+                                self.client.post(&create_label_url).json(&create_payload),
+                            )
+                            .await
+                        {
+                            Ok(new_label) => new_label.id,
+                            Err(_) => continue, // Skip if label creation fails
+                        }
+                    };
+
+                    // Assign label to task
+                    let assign_url = self.url(&format!("/api/tasks/{}/labels/{}", task.id, label_id));
+                    let _ = self
+                        .client
+                        .post(&assign_url)
+                        .send()
+                        .await;
+                }
+            }
+        }
 
         TaskServer::success(&CreateTaskResponse {
             task_id: task.id.to_string(),

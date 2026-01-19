@@ -45,6 +45,15 @@ This changelog documents features built after forking from the original vibe-kan
   - `POST /api/projects/:id/labels/reorder` - Reorder labels
   - `GET/POST/DELETE /api/tasks/:id/labels/:id` - Assign/remove labels
 
+- **MCP Integration**
+  - `create_task` now accepts optional `labels` array
+  - Labels auto-created if they don't exist in the project
+  - Consistent color generation based on label name hash
+
+- **Task Edit Dialog**
+  - LabelPicker integrated into TaskFormDialog
+  - Labels assignable when editing tasks via UI
+
 #### Agent File Locking (ADR 2026-01-18-003)
 *Commit: 2409d310*
 

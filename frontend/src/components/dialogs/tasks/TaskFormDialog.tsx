@@ -50,6 +50,9 @@ import type {
   ExecutorProfileId,
   ImageResponse,
 } from 'shared/types';
+import { LabelPicker } from '@/components/tasks/LabelPicker';
+import { useTaskLabelAssignments, taskLabelsKeys } from '@/hooks/useTaskLabels';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Task {
   id: string;
@@ -88,11 +91,16 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
   const editMode = mode === 'edit';
   const modal = useModal();
   const { t } = useTranslation(['tasks', 'common']);
+  const queryClient = useQueryClient();
   const { createTask, createAndStart, updateTask } =
     useTaskMutations(projectId);
   const { system, profiles, loading: userSystemLoading } = useUserSystem();
   const { upload, uploadForTask } = useImageUpload();
   const { enableScope, disableScope } = useHotkeysContext();
+
+  // Labels for edit mode
+  const { getLabelsForTask } = useTaskLabelAssignments(projectId);
+  const taskLabels = editMode ? getLabelsForTask(props.task.id) : [];
 
   // Local UI state
   const [images, setImages] = useState<ImageResponse[]>([]);
@@ -502,6 +510,22 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
                   </div>
                 )}
               </form.Field>
+            )}
+            {/* Labels in edit mode */}
+            {editMode && (
+              <div className="space-y-2 pt-4 border-t">
+                <Label className="text-sm font-medium">Labels</Label>
+                <LabelPicker
+                  projectId={projectId}
+                  taskId={props.task.id}
+                  currentLabels={taskLabels}
+                  onLabelsChange={() => {
+                    queryClient.invalidateQueries({
+                      queryKey: taskLabelsKeys.assignments(projectId),
+                    });
+                  }}
+                />
+              </div>
             )}
           </div>
 
