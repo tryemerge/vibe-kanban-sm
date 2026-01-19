@@ -134,7 +134,7 @@ pub async fn get_task(
 
 pub async fn create_task(
     State(deployment): State<DeploymentImpl>,
-    Json(payload): Json<CreateTask>,
+    Json(mut payload): Json<CreateTask>,
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
     let id = Uuid::new_v4();
 
@@ -143,6 +143,24 @@ pub async fn create_task(
         payload.title,
         payload.project_id
     );
+
+    // If no column_id provided, default to the project's initial/backlog column
+    if payload.column_id.is_none() {
+        let project = Project::find_by_id(&deployment.db().pool, payload.project_id)
+            .await?
+            .ok_or_else(|| ApiError::BadRequest(format!("Project {} not found", payload.project_id)))?;
+
+        if let Some(board_id) = project.board_id {
+            if let Some(initial_column) = KanbanColumn::find_initial(&deployment.db().pool, board_id).await? {
+                tracing::debug!(
+                    "Defaulting task column_id to initial column '{}' ({})",
+                    initial_column.name,
+                    initial_column.id
+                );
+                payload.column_id = Some(initial_column.id);
+            }
+        }
+    }
 
     let task = Task::create(&deployment.db().pool, &payload, id).await?;
 

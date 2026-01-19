@@ -54,6 +54,32 @@ This changelog documents features built after forking from the original vibe-kan
   - LabelPicker integrated into TaskFormDialog
   - Labels assignable when editing tasks via UI
 
+#### Swim Lanes (ADR 2026-01-18-004, Phase 3)
+
+- **Swim Lane Grouping** (`frontend/src/components/tasks/SwimLane.tsx`)
+  - Group tasks visually within columns by label
+  - Collapsible lanes with remembered state
+  - Shows task count per lane
+  - Color-coded lane headers matching label colors
+  - "No Label" lane for ungrouped tasks
+
+- **Swim Lane Configuration** (`frontend/src/hooks/useSwimLaneConfig.ts`)
+  - Per-project configuration stored in localStorage
+  - Supports groupBy: 'label' | 'none' (extensible for future: assignee, priority)
+  - Tracks collapsed lanes
+  - Option to show/hide unlabeled tasks
+
+- **Toggle UI**
+  - Toolbar button above kanban board
+  - One-click toggle between flat view and swim lanes
+  - Visual indicator when swim lanes are active
+  - Tooltip explains the feature
+
+- **Task Visibility**
+  - Tasks with multiple labels appear in each relevant lane
+  - Maintains drag-and-drop functionality
+  - Works with search filtering
+
 #### Agent File Locking (ADR 2026-01-18-003)
 *Commit: 2409d310*
 

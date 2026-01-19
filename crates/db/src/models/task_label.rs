@@ -19,6 +19,8 @@ pub struct TaskLabel {
 /// Data for creating a new task label
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct CreateTaskLabel {
+    /// Project ID - can be omitted from JSON body if provided via URL path
+    #[serde(default)]
     pub project_id: Uuid,
     pub name: String,
     pub color: Option<String>,

@@ -155,6 +155,8 @@ pub struct TaskDetails {
     pub has_in_progress_attempt: Option<bool>,
     #[schemars(description = "Whether the last execution attempt failed")]
     pub last_attempt_failed: Option<bool>,
+    #[schemars(description = "Labels assigned to this task")]
+    pub labels: Vec<String>,
 }
 
 impl TaskDetails {
@@ -168,6 +170,21 @@ impl TaskDetails {
             updated_at: task.updated_at.to_rfc3339(),
             has_in_progress_attempt: None,
             last_attempt_failed: None,
+            labels: vec![],
+        }
+    }
+
+    fn from_task_with_labels(task: Task, labels: Vec<String>) -> Self {
+        Self {
+            id: task.id.to_string(),
+            title: task.title,
+            description: task.description,
+            status: task.status.to_string(),
+            created_at: task.created_at.to_rfc3339(),
+            updated_at: task.updated_at.to_rfc3339(),
+            has_in_progress_attempt: None,
+            last_attempt_failed: None,
+            labels,
         }
     }
 }
@@ -550,7 +567,7 @@ impl TaskServer {
     }
 
     #[tool(
-        description = "Create a new task/ticket in a project. Always pass the `project_id` of the project you want to create the task in - it is required!"
+        description = "Create a new task/ticket in a project. Always pass the `project_id` of the project you want to create the task in - it is required! You can also pass `labels` (array of label names) to categorize the task - labels will be auto-created if they don't exist."
     )]
     async fn create_task(
         &self,
@@ -903,7 +920,7 @@ impl TaskServer {
     }
 
     #[tool(
-        description = "Get detailed information (like task description) about a specific task/ticket. You can use `list_tasks` to find the `task_ids` of all tasks in a project. `project_id` and `task_id` are required!"
+        description = "Get detailed information (like task description and labels) about a specific task/ticket. You can use `list_tasks` to find the `task_ids` of all tasks in a project. `task_id` is required."
     )]
     async fn get_task(
         &self,
@@ -915,7 +932,15 @@ impl TaskServer {
             Err(e) => return Ok(e),
         };
 
-        let details = TaskDetails::from_task(task);
+        // Fetch labels for this task
+        let labels_url = self.url(&format!("/api/tasks/{}/labels", task_id));
+        let task_labels: Vec<TaskLabelInfo> = self
+            .send_json(self.client.get(&labels_url))
+            .await
+            .unwrap_or_default();
+        let label_names: Vec<String> = task_labels.into_iter().map(|l| l.name).collect();
+
+        let details = TaskDetails::from_task_with_labels(task, label_names);
         let response = GetTaskResponse { task: details };
 
         TaskServer::success(&response)

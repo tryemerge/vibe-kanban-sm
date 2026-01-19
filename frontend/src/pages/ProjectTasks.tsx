@@ -3,7 +3,13 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertTriangle, Plus, X } from 'lucide-react';
+import { AlertTriangle, Plus, X, Rows3, LayoutList } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Loader } from '@/components/ui/loader';
 import { tasksApi, attemptsApi, agentsApi } from '@/lib/api';
 import type { RepoBranchStatus, Workspace } from 'shared/types';
@@ -47,6 +53,7 @@ import TaskKanbanBoard, {
   type KanbanColumnItems,
 } from '@/components/tasks/TaskKanbanBoard';
 import { TaskLabelsProvider } from '@/contexts/TaskLabelsContext';
+import { useSwimLaneConfig } from '@/hooks/useSwimLaneConfig';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import {
   useProjectTasks,
@@ -192,6 +199,14 @@ export function ProjectTasks() {
 
   // Fetch repos for the project (needed for creating task attempts)
   const { data: projectRepos = [] } = useProjectRepos(projectId);
+
+  // Swim lane configuration (persisted in localStorage)
+  const {
+    config: swimLaneConfig,
+    toggleLaneCollapse,
+    setGroupBy,
+    isEnabled: swimLanesEnabled,
+  } = useSwimLaneConfig(projectId);
 
   // Create column definitions from project columns or use defaults
   const columnDefs = useMemo<KanbanColumnDef[]>(() => {
@@ -407,6 +422,11 @@ export function ProjectTasks() {
     setSelectedSharedTaskId(null);
   }, [selectedSharedTaskId, sharedTasksById, showSharedTasks, userId]);
 
+  // Find the initial/backlog column for fallback
+  const initialColumnId = useMemo(() => {
+    return projectColumns?.find((col) => col.is_initial)?.id ?? null;
+  }, [projectColumns]);
+
   // Helper to determine which column a task belongs to
   const getTaskColumnId = useCallback((task: Task): string | null => {
     // If task has a column_id, use it if it exists in our columns
@@ -415,8 +435,13 @@ export function ProjectTasks() {
     }
     // Fall back to matching by status slug
     const statusSlug = normalizeStatus(task.status);
-    return columnIdBySlug.get(statusSlug) ?? null;
-  }, [columnById, columnIdBySlug]);
+    const bySlug = columnIdBySlug.get(statusSlug);
+    if (bySlug) {
+      return bySlug;
+    }
+    // Final fallback: use the initial/backlog column
+    return initialColumnId;
+  }, [columnById, columnIdBySlug, initialColumnId]);
 
   const kanbanColumnItems = useMemo<KanbanColumnItems>(() => {
     // Initialize columns from column definitions
@@ -981,18 +1006,59 @@ export function ProjectTasks() {
       </div>
     ) : (
       <TaskLabelsProvider projectId={projectId}>
-        <div className="w-full h-full overflow-x-auto overflow-y-auto overscroll-x-contain">
-          <TaskKanbanBoard
-            columnDefs={columnDefs}
-            columnItems={kanbanColumnItems}
-            onDragEnd={handleDragEnd}
-            onViewTaskDetails={handleViewTaskDetails}
-            onViewSharedTask={handleViewSharedTask}
-            selectedTaskId={selectedTask?.id}
-            selectedSharedTaskId={selectedSharedTaskId}
-            onCreateTask={handleCreateNewTask}
-            projectId={projectId!}
-          />
+        <div className="w-full h-full flex flex-col min-h-0">
+          {/* Kanban Toolbar */}
+          <div className="shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b bg-background/50">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={swimLanesEnabled ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => {
+                      if (swimLanesEnabled) {
+                        setGroupBy({ type: 'none' });
+                      } else {
+                        setGroupBy({ type: 'label' });
+                      }
+                    }}
+                    className="gap-2"
+                  >
+                    {swimLanesEnabled ? (
+                      <Rows3 className="h-4 w-4" />
+                    ) : (
+                      <LayoutList className="h-4 w-4" />
+                    )}
+                    <span className="hidden sm:inline">
+                      {swimLanesEnabled ? 'Swim Lanes' : 'Flat View'}
+                    </span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {swimLanesEnabled
+                    ? 'Switch to flat view'
+                    : 'Group tasks by label (swim lanes)'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
+          {/* Kanban Board */}
+          <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto overscroll-x-contain">
+            <TaskKanbanBoard
+              columnDefs={columnDefs}
+              columnItems={kanbanColumnItems}
+              onDragEnd={handleDragEnd}
+              onViewTaskDetails={handleViewTaskDetails}
+              onViewSharedTask={handleViewSharedTask}
+              selectedTaskId={selectedTask?.id}
+              selectedSharedTaskId={selectedSharedTaskId}
+              onCreateTask={handleCreateNewTask}
+              projectId={projectId!}
+              swimLaneConfig={swimLaneConfig}
+              onToggleLaneCollapse={toggleLaneCollapse}
+            />
+          </div>
         </div>
       </TaskLabelsProvider>
     );
