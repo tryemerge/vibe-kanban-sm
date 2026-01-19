@@ -1291,8 +1291,9 @@ export function BoardSettings() {
                 <Input
                   id="column-deliverable-options"
                   placeholder={t('settings.boards.columns.form.deliverableOptionsPlaceholder', 'e.g., approve, reject, needs_work')}
-                  value={columnForm.deliverable_options ? JSON.parse(columnForm.deliverable_options).join(', ') : ''}
-                  onChange={(e) => {
+                  defaultValue={columnForm.deliverable_options ? JSON.parse(columnForm.deliverable_options).join(', ') : ''}
+                  key={editingColumn?.id || 'new'}
+                  onBlur={(e) => {
                     const values = e.target.value
                       .split(',')
                       .map((v) => v.trim())
