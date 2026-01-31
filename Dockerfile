@@ -38,29 +38,46 @@ COPY . .
 
 # Build application
 RUN npm run generate-types
-RUN cd frontend && pnpm run build
+# Increase Node heap size for frontend build (Vite needs more memory)
+RUN cd frontend && NODE_OPTIONS="--max-old-space-size=4096" pnpm run build
+# Verify frontend was built (fail if index.html missing)
+RUN echo "=== Checking frontend/dist ===" && ls -la frontend/dist/ && test -f frontend/dist/index.html && echo "=== index.html found ==="
 RUN cargo build --release --bin server
 
 # Runtime stage
 FROM alpine:latest AS runtime
 
 # Install runtime dependencies
+# - Node.js: Required for running coding agents (Claude Code, Codex, etc.) via npx
+# - git: Required for worktree operations (workspaces)
+# - openssh: For git operations over SSH
+# - github-cli: For GitHub integration (cloning, PRs, etc.)
 RUN apk add --no-cache \
     ca-certificates \
     tini \
     libgcc \
-    wget
+    wget \
+    nodejs \
+    npm \
+    git \
+    openssh-client \
+    github-cli
 
-# Create app user for security
+# Install pnpm globally for faster package management
+RUN npm install -g pnpm
+
+# Create app user for security with a home directory
 RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+    adduser -u 1001 -S appuser -G appgroup -h /home/appuser
 
 # Copy binary from builder
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 
 # Create repos directory and set permissions
-RUN mkdir -p /repos && \
-    chown -R appuser:appgroup /repos
+# Also create .claude symlink to persist credentials on the volume
+RUN mkdir -p /repos /repos/.claude-config && \
+    chown -R appuser:appgroup /repos /home/appuser && \
+    ln -sf /repos/.claude-config /home/appuser/.claude
 
 # Switch to non-root user
 USER appuser
@@ -74,8 +91,8 @@ EXPOSE 3000
 WORKDIR /repos
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}/api/health" || exit 1
 
 # Run the application
 ENTRYPOINT ["/sbin/tini", "--"]
