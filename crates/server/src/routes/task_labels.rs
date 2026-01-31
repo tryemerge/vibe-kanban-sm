@@ -51,8 +51,10 @@ async fn list_project_labels(
     Path(project_id): Path<Uuid>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskLabel>>>, ApiError> {
+    tracing::info!("=== BACKEND: LIST_PROJECT_LABELS called for project {} ===", project_id);
     let pool = &deployment.db().pool;
     let labels = TaskLabel::find_by_project(pool, project_id).await?;
+    tracing::info!("=== BACKEND: Found {} labels ===", labels.len());
     Ok(ResponseJson(ApiResponse::success(labels)))
 }
 
@@ -84,6 +86,7 @@ async fn create_label(
     State(deployment): State<DeploymentImpl>,
     Json(mut payload): Json<CreateTaskLabel>,
 ) -> Result<ResponseJson<ApiResponse<TaskLabel>>, ApiError> {
+    tracing::info!("=== BACKEND: CREATE_LABEL called for project {} with name '{}' ===", project_id, payload.name);
     let pool = &deployment.db().pool;
 
     // Ensure project_id matches path
@@ -173,6 +176,7 @@ async fn assign_label_to_task(
     Path((task_id, label_id)): Path<(Uuid, Uuid)>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    tracing::info!("=== BACKEND: ASSIGN_LABEL called - task {} label {} ===", task_id, label_id);
     let pool = &deployment.db().pool;
 
     // Verify the task exists

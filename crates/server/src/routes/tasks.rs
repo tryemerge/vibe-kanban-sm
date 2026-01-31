@@ -138,8 +138,8 @@ pub async fn create_task(
 ) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
     let id = Uuid::new_v4();
 
-    tracing::debug!(
-        "Creating task '{}' in project {}",
+    tracing::info!(
+        "=== BACKEND: CREATE_TASK called - title='{}' project={} ===",
         payload.title,
         payload.project_id
     );

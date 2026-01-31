@@ -11,7 +11,7 @@ use db::{
     models::{
         agent::Agent,
         coding_agent_turn::{CodingAgentTurn, CreateCodingAgentTurn},
-        context_artifact::ContextArtifact,
+        context_artifact::{ArtifactScope, ArtifactType, ContextArtifact, CreateContextArtifact},
         execution_process::{
             CreateExecutionProcess, ExecutionContext, ExecutionProcess, ExecutionProcessRunReason,
             ExecutionProcessStatus,
@@ -125,14 +125,250 @@ pub async fn read_decision_file(workspace: &Workspace) -> Option<serde_json::Val
     }
 }
 
+/// Try to create a context artifact from a decision file
+/// If the decision contains artifact_type, title, content, and optionally scope,
+/// create a new context artifact to compound team knowledge
+pub async fn try_create_artifact_from_decision(
+    pool: &sqlx::PgPool,
+    decision: &serde_json::Value,
+    project_id: uuid::Uuid,
+    task_id: uuid::Uuid,
+) -> Option<ContextArtifact> {
+    // Check for required artifact fields
+    let artifact_type_str = decision.get("artifact_type")?.as_str()?;
+    let title = decision.get("title")?.as_str()?;
+    let content = decision.get("content")?.as_str()?;
+
+    tracing::info!(
+        target: "vibe_kanban::compound",
+        "🧠 COMPOUND: Detected artifact in decision.json for task {}",
+        task_id
+    );
+
+    // Parse artifact type
+    let artifact_type = match ArtifactType::from_str(artifact_type_str) {
+        Some(t) => t,
+        None => {
+            tracing::warn!(
+                target: "vibe_kanban::compound",
+                "  └─ Invalid artifact_type '{}', skipping artifact creation",
+                artifact_type_str
+            );
+            return None;
+        }
+    };
+
+    // Parse optional scope (defaults to Global for compound learnings)
+    let scope = decision
+        .get("scope")
+        .and_then(|s| s.as_str())
+        .and_then(ArtifactScope::from_str)
+        .unwrap_or(ArtifactScope::Global);
+
+    // Extract optional path for path-scoped artifacts
+    let path = if scope == ArtifactScope::Path {
+        decision.get("path").and_then(|p| p.as_str()).map(String::from)
+    } else {
+        None
+    };
+
+    // Extract optional metadata
+    let metadata = decision.get("metadata").cloned();
+
+    tracing::info!(
+        target: "vibe_kanban::compound",
+        "  ├─ Type: {}",
+        artifact_type_str
+    );
+    tracing::info!(
+        target: "vibe_kanban::compound",
+        "  ├─ Title: '{}'",
+        title
+    );
+    tracing::info!(
+        target: "vibe_kanban::compound",
+        "  ├─ Scope: {:?}{}",
+        scope,
+        path.as_ref().map(|p| format!(" (path: {})", p)).unwrap_or_default()
+    );
+    tracing::info!(
+        target: "vibe_kanban::compound",
+        "  ├─ Content: {} chars",
+        content.len()
+    );
+
+    let create_artifact = CreateContextArtifact {
+        project_id,
+        artifact_type,
+        path,
+        title: title.to_string(),
+        content: content.to_string(),
+        metadata,
+        source_task_id: Some(task_id),
+        source_commit_hash: None,
+        scope,
+        file_path: None,
+        supersedes_id: None,
+        chain_id: None,
+    };
+
+    match ContextArtifact::create(pool, create_artifact, uuid::Uuid::new_v4()).await {
+        Ok(artifact) => {
+            tracing::info!(
+                target: "vibe_kanban::compound",
+                "  └─ ✅ Created artifact {} - knowledge compounded!",
+                artifact.id
+            );
+            Some(artifact)
+        }
+        Err(e) => {
+            tracing::error!(
+                target: "vibe_kanban::compound",
+                "  └─ ❌ Failed to create artifact: {}",
+                e
+            );
+            None
+        }
+    }
+}
+
+/// Result of validating the decision variable
+#[derive(Debug)]
+pub enum DecisionValidationResult {
+    /// No variable required for this column
+    NotRequired,
+    /// Variable is set and valid
+    Valid,
+    /// Decision file is missing entirely
+    MissingFile { variable_name: String, valid_options: Vec<String> },
+    /// Variable is missing from the decision file
+    MissingVariable { variable_name: String, valid_options: Vec<String> },
+    /// Variable has an invalid value
+    InvalidValue { variable_name: String, actual_value: String, valid_options: Vec<String> },
+}
+
+impl DecisionValidationResult {
+    /// Returns true if the decision is valid or not required
+    pub fn is_ok(&self) -> bool {
+        matches!(self, DecisionValidationResult::NotRequired | DecisionValidationResult::Valid)
+    }
+
+    /// Build an error message for the agent describing what went wrong
+    pub fn error_message(&self) -> Option<String> {
+        match self {
+            DecisionValidationResult::NotRequired | DecisionValidationResult::Valid => None,
+            DecisionValidationResult::MissingFile { variable_name, valid_options } => {
+                Some(format!(
+                    "The required variable '{}' was not set.\n\n\
+                    Please create `.vibe/decision.json` and set '{}' to one of: {}\n\n\
+                    Example:\n```json\n{{\"{}\": \"{}\"}}\n```",
+                    variable_name,
+                    variable_name,
+                    valid_options.join(", "),
+                    variable_name,
+                    valid_options.first().unwrap_or(&"value".to_string())
+                ))
+            }
+            DecisionValidationResult::MissingVariable { variable_name, valid_options } => {
+                Some(format!(
+                    "The required variable '{}' was not set in `.vibe/decision.json`.\n\n\
+                    Please set '{}' to one of: {}\n\n\
+                    Example:\n```json\n{{\"{}\": \"{}\"}}\n```",
+                    variable_name,
+                    variable_name,
+                    valid_options.join(", "),
+                    variable_name,
+                    valid_options.first().unwrap_or(&"value".to_string())
+                ))
+            }
+            DecisionValidationResult::InvalidValue { variable_name, actual_value, valid_options } => {
+                Some(format!(
+                    "The variable '{}' has an invalid value: '{}'\n\n\
+                    Please set '{}' to one of: {}\n\n\
+                    Example:\n```json\n{{\"{}\": \"{}\"}}\n```",
+                    variable_name,
+                    actual_value,
+                    variable_name,
+                    valid_options.join(", "),
+                    variable_name,
+                    valid_options.first().unwrap_or(&"value".to_string())
+                ))
+            }
+        }
+    }
+}
+
+/// Validate that the decision file contains the required variable with a valid value.
+/// Returns a validation result that can be used to generate error messages.
+pub fn validate_decision_variable(
+    column: &KanbanColumn,
+    decision: &Option<serde_json::Value>,
+) -> DecisionValidationResult {
+    // Check if column has a required deliverable variable
+    let Some(variable_name) = &column.deliverable_variable else {
+        return DecisionValidationResult::NotRequired;
+    };
+
+    // Parse the valid options from the column's deliverable_options JSON
+    let valid_options: Vec<String> = column.deliverable_options
+        .as_ref()
+        .and_then(|opts| serde_json::from_str(opts).ok())
+        .unwrap_or_default();
+
+    // Check if decision file exists
+    let Some(decision_value) = decision else {
+        return DecisionValidationResult::MissingFile {
+            variable_name: variable_name.clone(),
+            valid_options,
+        };
+    };
+
+    // Check if the variable is present in the decision
+    let Some(actual_value) = decision_value.get(variable_name) else {
+        return DecisionValidationResult::MissingVariable {
+            variable_name: variable_name.clone(),
+            valid_options,
+        };
+    };
+
+    // Get the actual value as a string
+    let actual_str = actual_value.as_str().unwrap_or_default().to_string();
+
+    // If we have valid options defined, validate against them
+    if !valid_options.is_empty() && !valid_options.contains(&actual_str) {
+        return DecisionValidationResult::InvalidValue {
+            variable_name: variable_name.clone(),
+            actual_value: actual_str,
+            valid_options,
+        };
+    }
+
+    DecisionValidationResult::Valid
+}
+
 /// Build project context string from context artifacts (ADRs, patterns, recent decisions)
 /// This provides project-level knowledge to agents when they start execution
 async fn build_project_context(pool: &sqlx::PgPool, project_id: uuid::Uuid) -> Option<String> {
+    tracing::info!(
+        target: "vibe_kanban::context",
+        "📚 Building project context for project {}",
+        project_id
+    );
+
     let mut context = String::new();
+    let mut adr_count = 0;
+    let mut pattern_count = 0;
 
     // Get recent ADRs (architecture decision records)
     if let Ok(adrs) = ContextArtifact::get_recent_adrs(pool, project_id, 5).await {
         if !adrs.is_empty() {
+            adr_count = adrs.len();
+            tracing::info!(
+                target: "vibe_kanban::context",
+                "  ├─ Found {} ADRs: {}",
+                adr_count,
+                adrs.iter().map(|a| a.title.as_str()).collect::<Vec<_>>().join(", ")
+            );
             context.push_str("## Architecture Decisions\n\n");
             for adr in adrs {
                 context.push_str(&format!("### {}\n", adr.title));
@@ -151,6 +387,14 @@ async fn build_project_context(pool: &sqlx::PgPool, project_id: uuid::Uuid) -> O
     .await
     {
         if !patterns.is_empty() {
+            pattern_count = patterns.len().min(5);
+            tracing::info!(
+                target: "vibe_kanban::context",
+                "  ├─ Found {} patterns (using {}): {}",
+                patterns.len(),
+                pattern_count,
+                patterns.iter().take(5).map(|p| p.title.as_str()).collect::<Vec<_>>().join(", ")
+            );
             context.push_str("## Patterns & Best Practices\n\n");
             for pattern in patterns.iter().take(5) {
                 context.push_str(&format!("### {}\n", pattern.title));
@@ -161,8 +405,19 @@ async fn build_project_context(pool: &sqlx::PgPool, project_id: uuid::Uuid) -> O
     }
 
     if context.is_empty() {
+        tracing::info!(
+            target: "vibe_kanban::context",
+            "  └─ No project context artifacts found"
+        );
         None
     } else {
+        tracing::info!(
+            target: "vibe_kanban::context",
+            "  └─ Project context built: {} ADRs, {} patterns ({} chars)",
+            adr_count,
+            pattern_count,
+            context.len()
+        );
         Some(context)
     }
 }
@@ -499,16 +754,181 @@ pub trait ContainerService {
         };
 
         // Read decision file from workspace for conditional transitions
+        tracing::info!(
+            target: "vibe_kanban::transition",
+            "📋 Reading decision file for task {} in column '{}'",
+            task.id,
+            current_column.name
+        );
+
         let decision = read_decision_file(&ctx.workspace).await;
-        if decision.is_some() {
-            tracing::debug!(
-                "Found decision file for task {}: {:?}",
-                task.id,
-                decision
+        if let Some(ref dec) = decision {
+            // Log the decision contents (summarized)
+            let keys: Vec<&str> = dec.as_object()
+                .map(|obj| obj.keys().map(|k| k.as_str()).collect())
+                .unwrap_or_default();
+            tracing::info!(
+                target: "vibe_kanban::transition",
+                "  ├─ Decision file found with keys: [{}]",
+                keys.join(", ")
+            );
+
+            // Log specific decision value if present
+            if let Some(decision_val) = dec.get("decision").and_then(|v| v.as_str()) {
+                tracing::info!(
+                    target: "vibe_kanban::transition",
+                    "  ├─ Decision value: '{}'",
+                    decision_val
+                );
+            }
+        } else {
+            tracing::info!(
+                target: "vibe_kanban::transition",
+                "  ├─ No decision file found"
+            );
+        }
+
+        // Check if decision contains artifact to compound (knowledge extraction)
+        if let Some(ref dec) = decision {
+            if dec.get("artifact_type").is_some() {
+                tracing::info!(
+                    target: "vibe_kanban::transition",
+                    "  ├─ 🧠 Decision contains artifact - attempting to compound knowledge"
+                );
+                if let Some(artifact) = try_create_artifact_from_decision(
+                    pool,
+                    dec,
+                    task.project_id,
+                    task.id,
+                ).await {
+                    // Record task event for artifact creation
+                    let event = CreateTaskEvent::artifact_created(
+                        task.id,
+                        artifact.id,
+                        &artifact.title,
+                    );
+                    if let Err(e) = TaskEvent::create(pool, &event).await {
+                        tracing::error!(
+                            target: "vibe_kanban::transition",
+                            "Failed to record artifact creation event: {}",
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        // Check for self-complete decision (planning columns that should end without transitioning further)
+        if let Some(ref dec) = decision {
+            if let Some(decision_val) = dec.get("decision").and_then(|v| v.as_str()) {
+                if decision_val == "complete" {
+                    tracing::info!(
+                        target: "vibe_kanban::transition",
+                        "  ├─ 🏁 Self-complete decision detected - marking task done"
+                    );
+
+                    // Find a terminal column on this board (is_terminal = true)
+                    let columns = match KanbanColumn::find_by_board(pool, current_column.board_id).await {
+                        Ok(cols) => cols,
+                        Err(e) => {
+                            tracing::error!("Failed to fetch board columns for self-complete: {}", e);
+                            return false;
+                        }
+                    };
+
+                    let terminal_column = columns.iter().find(|c| c.is_terminal);
+
+                    if let Some(done_col) = terminal_column {
+                        // Move task to terminal column
+                        if let Err(e) = Task::update_column_id(pool, task.id, Some(done_col.id)).await {
+                            tracing::error!("Failed to update column for self-complete: {}", e);
+                            return false;
+                        }
+
+                        if let Err(e) = Task::update_status(pool, task.id, done_col.status.clone()).await {
+                            tracing::error!("Failed to update status for self-complete: {}", e);
+                            return false;
+                        }
+
+                        // Record column transition event
+                        let event = CreateTaskEvent::column_transition(
+                            task.id,
+                            Some(current_column_id),
+                            done_col.id,
+                            EventTriggerType::Automation,
+                            ActorType::System,
+                            None,
+                        );
+                        if let Err(e) = TaskEvent::create(pool, &event).await {
+                            tracing::error!("Failed to record self-complete transition event: {}", e);
+                        }
+
+                        tracing::info!(
+                            target: "vibe_kanban::transition",
+                            "  └─ ✅ Self-completed task {} → '{}'",
+                            task.id,
+                            done_col.name
+                        );
+                        return true;
+                    } else {
+                        // No terminal column found, just mark as done status
+                        tracing::info!(
+                            target: "vibe_kanban::transition",
+                            "  ├─ No terminal column found, marking task status as done"
+                        );
+                        if let Err(e) = Task::update_status(pool, task.id, TaskStatus::Done).await {
+                            tracing::error!("Failed to update task status for self-complete: {}", e);
+                            return false;
+                        }
+
+                        tracing::info!(
+                            target: "vibe_kanban::transition",
+                            "  └─ ✅ Self-completed task {} (status: done)",
+                            task.id
+                        );
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Validate decision variable if column requires one
+        let validation_result = validate_decision_variable(&current_column, &decision);
+        if !validation_result.is_ok() {
+            if let Some(error_msg) = validation_result.error_message() {
+                tracing::warn!(
+                    target: "vibe_kanban::transition",
+                    "  ├─ ⚠️ Decision validation FAILED: {:?}",
+                    validation_result
+                );
+                // Record a task event for the validation failure
+                // This allows the frontend to show the error and potentially trigger a retry
+                if let Err(e) = TaskEvent::create(
+                    pool,
+                    &CreateTaskEvent::decision_validation_failed(
+                        task.id,
+                        ctx.workspace.id,
+                        &error_msg,
+                    )
+                ).await {
+                    tracing::error!("Failed to create decision validation event: {}", e);
+                }
+            }
+        } else if current_column.deliverable_variable.is_some() {
+            tracing::info!(
+                target: "vibe_kanban::transition",
+                "  ├─ ✅ Decision validation passed"
             );
         }
 
         // Try state transitions first (with hierarchical resolution)
+        tracing::info!(
+            target: "vibe_kanban::transition",
+            "🔀 Evaluating transitions from column '{}' for task {}",
+            current_column.name,
+            task.id
+        );
+
         let transitions = match StateTransition::find_from_column_for_task(
             pool,
             current_column_id,
@@ -523,6 +943,12 @@ pub trait ContainerService {
             }
         };
 
+        tracing::info!(
+            target: "vibe_kanban::transition",
+            "  ├─ Found {} possible transitions",
+            transitions.len()
+        );
+
         // Find target column - either from explicit transition or by position fallback
         let target_column = if !transitions.is_empty() {
             // Count failures (times we previously took the else path from this column)
@@ -534,6 +960,14 @@ pub trait ContainerService {
             )
             .await
             .unwrap_or(0);
+
+            if failure_count > 0 {
+                tracing::info!(
+                    target: "vibe_kanban::transition",
+                    "  ├─ Prior failures from this column: {}",
+                    failure_count
+                );
+            }
 
             tracing::debug!(
                 "Task {} has {} prior failures from column {}",
@@ -672,7 +1106,8 @@ pub trait ContainerService {
         }
 
         tracing::info!(
-            "Auto-transitioned task {} from column '{}' to column '{}'",
+            target: "vibe_kanban::transition",
+            "  └─ ✅ Transitioned task {} from '{}' → '{}'",
             task.id,
             current_column.name,
             target_column.name
@@ -680,25 +1115,52 @@ pub trait ContainerService {
 
         // If target column has an agent, start execution
         if let Some(agent_id) = target_column.agent_id {
+            tracing::info!(
+                target: "vibe_kanban::agent",
+                "🤖 Starting agent for task {} in column '{}'",
+                task.id,
+                target_column.name
+            );
             // Fetch the agent for context
             match Agent::find_by_id(pool, agent_id).await {
                 Ok(Some(agent)) => {
+                    tracing::info!(
+                        target: "vibe_kanban::agent",
+                        "  ├─ Agent: {} ({})",
+                        agent.name,
+                        agent.role
+                    );
                     if let Err(e) = self.start_agent_execution_for_task(&task, &agent, &target_column).await {
                         tracing::error!(
-                            "Failed to auto-start agent execution for task {} in column '{}': {}",
-                            task.id,
-                            target_column.name,
+                            target: "vibe_kanban::agent",
+                            "  └─ ❌ Failed to start agent: {}",
                             e
                         );
                     }
                 }
                 Ok(None) => {
-                    tracing::warn!("Agent {} not found for column {}", agent_id, target_column.name);
+                    tracing::warn!(
+                        target: "vibe_kanban::agent",
+                        "  └─ ⚠️ Agent {} not found for column {}",
+                        agent_id,
+                        target_column.name
+                    );
                 }
                 Err(e) => {
-                    tracing::error!("Failed to fetch agent {}: {}", agent_id, e);
+                    tracing::error!(
+                        target: "vibe_kanban::agent",
+                        "  └─ ❌ Failed to fetch agent {}: {}",
+                        agent_id,
+                        e
+                    );
                 }
             }
+        } else {
+            tracing::info!(
+                target: "vibe_kanban::transition",
+                "  └─ No agent assigned to column '{}', task awaiting manual action",
+                target_column.name
+            );
         }
 
         true
@@ -715,6 +1177,13 @@ pub trait ContainerService {
         let column_id = column.id;
         let board_id = column.board_id;
         let column_name = &column.name;
+
+        tracing::info!(
+            target: "vibe_kanban::agent",
+            "  ├─ Building agent context for task {} in column '{}'",
+            task.id,
+            column_name
+        );
 
         // Expand @tagname references in agent start_command and column deliverable
         let expanded_start_command = Tag::expand_tags_optional(pool, agent.start_command.as_deref()).await;
@@ -733,8 +1202,20 @@ pub trait ContainerService {
                 .map_err(|e| anyhow!("Failed to parse executor '{}': {}", agent.executor, e))?;
             let executor_profile_id = ExecutorProfileId::new(base_agent);
 
+            tracing::info!(
+                target: "vibe_kanban::agent",
+                "  │  ├─ Executor: {}",
+                agent.executor
+            );
+
             // Read existing decision file for any feedback from prior rejection
             let existing_decision = read_decision_file(&workspace).await;
+            if existing_decision.is_some() {
+                tracing::info!(
+                    target: "vibe_kanban::agent",
+                    "  │  ├─ Prior decision file found (may contain feedback)"
+                );
+            }
 
             // Build decision instructions if this column has conditional transitions
             // Uses hierarchical resolution: task -> project -> board
@@ -747,6 +1228,13 @@ pub trait ContainerService {
                 &existing_decision,
             ).await;
 
+            if decision_instructions.is_some() {
+                tracing::info!(
+                    target: "vibe_kanban::agent",
+                    "  │  ├─ Decision instructions: included (column has conditional transitions)"
+                );
+            }
+
             // Combine agent's start_command (with tags expanded) with decision instructions
             let start_command = match (&expanded_start_command, &decision_instructions) {
                 (Some(cmd), Some(instructions)) => Some(format!("{}{}", cmd, instructions)),
@@ -755,14 +1243,62 @@ pub trait ContainerService {
                 (None, None) => None,
             };
 
+            if start_command.is_some() {
+                tracing::info!(
+                    target: "vibe_kanban::agent",
+                    "  │  ├─ Start command: {} chars",
+                    start_command.as_ref().map(|c| c.len()).unwrap_or(0)
+                );
+            }
+
             // Build workflow history showing prior work from other columns
             let workflow_history = match TaskEvent::build_workflow_history(pool, task.id).await {
-                Ok(history) if !history.is_empty() => Some(history),
-                _ => None,
+                Ok(history) if !history.is_empty() => {
+                    tracing::info!(
+                        target: "vibe_kanban::agent",
+                        "  │  ├─ Workflow history: {} chars (prior column work)",
+                        history.len()
+                    );
+                    Some(history)
+                },
+                _ => {
+                    tracing::info!(
+                        target: "vibe_kanban::agent",
+                        "  │  ├─ Workflow history: none (first column)"
+                    );
+                    None
+                }
             };
 
             // Build project context from context artifacts (ADRs, patterns)
             let project_context = build_project_context(pool, task.project_id).await;
+
+            if let Some(ref ctx) = project_context {
+                tracing::info!(
+                    target: "vibe_kanban::agent",
+                    "  │  ├─ Project context: {} chars (ADRs + patterns)",
+                    ctx.len()
+                );
+            } else {
+                tracing::info!(
+                    target: "vibe_kanban::agent",
+                    "  │  ├─ Project context: none"
+                );
+            }
+
+            if let Some(ref del) = expanded_deliverable {
+                tracing::info!(
+                    target: "vibe_kanban::agent",
+                    "  │  ├─ Deliverable: '{}'",
+                    del
+                );
+            }
+
+            tracing::info!(
+                target: "vibe_kanban::agent",
+                "  │  └─ System prompt: {} chars",
+                agent.system_prompt.len()
+            );
 
             // Start execution with agent context
             // Deliverable comes from the column (what this stage should produce), with tags expanded
@@ -776,6 +1312,13 @@ pub trait ContainerService {
                 column_name: column_name.to_string(),
                 project_context,
             };
+
+            tracing::info!(
+                target: "vibe_kanban::agent",
+                "  └─ 🚀 Launching {} with full context",
+                agent.name
+            );
+
             self.start_workspace_with_agent_context(
                 &workspace,
                 executor_profile_id.clone(),

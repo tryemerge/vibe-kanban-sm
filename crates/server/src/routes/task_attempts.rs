@@ -1552,6 +1552,7 @@ pub async fn get_task_attempt_repos(
 
 /// Execute auto-start triggers for a completed task
 /// This is called when a task is marked as done/merged
+/// Uses "ALL" semantics: target task only starts when ALL its triggers have fired
 pub async fn execute_task_triggers(
     deployment: &DeploymentImpl,
     completed_task_id: Uuid,
@@ -1559,14 +1560,17 @@ pub async fn execute_task_triggers(
 ) {
     let pool = &deployment.db().pool;
 
-    // Find all triggers waiting for this task
-    let triggers = match TaskTrigger::find_by_trigger_task(pool, completed_task_id).await {
+    // Find all UNFIRED triggers waiting for this task
+    let triggers = match TaskTrigger::find_unfired_by_trigger_task(pool, completed_task_id).await {
         Ok(triggers) => triggers,
         Err(e) => {
             tracing::error!("Failed to find triggers for task {}: {}", completed_task_id, e);
             return;
         }
     };
+
+    // Collect unique task_ids that might need to be started
+    let mut tasks_to_check: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
 
     for trigger in triggers {
         // Check if the condition matches
@@ -1584,21 +1588,55 @@ pub async fn execute_task_triggers(
         }
 
         tracing::info!(
-            "Executing trigger {} for task {} (waiting task: {})",
+            "Marking trigger {} as fired for task {} (waiting task: {})",
             trigger.id,
             completed_task_id,
             trigger.task_id
         );
 
+        // Mark the trigger as fired
+        if let Err(e) = TaskTrigger::mark_fired(pool, trigger.id).await {
+            tracing::error!("Failed to mark trigger {} as fired: {}", trigger.id, e);
+            continue;
+        }
+
+        // Add this task to the list of tasks to check
+        tasks_to_check.insert(trigger.task_id);
+    }
+
+    // Now check each task to see if ALL its triggers have fired
+    for task_id in tasks_to_check {
+        // Check if all triggers for this task have fired
+        let all_fired = match TaskTrigger::all_triggers_fired(pool, task_id).await {
+            Ok(all_fired) => all_fired,
+            Err(e) => {
+                tracing::error!("Failed to check if all triggers fired for task {}: {}", task_id, e);
+                continue;
+            }
+        };
+
+        if !all_fired {
+            tracing::info!(
+                "Task {} has unfired triggers remaining, not auto-starting yet",
+                task_id
+            );
+            continue;
+        }
+
+        tracing::info!(
+            "All triggers fired for task {}, proceeding with auto-start",
+            task_id
+        );
+
         // Get the task to auto-start
-        let task = match Task::find_by_id(pool, trigger.task_id).await {
+        let task = match Task::find_by_id(pool, task_id).await {
             Ok(Some(task)) => task,
             Ok(None) => {
-                tracing::warn!("Trigger {} references non-existent task {}", trigger.id, trigger.task_id);
+                tracing::warn!("Task {} not found for auto-start", task_id);
                 continue;
             }
             Err(e) => {
-                tracing::error!("Failed to find task {} for trigger: {}", trigger.task_id, e);
+                tracing::error!("Failed to find task {} for trigger: {}", task_id, e);
                 continue;
             }
         };
@@ -1668,16 +1706,25 @@ pub async fn execute_task_triggers(
         }
 
         tracing::info!(
-            "Task {} auto-started via trigger {} (moved to column '{}')",
+            "Task {} auto-started (all triggers satisfied, moved to column '{}')",
             task.id,
-            trigger.id,
             target_column.name
         );
 
-        // Delete non-persistent triggers after firing
-        if !trigger.is_persistent {
-            if let Err(e) = TaskTrigger::delete(pool, trigger.id).await {
-                tracing::error!("Failed to delete one-shot trigger {}: {}", trigger.id, e);
+        // Delete non-persistent triggers after task is started
+        let all_triggers = match TaskTrigger::find_by_task(pool, task_id).await {
+            Ok(triggers) => triggers,
+            Err(e) => {
+                tracing::error!("Failed to find triggers for cleanup: {}", e);
+                continue;
+            }
+        };
+
+        for trigger in all_triggers {
+            if !trigger.is_persistent {
+                if let Err(e) = TaskTrigger::delete(pool, trigger.id).await {
+                    tracing::error!("Failed to delete one-shot trigger {}: {}", trigger.id, e);
+                }
             }
         }
     }
