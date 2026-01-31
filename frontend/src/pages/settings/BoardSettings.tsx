@@ -34,6 +34,7 @@ import {
   Columns3,
   ArrowRight,
   GitBranch,
+  X,
 } from 'lucide-react';
 import { boardsApi, agentsApi, stateTransitionsApi } from '@/lib/api';
 import {
@@ -1285,25 +1286,99 @@ export function BoardSettings() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="column-deliverable-options">
-                  {t('settings.boards.columns.form.deliverableOptions', 'Allowed Values (comma-separated)')}
+                <Label>
+                  {t('settings.boards.columns.form.deliverableOptions', 'Allowed Values')}
                 </Label>
-                <Input
-                  id="column-deliverable-options"
-                  placeholder={t('settings.boards.columns.form.deliverableOptionsPlaceholder', 'e.g., approve, reject, needs_work')}
-                  defaultValue={columnForm.deliverable_options ? JSON.parse(columnForm.deliverable_options).join(', ') : ''}
-                  key={editingColumn?.id || 'new'}
-                  onBlur={(e) => {
-                    const values = e.target.value
-                      .split(',')
-                      .map((v) => v.trim())
-                      .filter((v) => v.length > 0);
-                    setColumnForm({
-                      ...columnForm,
-                      deliverable_options: values.length > 0 ? JSON.stringify(values) : null,
-                    });
-                  }}
-                />
+                <div className="space-y-2">
+                  {/* List of current options */}
+                  {(() => {
+                    const options: string[] = columnForm.deliverable_options
+                      ? JSON.parse(columnForm.deliverable_options)
+                      : [];
+                    return options.length > 0 ? (
+                      <div className="border rounded-md divide-y">
+                        {options.map((option, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between px-3 py-2 text-sm"
+                          >
+                            <span className="font-mono">{option}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => {
+                                const newOptions = options.filter((_, i) => i !== index);
+                                setColumnForm({
+                                  ...columnForm,
+                                  deliverable_options: newOptions.length > 0 ? JSON.stringify(newOptions) : null,
+                                });
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground py-2">
+                        {t('settings.boards.columns.form.noOptions', 'No options defined yet.')}
+                      </div>
+                    );
+                  })()}
+                  {/* Add new option input */}
+                  <div className="flex gap-2">
+                    <Input
+                      id="new-deliverable-option"
+                      placeholder={t('settings.boards.columns.form.newOptionPlaceholder', 'e.g., approve')}
+                      className="font-mono"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const input = e.currentTarget;
+                          const value = input.value.trim();
+                          if (value) {
+                            const currentOptions: string[] = columnForm.deliverable_options
+                              ? JSON.parse(columnForm.deliverable_options)
+                              : [];
+                            if (!currentOptions.includes(value)) {
+                              setColumnForm({
+                                ...columnForm,
+                                deliverable_options: JSON.stringify([...currentOptions, value]),
+                              });
+                            }
+                            input.value = '';
+                          }
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const input = document.getElementById('new-deliverable-option') as HTMLInputElement;
+                        const value = input?.value.trim();
+                        if (value) {
+                          const currentOptions: string[] = columnForm.deliverable_options
+                            ? JSON.parse(columnForm.deliverable_options)
+                            : [];
+                          if (!currentOptions.includes(value)) {
+                            setColumnForm({
+                              ...columnForm,
+                              deliverable_options: JSON.stringify([...currentOptions, value]),
+                            });
+                          }
+                          input.value = '';
+                        }
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      {t('common:buttons.add', 'Add')}
+                    </Button>
+                  </div>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {t('settings.boards.columns.form.deliverableOptionsHelper', 'The agent will be instructed to set the variable to one of these values.')}
                 </p>

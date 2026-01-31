@@ -51,6 +51,7 @@ import type {
   ImageResponse,
 } from 'shared/types';
 import { LabelPicker } from '@/components/tasks/LabelPicker';
+import { TriggerPicker } from '@/components/tasks/TriggerPicker';
 import { useTaskLabelAssignments, taskLabelsKeys } from '@/hooks/useTaskLabels';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -524,6 +525,19 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
                       queryKey: taskLabelsKeys.assignments(projectId),
                     });
                   }}
+                />
+              </div>
+            )}
+            {/* Triggers in edit mode - auto-start when another task completes */}
+            {editMode && (
+              <div className="space-y-2 pt-4 border-t">
+                <Label className="text-sm font-medium">Auto-start Triggers</Label>
+                <p className="text-xs text-muted-foreground">
+                  This task will automatically start when <strong>all</strong> selected tasks complete.
+                </p>
+                <TriggerPicker
+                  projectId={projectId}
+                  taskId={props.task.id}
                 />
               </div>
             )}

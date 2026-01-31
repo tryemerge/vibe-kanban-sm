@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -18,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, ArrowRight, AlertCircle } from 'lucide-react';
+import { Loader2, ArrowRight, AlertCircle, Variable } from 'lucide-react';
 import type { KanbanColumn, CreateStateTransition } from 'shared/types';
 import { stateTransitionsApi } from '@/lib/api';
 
@@ -45,7 +46,11 @@ export function TransitionBuilderDialog({
   const { t } = useTranslation(['settings']);
   const [fromColumnId, setFromColumnId] = useState<string>('');
   const [optionMappings, setOptionMappings] = useState<Map<string, TransitionConfig>>(new Map());
+  const [elseColumnId, setElseColumnId] = useState<string>('');
+  const [escalationColumnId, setEscalationColumnId] = useState<string>('');
   const [simpleToColumnId, setSimpleToColumnId] = useState<string>('');
+  const [useConditionalLogic, setUseConditionalLogic] = useState(true);
+  const [requiresConfirmation, setRequiresConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +70,8 @@ export function TransitionBuilderDialog({
   }, [fromColumn]);
 
   const hasDeliverableOptions = deliverableOptions.length > 0;
+  // Use conditional logic only if enabled AND column has options
+  const showConditionalUI = hasDeliverableOptions && useConditionalLogic;
 
   // Reset mappings when fromColumn changes
   useEffect(() => {
@@ -74,10 +81,15 @@ export function TransitionBuilderDialog({
         initialMappings.set(opt, { toColumnId: null, maxFailures: null });
       });
       setOptionMappings(initialMappings);
+      setUseConditionalLogic(true);
     } else {
       setOptionMappings(new Map());
+      setUseConditionalLogic(false);
     }
     setSimpleToColumnId('');
+    setElseColumnId('');
+    setEscalationColumnId('');
+    setRequiresConfirmation(false);
     setError(null);
   }, [fromColumnId, hasDeliverableOptions, deliverableOptions]);
 
@@ -87,6 +99,10 @@ export function TransitionBuilderDialog({
       setFromColumnId('');
       setOptionMappings(new Map());
       setSimpleToColumnId('');
+      setElseColumnId('');
+      setEscalationColumnId('');
+      setUseConditionalLogic(true);
+      setRequiresConfirmation(false);
       setError(null);
     }
   }, [open]);
@@ -104,17 +120,17 @@ export function TransitionBuilderDialog({
     setError(null);
 
     try {
-      if (hasDeliverableOptions && fromColumn?.deliverable_variable) {
+      if (showConditionalUI && fromColumn?.deliverable_variable) {
         // Create transitions for each option mapping
         for (const [optionValue, config] of optionMappings) {
           if (config.toColumnId) {
             const createData: CreateStateTransition = {
               from_column_id: fromColumnId,
               to_column_id: config.toColumnId,
-              else_column_id: null,
-              escalation_column_id: null,
+              else_column_id: elseColumnId || null,
+              escalation_column_id: escalationColumnId || null,
               name: optionValue,
-              requires_confirmation: false,
+              requires_confirmation: requiresConfirmation,
               condition_key: fromColumn.deliverable_variable,
               condition_value: optionValue,
               max_failures: config.maxFailures,
@@ -123,14 +139,14 @@ export function TransitionBuilderDialog({
           }
         }
       } else if (simpleToColumnId) {
-        // Simple transition without conditions
+        // Simple transition without conditions (or conditional logic disabled)
         const createData: CreateStateTransition = {
           from_column_id: fromColumnId,
           to_column_id: simpleToColumnId,
           else_column_id: null,
           escalation_column_id: null,
           name: null,
-          requires_confirmation: false,
+          requires_confirmation: requiresConfirmation,
           condition_key: null,
           condition_value: null,
           max_failures: null,
@@ -155,13 +171,13 @@ export function TransitionBuilderDialog({
   const canSave = useMemo(() => {
     if (!fromColumnId) return false;
 
-    if (hasDeliverableOptions) {
+    if (showConditionalUI) {
       // At least one mapping should be defined
       return Array.from(optionMappings.values()).some((m) => m.toColumnId);
     } else {
       return !!simpleToColumnId && simpleToColumnId !== fromColumnId;
     }
-  }, [fromColumnId, hasDeliverableOptions, optionMappings, simpleToColumnId]);
+  }, [fromColumnId, showConditionalUI, optionMappings, simpleToColumnId]);
 
   const otherColumns = useMemo(
     () => columns.filter((c) => c.id !== fromColumnId),
@@ -213,9 +229,12 @@ export function TransitionBuilderDialog({
                         />
                       )}
                       <span>{col.name}</span>
-                      {col.deliverable_options && (
+                      {col.deliverable_variable && (
                         <span className="text-xs text-muted-foreground ml-1">
-                          ({t('settings:boards.transitions.builder.hasOptions', 'has options')})
+                          <span className="opacity-60">var:</span>
+                          <code className="bg-muted px-1 rounded ml-0.5">
+                            {col.deliverable_variable}
+                          </code>
                         </span>
                       )}
                     </div>
@@ -225,21 +244,54 @@ export function TransitionBuilderDialog({
             </Select>
           </div>
 
-          {/* Step 2: Map deliverable options or simple to column */}
+          {/* Step 2: Show variable info and conditional toggle */}
+          {fromColumnId && hasDeliverableOptions && fromColumn?.deliverable_variable && (
+            <div className="space-y-4">
+              {/* Variable name display */}
+              <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/50">
+                <Variable className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="text-sm font-medium">
+                    {t('settings:boards.transitions.builder.variableName', 'Variable Name')}
+                  </div>
+                  <code className="text-sm font-mono text-primary">
+                    {fromColumn.deliverable_variable}
+                  </code>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {deliverableOptions.length} {t('settings:boards.transitions.builder.optionsCount', 'options')}
+                </div>
+              </div>
+
+              {/* Conditional logic toggle */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="use-conditional"
+                  checked={useConditionalLogic}
+                  onCheckedChange={(checked) => setUseConditionalLogic(checked === true)}
+                />
+                <Label htmlFor="use-conditional" className="text-sm font-normal cursor-pointer">
+                  {t('settings:boards.transitions.builder.useConditional', 'Use conditional logic')}
+                </Label>
+              </div>
+              {!useConditionalLogic && (
+                <p className="text-xs text-muted-foreground pl-6">
+                  {t(
+                    'settings:boards.transitions.builder.conditionalDisabled',
+                    'Conditional logic disabled. Creating a simple unconditional transition.'
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Map deliverable options or simple to column */}
           {fromColumnId && (
             <>
-              {hasDeliverableOptions && fromColumn?.deliverable_variable ? (
+              {showConditionalUI && fromColumn?.deliverable_variable ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>
-                      {t('settings:boards.transitions.builder.mapOptions', 'Map')}
-                    </span>
-                    <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">
-                      {fromColumn.deliverable_variable}
-                    </code>
-                    <span>
-                      {t('settings:boards.transitions.builder.optionsTo', 'options to columns:')}
-                    </span>
+                  <div className="text-sm text-muted-foreground">
+                    {t('settings:boards.transitions.builder.mapOptionsTo', 'Map options to destination columns:')}
                   </div>
 
                   {deliverableOptions.map((option: string) => (
@@ -296,21 +348,94 @@ export function TransitionBuilderDialog({
                     </div>
                   ))}
 
+                  {/* Else column dropdown */}
+                  <div className="flex items-center gap-3 p-3 border rounded-lg bg-amber-500/10 border-amber-500/30">
+                    <code className="font-mono bg-amber-500/20 text-amber-700 dark:text-amber-300 px-2 py-1 rounded text-sm min-w-[80px]">
+                      else
+                    </code>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <Select value={elseColumnId || 'none'} onValueChange={(value) => setElseColumnId(value === 'none' ? '' : value)}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue
+                          placeholder={t('settings:boards.transitions.builder.selectElse', 'Select fallback')}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          {t('settings:boards.transitions.builder.noFallback', '(no fallback)')}
+                        </SelectItem>
+                        {otherColumns.map((col) => (
+                          <SelectItem key={col.id} value={col.id}>
+                            <div className="flex items-center gap-2">
+                              {col.color && (
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: col.color }}
+                                />
+                              )}
+                              {col.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">
+                      {t('settings:boards.transitions.builder.elseHelp', 'When no condition matches')}
+                    </span>
+                  </div>
+
+                  {/* Escalation column dropdown */}
+                  <div className="space-y-2">
+                    <Label>
+                      {t('settings:boards.transitions.form.escalationColumn', 'Escalation Column')}
+                    </Label>
+                    <Select value={escalationColumnId || 'none'} onValueChange={(value) => setEscalationColumnId(value === 'none' ? '' : value)}>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={t('settings:boards.transitions.form.selectColumn', 'Select column')}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          {t('settings:boards.transitions.form.noneOptional', '(none)')}
+                        </SelectItem>
+                        {otherColumns.map((col) => (
+                          <SelectItem key={col.id} value={col.id}>
+                            <div className="flex items-center gap-2">
+                              {col.color && (
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: col.color }}
+                                />
+                              )}
+                              {col.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {t('settings:boards.transitions.form.escalationHelp', 'Where to go when max failures is reached')}
+                    </p>
+                  </div>
+
                   <p className="text-xs text-muted-foreground">
                     {t(
                       'settings:boards.transitions.builder.maxFailuresHelp',
-                      'Optional: Set max failures for escalation paths (leave empty for unlimited)'
+                      'Optional: Set max failures per option. After that many trips through the else path, task goes to escalation column instead.'
                     )}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    {t(
-                      'settings:boards.transitions.builder.noOptions',
-                      'This column has no deliverable options defined. Creating a simple transition.'
-                    )}
-                  </p>
+                  {!hasDeliverableOptions && (
+                    <p className="text-sm text-muted-foreground">
+                      {t(
+                        'settings:boards.transitions.builder.noOptions',
+                        'This column has no deliverable options defined. Creating a simple transition.'
+                      )}
+                    </p>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="simple-to-column">
@@ -340,15 +465,31 @@ export function TransitionBuilderDialog({
                     </Select>
                   </div>
 
-                  <p className="text-xs text-muted-foreground">
-                    {t(
-                      'settings:boards.transitions.builder.addOptionsHint',
-                      'Tip: Add deliverable options to a column to enable conditional routing.'
-                    )}
-                  </p>
+                  {!hasDeliverableOptions && (
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'settings:boards.transitions.builder.addOptionsHint',
+                        'Tip: Add deliverable options to a column to enable conditional routing.'
+                      )}
+                    </p>
+                  )}
                 </div>
               )}
             </>
+          )}
+
+          {/* Requires confirmation checkbox */}
+          {fromColumnId && (
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <Checkbox
+                id="requires-confirmation"
+                checked={requiresConfirmation}
+                onCheckedChange={(checked) => setRequiresConfirmation(checked === true)}
+              />
+              <Label htmlFor="requires-confirmation" className="text-sm font-normal cursor-pointer">
+                {t('settings:boards.transitions.form.requiresConfirmation', 'Requires confirmation')}
+              </Label>
+            </div>
           )}
         </div>
 
@@ -358,7 +499,7 @@ export function TransitionBuilderDialog({
           </Button>
           <Button onClick={handleSave} disabled={!canSave || saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {hasDeliverableOptions
+            {showConditionalUI
               ? t('settings:boards.transitions.builder.createTransitions', 'Create Transitions')
               : t('settings:boards.transitions.builder.createTransition', 'Create Transition')}
           </Button>

@@ -179,7 +179,11 @@ trigger_on: string,
 /**
  * If true, trigger persists after firing; if false, removed after firing
  */
-is_persistent: boolean, created_at: Date, };
+is_persistent: boolean, created_at: Date, 
+/**
+ * When this trigger was satisfied (null if not yet fired)
+ */
+fired_at: Date | null, };
 
 export type CreateTaskTrigger = { task_id: string, trigger_task_id: string, trigger_on: string, is_persistent: boolean, };
 
@@ -187,7 +191,11 @@ export type TriggerCondition = "completed" | { "completed_with_status": string }
 
 export type TaskLabel = { id: string, project_id: string, name: string, color: string | null, position: number, created_at: Date, };
 
-export type CreateTaskLabel = { project_id: string, name: string, color: string | null, position: number | null, };
+export type CreateTaskLabel = { 
+/**
+ * Project ID - can be omitted from JSON body if provided via URL path
+ */
+project_id: string, name: string, color: string | null, position: number | null, };
 
 export type UpdateTaskLabel = { name: string | null, color: string | null, position: number | null, };
 
@@ -726,7 +734,7 @@ export type WebhookConfig = { url: string, method: string | null, headers: JsonV
 
 export type NotifyConfig = { channel: string, webhook_url: string, message_template: string, };
 
-export type TaskEventType = "column_enter" | "column_exit" | "agent_start" | "agent_complete" | "agent_failed" | "commit" | "manual_action" | "task_created" | "status_change" | "else_transition";
+export type TaskEventType = "column_enter" | "column_exit" | "agent_start" | "agent_complete" | "agent_failed" | "commit" | "manual_action" | "task_created" | "status_change" | "else_transition" | "decision_validation_failed" | "artifact_created";
 
 export type EventTriggerType = "manual" | "automation" | "drag_drop" | "system";
 
@@ -738,17 +746,49 @@ export type TaskEventWithNames = { from_column_name: string | null, to_column_na
 
 export type CreateTaskEvent = { task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType | null, actor_id: string | null, };
 
-export type ArtifactType = "module_memory" | "adr" | "decision" | "pattern" | "dependency";
+export type ArtifactType = "module_memory" | "adr" | "decision" | "pattern" | "dependency" | "iplan" | "changelog_entry";
 
 export type ArtifactScope = "path" | "task" | "global";
 
-export type ContextArtifact = { id: string, project_id: string, artifact_type: string, path: string | null, title: string, content: string, metadata: string | null, source_task_id: string | null, source_commit_hash: string | null, 
+export type ContextArtifact = { id: string, project_id: string, artifact_type: string, 
+/**
+ * File/module path this relates to (for module memories)
+ */
+path: string | null, title: string, content: string, metadata: string | null, source_task_id: string | null, source_commit_hash: string | null, 
 /**
  * Scope determines when this artifact is included in context
  */
-scope: string, created_at: Date, updated_at: Date, };
+scope: string, 
+/**
+ * Relative file path on disk (e.g., 'docs/adr/0001-use-postgres.md')
+ */
+file_path: string | null, 
+/**
+ * ID of the artifact this one supersedes (for version tracking)
+ */
+supersedes_id: string | null, 
+/**
+ * Chain ID groups all versions of the same logical document
+ */
+chain_id: string | null, 
+/**
+ * Version number within a chain (1, 2, 3...)
+ */
+version: number, created_at: Date, updated_at: Date, };
 
-export type CreateContextArtifact = { project_id: string, artifact_type: ArtifactType, path: string | null, title: string, content: string, metadata: JsonValue | null, source_task_id: string | null, source_commit_hash: string | null, scope: ArtifactScope, };
+export type CreateContextArtifact = { project_id: string, artifact_type: ArtifactType, path: string | null, title: string, content: string, metadata: JsonValue | null, source_task_id: string | null, source_commit_hash: string | null, scope: ArtifactScope, 
+/**
+ * Relative file path on disk (e.g., 'docs/adr/0001-use-postgres.md')
+ */
+file_path: string | null, 
+/**
+ * ID of the artifact this one supersedes (for version tracking)
+ */
+supersedes_id: string | null, 
+/**
+ * Chain ID - if not provided, will be auto-generated for new chains
+ */
+chain_id: string | null, };
 
 export type UpdateContextArtifact = { title: string | null, content: string | null, metadata: JsonValue | null, scope: ArtifactScope | null, };
 

@@ -36,3 +36,4 @@ export { useProjectColumns, findColumnBySlug, buildColumnBySlugMap } from './use
 export { useTaskEvents } from './useTaskEvents';
 export { useProjects } from './useProjects';
 export { useSwimLaneConfig, type SwimLaneConfig, type SwimLaneGroupBy } from './useSwimLaneConfig';
+export { useTaskTriggers, useTaskTriggerMutations, taskTriggersKeys } from './useTaskTriggers';

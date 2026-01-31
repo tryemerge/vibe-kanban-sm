@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   AlertCircle,
+  FileText,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useTaskEvents } from '@/hooks';
@@ -75,6 +76,16 @@ const EVENT_CONFIG: Record<
     icon: AlertCircle,
     label: 'Else path taken',
     color: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  },
+  decision_validation_failed: {
+    icon: AlertCircle,
+    label: 'Decision variable not set',
+    color: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  },
+  artifact_created: {
+    icon: FileText,
+    label: 'Artifact created',
+    color: 'bg-violet-500/10 text-violet-500 border-violet-500/20',
   },
 };
 
