@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id as \"id!: Uuid\",\n                      task_id as \"task_id!: Uuid\",\n                      trigger_task_id as \"trigger_task_id!: Uuid\",\n                      trigger_on,\n                      is_persistent as \"is_persistent!: bool\",\n                      created_at as \"created_at!: DateTime<Utc>\"\n               FROM task_triggers\n               WHERE id = $1",
+  "query": "SELECT id as \"id!: Uuid\",\n                      task_id as \"task_id!: Uuid\",\n                      trigger_task_id as \"trigger_task_id!: Uuid\",\n                      trigger_on,\n                      is_persistent as \"is_persistent!: bool\",\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      fired_at as \"fired_at: DateTime<Utc>\"\n               FROM task_triggers\n               WHERE task_id = $1",
   "describe": {
     "columns": [
       {
@@ -32,6 +32,11 @@
         "ordinal": 5,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "fired_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
@@ -45,8 +50,9 @@
       false,
       false,
       true,
+      true,
       true
     ]
   },
-  "hash": "3324aad618084af2001b00642939db6d526e080ea3566612bc643153e8d67be5"
+  "hash": "680a0418eb5626ac5ca1c481d520d95c8997bb95edd491870d99e87318f76534"
 }

@@ -33,6 +33,10 @@ pub enum TaskEventType {
     /// Transition took the else path (condition didn't match)
     /// Used for counting failures toward escalation
     ElseTransition,
+    /// Decision validation failed - agent didn't set required variable
+    DecisionValidationFailed,
+    /// Context artifact created - knowledge compounded
+    ArtifactCreated,
 }
 
 /// What triggered this event
@@ -629,6 +633,65 @@ impl CreateTaskEvent {
             commit_message: None,
             metadata: None,
             actor_type: Some(ActorType::System),
+            actor_id: None,
+        }
+    }
+
+    /// Create a decision validation failed event
+    /// Records when an agent didn't set the required decision variable
+    pub fn decision_validation_failed(
+        task_id: Uuid,
+        workspace_id: Uuid,
+        error_message: &str,
+    ) -> Self {
+        let metadata = serde_json::json!({
+            "error": error_message,
+            "type": "decision_validation_failed"
+        });
+        Self {
+            task_id,
+            event_type: TaskEventType::DecisionValidationFailed,
+            from_column_id: None,
+            to_column_id: None,
+            workspace_id: Some(workspace_id),
+            session_id: None,
+            executor: None,
+            automation_rule_id: None,
+            trigger_type: Some(EventTriggerType::Automation),
+            commit_hash: None,
+            commit_message: None,
+            metadata: Some(metadata),
+            actor_type: Some(ActorType::System),
+            actor_id: None,
+        }
+    }
+
+    /// Create an artifact created event
+    /// Records when a context artifact was created to compound knowledge
+    pub fn artifact_created(
+        task_id: Uuid,
+        artifact_id: Uuid,
+        artifact_title: &str,
+    ) -> Self {
+        let metadata = serde_json::json!({
+            "artifact_id": artifact_id.to_string(),
+            "artifact_title": artifact_title,
+            "type": "artifact_created"
+        });
+        Self {
+            task_id,
+            event_type: TaskEventType::ArtifactCreated,
+            from_column_id: None,
+            to_column_id: None,
+            workspace_id: None,
+            session_id: None,
+            executor: None,
+            automation_rule_id: None,
+            trigger_type: Some(EventTriggerType::Automation),
+            commit_hash: None,
+            commit_message: None,
+            metadata: Some(metadata),
+            actor_type: Some(ActorType::Agent),
             actor_id: None,
         }
     }

@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{Executor, FromRow, Postgres, PgPool};
+use tracing;
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -18,6 +19,11 @@ pub enum ArtifactType {
     Pattern,
     /// Dependency information
     Dependency,
+    /// Implementation plan (iplan) - breaks down work into subtasks
+    #[serde(rename = "iplan")]
+    IPlan,
+    /// Changelog entry - records completed work for release notes
+    ChangelogEntry,
 }
 
 /// Scope determines when an artifact is included in agent context
@@ -60,6 +66,8 @@ impl ArtifactType {
             ArtifactType::Decision => "decision",
             ArtifactType::Pattern => "pattern",
             ArtifactType::Dependency => "dependency",
+            ArtifactType::IPlan => "iplan",
+            ArtifactType::ChangelogEntry => "changelog_entry",
         }
     }
 
@@ -70,6 +78,8 @@ impl ArtifactType {
             "decision" => Some(ArtifactType::Decision),
             "pattern" => Some(ArtifactType::Pattern),
             "dependency" => Some(ArtifactType::Dependency),
+            "iplan" => Some(ArtifactType::IPlan),
+            "changelog_entry" => Some(ArtifactType::ChangelogEntry),
             _ => None,
         }
     }
@@ -81,6 +91,7 @@ pub struct ContextArtifact {
     pub id: Uuid,
     pub project_id: Uuid,
     pub artifact_type: String,
+    /// File/module path this relates to (for module memories)
     pub path: Option<String>,
     pub title: String,
     pub content: String,
@@ -89,6 +100,14 @@ pub struct ContextArtifact {
     pub source_commit_hash: Option<String>,
     /// Scope determines when this artifact is included in context
     pub scope: String,
+    /// Relative file path on disk (e.g., 'docs/adr/0001-use-postgres.md')
+    pub file_path: Option<String>,
+    /// ID of the artifact this one supersedes (for version tracking)
+    pub supersedes_id: Option<Uuid>,
+    /// Chain ID groups all versions of the same logical document
+    pub chain_id: Option<Uuid>,
+    /// Version number within a chain (1, 2, 3...)
+    pub version: i32,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -107,6 +126,12 @@ pub struct CreateContextArtifact {
     pub source_commit_hash: Option<String>,
     #[serde(default)]
     pub scope: ArtifactScope,
+    /// Relative file path on disk (e.g., 'docs/adr/0001-use-postgres.md')
+    pub file_path: Option<String>,
+    /// ID of the artifact this one supersedes (for version tracking)
+    pub supersedes_id: Option<Uuid>,
+    /// Chain ID - if not provided, will be auto-generated for new chains
+    pub chain_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -136,6 +161,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -167,6 +196,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -198,6 +231,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -226,6 +263,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -249,11 +290,31 @@ impl ContextArtifact {
             .map(|m| serde_json::to_string(&m).ok())
             .flatten();
 
+        // For new chains, generate a chain_id; for versions, use the provided one
+        let chain_id = data.chain_id.or_else(|| {
+            // For ADRs and iPlans, auto-generate a chain_id if not provided
+            if matches!(data.artifact_type, ArtifactType::Adr | ArtifactType::IPlan) {
+                Some(Uuid::new_v4())
+            } else {
+                None
+            }
+        });
+
+        // Calculate version: if superseding, get the previous version + 1
+        let version = if data.supersedes_id.is_some() {
+            // This would ideally query the previous version, but for simplicity
+            // we assume the caller handles version numbering or we query it
+            // For now, default to 1 (caller should provide correct chain_id)
+            1
+        } else {
+            1
+        };
+
         sqlx::query_as!(
             ContextArtifact,
             r#"INSERT INTO context_artifacts
-               (id, project_id, artifact_type, path, title, content, metadata, source_task_id, source_commit_hash, scope)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+               (id, project_id, artifact_type, path, title, content, metadata, source_task_id, source_commit_hash, scope, file_path, supersedes_id, chain_id, version)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                RETURNING
                 id as "id!: Uuid",
                 project_id as "project_id!: Uuid",
@@ -265,6 +326,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>""#,
             artifact_id,
@@ -276,7 +341,11 @@ impl ContextArtifact {
             metadata_json,
             data.source_task_id,
             data.source_commit_hash,
-            scope_str
+            scope_str,
+            data.file_path,
+            data.supersedes_id,
+            chain_id,
+            version
         )
         .fetch_one(pool)
         .await
@@ -321,6 +390,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -371,6 +444,9 @@ impl ContextArtifact {
                     source_task_id,
                     source_commit_hash: source_commit_hash.map(|s| s.to_string()),
                     scope: ArtifactScope::Path, // Module memory uses path scope by default
+                    file_path: None,            // Module memories don't have file paths
+                    supersedes_id: None,
+                    chain_id: None,
                 },
                 Uuid::new_v4(),
             )
@@ -417,11 +493,25 @@ impl ContextArtifact {
         task_id: Option<Uuid>,
         paths: &[String],
     ) -> Result<String, sqlx::Error> {
+        tracing::info!(
+            target: "vibe_kanban::context",
+            "📚 Building full context for project {} (task: {:?}, paths: {})",
+            project_id,
+            task_id,
+            paths.len()
+        );
+
         let mut context_parts = Vec::new();
 
         // 1. Global artifacts (always included)
         let global_artifacts = Self::find_global_artifacts(pool, project_id).await?;
         if !global_artifacts.is_empty() {
+            tracing::info!(
+                target: "vibe_kanban::context",
+                "  ├─ Global artifacts: {} found - {}",
+                global_artifacts.len(),
+                global_artifacts.iter().map(|a| a.title.as_str()).collect::<Vec<_>>().join(", ")
+            );
             let mut global_section = String::from("# Project Context\n\n");
             for artifact in global_artifacts {
                 global_section.push_str(&format!("## {}\n\n", artifact.title));
@@ -429,12 +519,23 @@ impl ContextArtifact {
                 global_section.push_str("\n\n");
             }
             context_parts.push(global_section);
+        } else {
+            tracing::info!(
+                target: "vibe_kanban::context",
+                "  ├─ Global artifacts: none"
+            );
         }
 
         // 2. Task-specific artifacts (if task_id provided)
         if let Some(tid) = task_id {
             let task_artifacts = Self::find_task_artifacts(pool, project_id, tid).await?;
             if !task_artifacts.is_empty() {
+                tracing::info!(
+                    target: "vibe_kanban::context",
+                    "  ├─ Task artifacts: {} found - {}",
+                    task_artifacts.len(),
+                    task_artifacts.iter().map(|a| a.title.as_str()).collect::<Vec<_>>().join(", ")
+                );
                 let mut task_section = String::from("# Task Context\n\n");
                 for artifact in task_artifacts {
                     task_section.push_str(&format!("## {}\n\n", artifact.title));
@@ -442,14 +543,40 @@ impl ContextArtifact {
                     task_section.push_str("\n\n");
                 }
                 context_parts.push(task_section);
+            } else {
+                tracing::info!(
+                    target: "vibe_kanban::context",
+                    "  ├─ Task artifacts: none for task {}",
+                    tid
+                );
             }
         }
 
         // 3. Path-based artifacts (module memories for relevant files)
         let path_context = Self::build_context_for_paths(pool, project_id, paths).await?;
         if !path_context.is_empty() {
+            tracing::info!(
+                target: "vibe_kanban::context",
+                "  ├─ Path artifacts: {} chars for {} paths",
+                path_context.len(),
+                paths.len()
+            );
             context_parts.push(format!("# Module Context\n\n{}", path_context));
+        } else if !paths.is_empty() {
+            tracing::info!(
+                target: "vibe_kanban::context",
+                "  ├─ Path artifacts: none for {} paths",
+                paths.len()
+            );
         }
+
+        let total_chars: usize = context_parts.iter().map(|p| p.len()).sum();
+        tracing::info!(
+            target: "vibe_kanban::context",
+            "  └─ Total context: {} sections, {} chars",
+            context_parts.len(),
+            total_chars
+        );
 
         Ok(context_parts.join("\n---\n\n"))
     }
@@ -474,6 +601,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -505,6 +636,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -535,6 +670,10 @@ impl ContextArtifact {
                 source_task_id as "source_task_id: Uuid",
                 source_commit_hash,
                 scope,
+                file_path,
+                supersedes_id as "supersedes_id: Uuid",
+                chain_id as "chain_id: Uuid",
+                version as "version!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts

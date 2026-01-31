@@ -44,6 +44,7 @@ impl std::str::FromStr for TriggerCondition {
 
 /// Task auto-start trigger
 /// When trigger_task_id completes, automatically start task_id
+/// Uses "ALL" semantics: task only starts when ALL triggers have fired
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct TaskTrigger {
     pub id: Uuid,
@@ -57,6 +58,9 @@ pub struct TaskTrigger {
     pub is_persistent: bool,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
+    /// When this trigger was satisfied (null if not yet fired)
+    #[ts(type = "Date | null")]
+    pub fired_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -83,7 +87,8 @@ impl TaskTrigger {
                       trigger_task_id as "trigger_task_id!: Uuid",
                       trigger_on,
                       is_persistent as "is_persistent!: bool",
-                      created_at as "created_at!: DateTime<Utc>"
+                      created_at as "created_at!: DateTime<Utc>",
+                      fired_at as "fired_at: DateTime<Utc>"
                FROM task_triggers
                WHERE task_id = $1"#,
             task_id
@@ -92,7 +97,29 @@ impl TaskTrigger {
         .await
     }
 
-    /// Find all triggers that will fire when a task completes
+    /// Find all triggers that will fire when a task completes (unfired only)
+    pub async fn find_unfired_by_trigger_task(
+        pool: &PgPool,
+        trigger_task_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            TaskTrigger,
+            r#"SELECT id as "id!: Uuid",
+                      task_id as "task_id!: Uuid",
+                      trigger_task_id as "trigger_task_id!: Uuid",
+                      trigger_on,
+                      is_persistent as "is_persistent!: bool",
+                      created_at as "created_at!: DateTime<Utc>",
+                      fired_at as "fired_at: DateTime<Utc>"
+               FROM task_triggers
+               WHERE trigger_task_id = $1 AND fired_at IS NULL"#,
+            trigger_task_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    /// Find all triggers that will fire when a task completes (including already fired)
     pub async fn find_by_trigger_task(
         pool: &PgPool,
         trigger_task_id: Uuid,
@@ -104,7 +131,8 @@ impl TaskTrigger {
                       trigger_task_id as "trigger_task_id!: Uuid",
                       trigger_on,
                       is_persistent as "is_persistent!: bool",
-                      created_at as "created_at!: DateTime<Utc>"
+                      created_at as "created_at!: DateTime<Utc>",
+                      fired_at as "fired_at: DateTime<Utc>"
                FROM task_triggers
                WHERE trigger_task_id = $1"#,
             trigger_task_id
@@ -122,7 +150,8 @@ impl TaskTrigger {
                       trigger_task_id as "trigger_task_id!: Uuid",
                       trigger_on,
                       is_persistent as "is_persistent!: bool",
-                      created_at as "created_at!: DateTime<Utc>"
+                      created_at as "created_at!: DateTime<Utc>",
+                      fired_at as "fired_at: DateTime<Utc>"
                FROM task_triggers
                WHERE id = $1"#,
             id
@@ -143,7 +172,8 @@ impl TaskTrigger {
                          trigger_task_id as "trigger_task_id!: Uuid",
                          trigger_on,
                          is_persistent as "is_persistent!: bool",
-                         created_at as "created_at!: DateTime<Utc>""#,
+                         created_at as "created_at!: DateTime<Utc>",
+                         fired_at as "fired_at: DateTime<Utc>""#,
             id,
             data.task_id,
             data.trigger_task_id,
@@ -152,6 +182,40 @@ impl TaskTrigger {
         )
         .fetch_one(pool)
         .await
+    }
+
+    /// Mark a trigger as fired
+    pub async fn mark_fired(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "UPDATE task_triggers SET fired_at = NOW() WHERE id = $1",
+            id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Check if all triggers for a task have fired
+    pub async fn all_triggers_fired(pool: &PgPool, task_id: Uuid) -> Result<bool, sqlx::Error> {
+        let unfired_count: i64 = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!: i64" FROM task_triggers
+               WHERE task_id = $1 AND fired_at IS NULL"#,
+            task_id
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(unfired_count == 0)
+    }
+
+    /// Reset fired status for all triggers of a task (when task is moved back to todo)
+    pub async fn reset_fired_status(pool: &PgPool, task_id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "UPDATE task_triggers SET fired_at = NULL WHERE task_id = $1",
+            task_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     /// Delete a trigger

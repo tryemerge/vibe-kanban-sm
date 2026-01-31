@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                artifact_type,\n                path,\n                title,\n                content,\n                metadata,\n                source_task_id as \"source_task_id: Uuid\",\n                source_commit_hash,\n                scope,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM context_artifacts\n               WHERE project_id = $1\n                 AND artifact_type = 'module_memory'\n                 AND path = $2",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                artifact_type,\n                path,\n                title,\n                content,\n                metadata,\n                source_task_id as \"source_task_id: Uuid\",\n                source_commit_hash,\n                scope,\n                file_path,\n                supersedes_id as \"supersedes_id: Uuid\",\n                chain_id as \"chain_id: Uuid\",\n                version as \"version!: i32\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM context_artifacts\n               WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -55,19 +55,38 @@
       },
       {
         "ordinal": 10,
+        "name": "file_path",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "supersedes_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 12,
+        "name": "chain_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 13,
+        "name": "version!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 15,
         "name": "updated_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Text"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -81,9 +100,13 @@
       true,
       true,
       false,
+      true,
+      true,
+      true,
+      false,
       false,
       false
     ]
   },
-  "hash": "b1363139f69843c52ec9f99b852f94d4578a56671621bf99834079a4b90c63a4"
+  "hash": "fbbe9ac24815f57d16747466c5676da27f7082e8feff6d03b826cc1fab3f9600"
 }

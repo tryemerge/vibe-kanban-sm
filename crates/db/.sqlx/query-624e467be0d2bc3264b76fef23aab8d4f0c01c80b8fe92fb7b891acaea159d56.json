@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE task_triggers SET fired_at = NULL WHERE task_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "624e467be0d2bc3264b76fef23aab8d4f0c01c80b8fe92fb7b891acaea159d56"
+}
