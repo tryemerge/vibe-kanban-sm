@@ -52,6 +52,24 @@ DATABASE_URL="sqlite:///Users/the_dusky/code/emerge/vibe-kanban-sm/dev_assets/db
 - Prepare SQLx (remote package, postgres): `pnpm run remote:prepare-db`
 - Local NPX build: `pnpm run build:npx` then `pnpm pack` in `npx-cli/`
 
+## CRITICAL: MCP Server Binary
+
+**The MCP server uses the RELEASE binary, not debug!**
+
+The MCP server is configured in `~/.claude/settings.json` to use:
+```
+/Users/the_dusky/code/emerge/vibe-kanban-sm/target/release/mcp_task_server
+```
+
+**When making changes to MCP server code (`crates/server/src/mcp/`), you MUST rebuild the release binary:**
+```bash
+cargo build --release --bin mcp_task_server
+```
+
+Using just `cargo build` or `cargo check` only affects the debug binary, which the MCP client doesn't use.
+
+**After rebuilding**, the MCP client will automatically use the new binary on the next MCP call (no restart needed for the client, but the user may need to make a new MCP request).
+
 ## Coding Style & Naming Conventions
 - Rust: `rustfmt` enforced (`rustfmt.toml`); group imports by crate; snake_case modules, PascalCase types.
 - TypeScript/React: ESLint + Prettier (2 spaces, single quotes, 80 cols). PascalCase components, camelCase vars/functions, kebab-case file names where practical.
