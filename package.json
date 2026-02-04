@@ -31,6 +31,9 @@
     "generate-types:check": "SQLX_OFFLINE=true cargo run --bin generate_types -- --check",
     "prepare-db": "node scripts/prepare-db.js",
     "prepare-db:check": "node scripts/prepare-db.js --check",
+    "fly:deploy": "fly deploy --local-only",
+    "fly:deploy:clean": "docker builder prune --filter type=exec.cachemount -f && fly deploy --local-only",
+    "fly:creds:push": "./scripts/push-claude-creds.sh",
     "build:npx": "bash ./local-build.sh",
     "prepack": "npm run build:npx"
   },
