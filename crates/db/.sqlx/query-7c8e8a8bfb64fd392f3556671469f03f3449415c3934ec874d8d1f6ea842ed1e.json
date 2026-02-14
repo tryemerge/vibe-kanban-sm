@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE tasks\n               SET title = $3, description = $4, status = $5, column_id = $6, parent_workspace_id = $7\n               WHERE id = $1 AND project_id = $2\n               RETURNING id as \"id!: Uuid\", project_id as \"project_id!: Uuid\", title, description, status as \"status!: TaskStatus\", column_id as \"column_id: Uuid\", parent_workspace_id as \"parent_workspace_id: Uuid\", shared_task_id as \"shared_task_id: Uuid\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\"",
+  "query": "SELECT id as \"id!: Uuid\", project_id as \"project_id!: Uuid\", title, description, status as \"status!: TaskStatus\", column_id as \"column_id: Uuid\", parent_workspace_id as \"parent_workspace_id: Uuid\", shared_task_id as \"shared_task_id: Uuid\", task_state as \"task_state!: TaskState\", agent_status as \"agent_status: AgentStatus\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM tasks\n               WHERE shared_task_id = $1\n               LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -45,23 +45,47 @@
       },
       {
         "ordinal": 8,
+        "name": "task_state!: TaskState",
+        "type_info": {
+          "Custom": {
+            "name": "task_state",
+            "kind": {
+              "Enum": [
+                "queued",
+                "transitioning"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "agent_status: AgentStatus",
+        "type_info": {
+          "Custom": {
+            "name": "agent_status",
+            "kind": {
+              "Enum": [
+                "running",
+                "awaiting_response"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 10,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "updated_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Uuid",
-        "Text",
-        "Text",
-        "Text",
-        "Uuid",
         "Uuid"
       ]
     },
@@ -75,8 +99,10 @@
       true,
       true,
       false,
+      true,
+      false,
       false
     ]
   },
-  "hash": "ef13369c926245e0885ff1a5fb8863b154182514176b86dfda41ce83bb76f663"
+  "hash": "7c8e8a8bfb64fd392f3556671469f03f3449415c3934ec874d8d1f6ea842ed1e"
 }

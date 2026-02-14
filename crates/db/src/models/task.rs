@@ -22,6 +22,33 @@ pub enum TaskStatus {
     Cancelled,
 }
 
+/// Task state within the workflow - tracks where the task is in the process
+#[derive(
+    Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS, EnumString, Display, Default,
+)]
+#[sqlx(type_name = "task_state", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum TaskState {
+    /// Task is in a column, waiting for an agent to start or for manual action
+    #[default]
+    Queued,
+    /// Task is between columns, transition logic is evaluating
+    Transitioning,
+}
+
+/// Agent status - what the agent is doing with the task (null means no agent engaged)
+#[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS, EnumString, Display)]
+#[sqlx(type_name = "agent_status", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum AgentStatus {
+    /// Agent is actively executing
+    Running,
+    /// Agent is waiting for user input
+    AwaitingResponse,
+}
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct Task {
     pub id: Uuid,
@@ -32,6 +59,8 @@ pub struct Task {
     pub column_id: Option<Uuid>, // Foreign key to KanbanColumn
     pub parent_workspace_id: Option<Uuid>, // Foreign key to parent Workspace
     pub shared_task_id: Option<Uuid>,
+    pub task_state: TaskState,
+    pub agent_status: Option<AgentStatus>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -154,6 +183,8 @@ impl Task {
   t.column_id                     AS "column_id: Uuid",
   t.parent_workspace_id           AS "parent_workspace_id: Uuid",
   t.shared_task_id                AS "shared_task_id: Uuid",
+  t.task_state                    AS "task_state!: TaskState",
+  t.agent_status                  AS "agent_status: AgentStatus",
   t.created_at                    AS "created_at!: DateTime<Utc>",
   t.updated_at                    AS "updated_at!: DateTime<Utc>",
 
@@ -215,6 +246,8 @@ ORDER BY t.created_at DESC"#,
                     column_id: rec.column_id,
                     parent_workspace_id: rec.parent_workspace_id,
                     shared_task_id: rec.shared_task_id,
+                    task_state: rec.task_state,
+                    agent_status: rec.agent_status,
                     created_at: rec.created_at,
                     updated_at: rec.updated_at,
                 },
@@ -231,7 +264,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
                WHERE id = $1"#,
             id
@@ -265,7 +298,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn find_by_rowid(pool: &PgPool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM (
                    SELECT *, ROW_NUMBER() OVER (ORDER BY created_at) as rn
                    FROM tasks
@@ -286,7 +319,7 @@ ORDER BY t.created_at DESC"#,
     {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
                WHERE shared_task_id = $1
                LIMIT 1"#,
@@ -299,7 +332,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn find_all_shared(pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
                WHERE shared_task_id IS NOT NULL"#
         )
@@ -318,7 +351,7 @@ ORDER BY t.created_at DESC"#,
             Task,
             r#"INSERT INTO tasks (id, project_id, title, description, status, column_id, parent_workspace_id, shared_task_id)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             task_id,
             data.project_id,
             data.title,
@@ -348,7 +381,7 @@ ORDER BY t.created_at DESC"#,
             r#"UPDATE tasks
                SET title = $3, description = $4, status = $5, column_id = $6, parent_workspace_id = $7
                WHERE id = $1 AND project_id = $2
-               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             project_id,
             title,
@@ -403,6 +436,56 @@ ORDER BY t.created_at DESC"#,
             "UPDATE tasks SET parent_workspace_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             task_id,
             parent_workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Update the task_state field for a task
+    pub async fn update_task_state(
+        pool: &PgPool,
+        task_id: Uuid,
+        task_state: TaskState,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE tasks SET task_state = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1"#,
+            task_id,
+            task_state as TaskState
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Update the agent_status field for a task (null means no agent engaged)
+    pub async fn update_agent_status(
+        pool: &PgPool,
+        task_id: Uuid,
+        agent_status: Option<AgentStatus>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE tasks SET agent_status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1"#,
+            task_id,
+            agent_status as Option<AgentStatus>
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Update both task_state and agent_status atomically
+    pub async fn update_task_and_agent_state(
+        pool: &PgPool,
+        task_id: Uuid,
+        task_state: TaskState,
+        agent_status: Option<AgentStatus>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE tasks SET task_state = $2, agent_status = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1"#,
+            task_id,
+            task_state as TaskState,
+            agent_status as Option<AgentStatus>
         )
         .execute(pool)
         .await?;
@@ -509,7 +592,7 @@ ORDER BY t.created_at DESC"#,
         // Find only child tasks that have this workspace as their parent
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
                WHERE parent_workspace_id = $1
                ORDER BY created_at DESC"#,

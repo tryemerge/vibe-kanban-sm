@@ -207,6 +207,40 @@ impl KanbanColumn {
         .await
     }
 
+    /// Find the workflow start column for a board (where tasks go when auto-started)
+    pub async fn find_workflow_start(
+        pool: &PgPool,
+        board_id: Uuid,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            KanbanColumn,
+            r#"SELECT id as "id!: Uuid",
+                      board_id as "board_id!: Uuid",
+                      name,
+                      slug,
+                      position as "position!: i32",
+                      color,
+                      is_initial as "is_initial!: bool",
+                      is_terminal as "is_terminal!: bool",
+                      starts_workflow as "starts_workflow!: bool",
+                      status as "status!: TaskStatus",
+                      agent_id as "agent_id: Uuid",
+                      deliverable,
+                      deliverable_variable,
+                      deliverable_options,
+                      is_template as "is_template!: bool",
+                      template_group_id,
+                      created_at as "created_at!: DateTime<Utc>",
+                      updated_at as "updated_at!: DateTime<Utc>"
+               FROM kanban_columns
+               WHERE board_id = $1 AND starts_workflow = true
+               LIMIT 1"#,
+            board_id
+        )
+        .fetch_optional(pool)
+        .await
+    }
+
     /// Create a new column for a board
     pub async fn create_for_board<'e, E>(
         executor: E,

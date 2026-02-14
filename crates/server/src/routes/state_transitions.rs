@@ -8,7 +8,7 @@ use axum::{
 use db::models::{
     board::Board,
     project::Project,
-    state_transition::{CreateStateTransition, StateTransition, StateTransitionWithColumns},
+    state_transition::{CreateStateTransition, StateTransition, StateTransitionWithColumns, UpdateStateTransition},
 };
 use deployment::Deployment;
 use utils::response::ApiResponse;
@@ -103,6 +103,31 @@ pub async fn get_transition(
     Ok(ResponseJson(ApiResponse::success(transition)))
 }
 
+/// Update a transition
+pub async fn update_transition(
+    Extension(transition): Extension<StateTransition>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<UpdateStateTransition>,
+) -> Result<ResponseJson<ApiResponse<StateTransition>>, ApiError> {
+    let updated = StateTransition::update(&deployment.db().pool, transition.id, &payload).await?;
+
+    deployment
+        .track_if_analytics_allowed(
+            "state_transition_updated",
+            serde_json::json!({
+                "transition_id": transition.id.to_string(),
+                "scope": match (transition.task_id, transition.project_id, transition.board_id) {
+                    (Some(_), _, _) => "task",
+                    (_, Some(_), _) => "project",
+                    _ => "board",
+                },
+            }),
+        )
+        .await;
+
+    Ok(ResponseJson(ApiResponse::success(updated)))
+}
+
 /// Delete a transition
 pub async fn delete_transition(
     Extension(transition): Extension<StateTransition>,
@@ -133,7 +158,7 @@ pub async fn delete_transition(
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     // Routes for a specific transition (requires transition_id)
     let transition_router = Router::new()
-        .route("/", get(get_transition).delete(delete_transition))
+        .route("/", get(get_transition).put(update_transition).delete(delete_transition))
         .layer(from_fn_with_state(
             deployment.clone(),
             load_state_transition_middleware,

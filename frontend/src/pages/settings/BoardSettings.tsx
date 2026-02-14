@@ -72,6 +72,7 @@ import type {
   TaskStatus,
   StateTransitionWithColumns,
   CreateStateTransition,
+  UpdateStateTransition,
 } from 'shared/types';
 
 export function BoardSettings() {
@@ -155,6 +156,7 @@ export function BoardSettings() {
     condition_value: null,
     max_failures: null,
   });
+  const [editingTransition, setEditingTransition] = useState<StateTransitionWithColumns | null>(null);
   const [deleteTransitionConfirmOpen, setDeleteTransitionConfirmOpen] = useState(false);
   const [transitionToDelete, setTransitionToDelete] = useState<{
     boardId: string;
@@ -440,6 +442,7 @@ export function BoardSettings() {
   // Open create transition dialog
   const openCreateTransitionDialog = (boardId: string) => {
     setTransitionBoardId(boardId);
+    setEditingTransition(null);
     const columns = columnsMap.get(boardId) || [];
     setTransitionForm({
       from_column_id: columns.length > 0 ? columns[0].id : '',
@@ -455,15 +458,39 @@ export function BoardSettings() {
     setTransitionDialogOpen(true);
   };
 
-  // Handle transition form save
+  // Open edit transition dialog
+  const openEditTransitionDialog = (boardId: string, transition: StateTransitionWithColumns) => {
+    setTransitionBoardId(boardId);
+    setEditingTransition(transition);
+    setTransitionForm({
+      from_column_id: transition.from_column_id,
+      to_column_id: transition.to_column_id,
+      else_column_id: transition.else_column_id || null,
+      escalation_column_id: transition.escalation_column_id || null,
+      name: transition.name || null,
+      requires_confirmation: transition.requires_confirmation,
+      condition_key: transition.condition_key || null,
+      condition_value: transition.condition_value || null,
+      max_failures: transition.max_failures ?? null,
+    });
+    setTransitionDialogOpen(true);
+  };
+
+  // Handle transition form save (create or update)
   const handleTransitionSave = async () => {
     if (!transitionBoardId) return;
     setTransitionSaving(true);
     setBoardsError(null);
     try {
-      await stateTransitionsApi.createForBoard(transitionBoardId, transitionForm);
-      setSuccessMessage(t('settings.boards.transitions.save.createSuccess', 'Transition created successfully'));
+      if (editingTransition) {
+        await stateTransitionsApi.updateForBoard(transitionBoardId, editingTransition.id, transitionForm as UpdateStateTransition);
+        setSuccessMessage(t('settings.boards.transitions.save.updateSuccess', 'Transition updated successfully'));
+      } else {
+        await stateTransitionsApi.createForBoard(transitionBoardId, transitionForm);
+        setSuccessMessage(t('settings.boards.transitions.save.createSuccess', 'Transition created successfully'));
+      }
       setTransitionDialogOpen(false);
+      setEditingTransition(null);
       await fetchTransitions(transitionBoardId);
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -758,6 +785,13 @@ export function BoardSettings() {
                 </span>
               )}
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => openEditTransitionDialog(boardId, transition)}
+            >
+              <Pencil className="h-3 w-3" />
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -1446,15 +1480,22 @@ export function BoardSettings() {
         </DialogContent>
       </Dialog>
 
-      {/* Transition Create Dialog */}
-      <Dialog open={transitionDialogOpen} onOpenChange={setTransitionDialogOpen}>
+      {/* Transition Create/Edit Dialog */}
+      <Dialog open={transitionDialogOpen} onOpenChange={(open) => {
+        setTransitionDialogOpen(open);
+        if (!open) setEditingTransition(null);
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {t('settings.boards.transitions.dialog.createTitle', 'Create State Transition')}
+              {editingTransition
+                ? t('settings.boards.transitions.dialog.editTitle', 'Edit State Transition')
+                : t('settings.boards.transitions.dialog.createTitle', 'Create State Transition')}
             </DialogTitle>
             <DialogDescription>
-              {t('settings.boards.transitions.dialog.createDescription', 'Define a routing rule between columns. Projects using this board will inherit these transitions.')}
+              {editingTransition
+                ? t('settings.boards.transitions.dialog.editDescription', 'Modify this routing rule between columns.')
+                : t('settings.boards.transitions.dialog.createDescription', 'Define a routing rule between columns. Projects using this board will inherit these transitions.')}
             </DialogDescription>
           </DialogHeader>
 
@@ -1660,7 +1701,10 @@ export function BoardSettings() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setTransitionDialogOpen(false)}
+              onClick={() => {
+                setTransitionDialogOpen(false);
+                setEditingTransition(null);
+              }}
               disabled={transitionSaving}
             >
               {t('common:buttons.cancel')}
@@ -1675,7 +1719,7 @@ export function BoardSettings() {
               }
             >
               {transitionSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('common:buttons.create')}
+              {editingTransition ? t('common:buttons.save') : t('common:buttons.create')}
             </Button>
           </DialogFooter>
         </DialogContent>

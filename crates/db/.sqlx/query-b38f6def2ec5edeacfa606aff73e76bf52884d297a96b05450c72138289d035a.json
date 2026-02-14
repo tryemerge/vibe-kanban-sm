@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                artifact_type,\n                path,\n                title,\n                content,\n                metadata,\n                source_task_id as \"source_task_id: Uuid\",\n                source_commit_hash,\n                scope,\n                file_path,\n                supersedes_id as \"supersedes_id: Uuid\",\n                chain_id as \"chain_id: Uuid\",\n                version as \"version!: i32\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM context_artifacts\n               WHERE project_id = $1\n               ORDER BY updated_at DESC",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                artifact_type,\n                path,\n                title,\n                content,\n                metadata,\n                source_task_id as \"source_task_id: Uuid\",\n                source_commit_hash,\n                scope,\n                file_path,\n                supersedes_id as \"supersedes_id: Uuid\",\n                chain_id as \"chain_id: Uuid\",\n                version as \"version!: i32\",\n                token_estimate as \"token_estimate!: i32\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM context_artifacts\n               WHERE project_id = $1 AND scope = 'global'\n               ORDER BY updated_at DESC",
   "describe": {
     "columns": [
       {
@@ -75,11 +75,16 @@
       },
       {
         "ordinal": 14,
+        "name": "token_estimate!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 15,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "updated_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
@@ -105,8 +110,9 @@
       true,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "9c6dc75d438e7a7a42c758a19a3cf9609b1ba281404d544e0f75441a5e8925e4"
+  "hash": "b38f6def2ec5edeacfa606aff73e76bf52884d297a96b05450c72138289d035a"
 }

@@ -129,6 +129,12 @@ escalation_column_id: string | null, name: string | null, requires_confirmation:
  */
 max_failures: number | null, };
 
+export type UpdateStateTransition = { from_column_id: string | null, to_column_id: string | null, 
+/**
+ * Double Option: None = keep existing, Some(None) = set null, Some(Some(id)) = set value
+ */
+else_column_id?: string | null, escalation_column_id?: string | null, name: string | null, requires_confirmation: boolean | null, condition_key: string | null, condition_value: string | null, max_failures: number | null, };
+
 export type TransitionScope = "board" | "project" | "task";
 
 export type Repo = { id: string, path: string, name: string, display_name: string, created_at: Date, updated_at: Date, };
@@ -153,9 +159,13 @@ export type UpdateTag = { tag_name: string | null, content: string | null, };
 
 export type TaskStatus = "todo" | "inprogress" | "inreview" | "done" | "cancelled";
 
-export type Task = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
+export type TaskState = "queued" | "transitioning";
 
-export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, latest_attempt_id: string | null, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
+export type AgentStatus = "running" | "awaitingresponse";
+
+export type Task = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, task_state: TaskState, agent_status: AgentStatus | null, created_at: string, updated_at: string, };
+
+export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, latest_attempt_id: string | null, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, task_state: TaskState, agent_status: AgentStatus | null, created_at: string, updated_at: string, };
 
 export type TaskRelationships = { parent_task: Task | null, current_workspace: Workspace, children: Array<Task>, };
 
@@ -774,7 +784,11 @@ chain_id: string | null,
 /**
  * Version number within a chain (1, 2, 3...)
  */
-version: number, created_at: Date, updated_at: Date, };
+version: number, 
+/**
+ * Approximate token count for budget-aware context injection (content.len() / 4)
+ */
+token_estimate: number, created_at: Date, updated_at: Date, };
 
 export type CreateContextArtifact = { project_id: string, artifact_type: ArtifactType, path: string | null, title: string, content: string, metadata: JsonValue | null, source_task_id: string | null, source_commit_hash: string | null, scope: ArtifactScope, 
 /**

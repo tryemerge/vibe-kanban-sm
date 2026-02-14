@@ -104,6 +104,7 @@ import {
   StateTransition,
   StateTransitionWithColumns,
   CreateStateTransition,
+  UpdateStateTransition,
   TemplateInfo,
   ApplyTemplateResponse,
   TaskTrigger,
@@ -1506,6 +1507,21 @@ export const stateTransitionsApi = {
     return handleApiResponse<StateTransition>(response);
   },
 
+  updateForBoard: async (
+    boardId: string,
+    transitionId: string,
+    data: UpdateStateTransition
+  ): Promise<StateTransition> => {
+    const response = await makeRequest(
+      `/api/boards/${boardId}/transitions/${transitionId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<StateTransition>(response);
+  },
+
   deleteFromBoard: async (boardId: string, transitionId: string): Promise<void> => {
     const response = await makeRequest(
       `/api/boards/${boardId}/transitions/${transitionId}`,
@@ -1530,6 +1546,21 @@ export const stateTransitionsApi = {
       method: 'POST',
       body: JSON.stringify(data),
     });
+    return handleApiResponse<StateTransition>(response);
+  },
+
+  updateForProject: async (
+    projectId: string,
+    transitionId: string,
+    data: UpdateStateTransition
+  ): Promise<StateTransition> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/transitions/${transitionId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
     return handleApiResponse<StateTransition>(response);
   },
 

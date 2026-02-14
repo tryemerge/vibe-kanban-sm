@@ -214,8 +214,31 @@ pub async fn create_task_and_start(
 
     let pool = &deployment.db().pool;
 
+    // Get the project to find its board
+    let project = Project::find_by_id(pool, payload.task.project_id)
+        .await?
+        .ok_or(ProjectError::ProjectNotFound)?;
+
+    // Find the starts_workflow column for the project's board
+    let workflow_column = if let Some(board_id) = project.board_id {
+        KanbanColumn::find_workflow_start(pool, board_id).await?
+    } else {
+        None
+    };
+
+    // Create the task with column_id set to the workflow start column (if found)
+    let mut create_task_data = payload.task.clone();
+    if let Some(ref wf_column) = workflow_column {
+        create_task_data.column_id = Some(wf_column.id);
+        tracing::info!(
+            "Auto-start: placing task in workflow start column '{}' ({})",
+            wf_column.name,
+            wf_column.id
+        );
+    }
+
     let task_id = Uuid::new_v4();
-    let task = Task::create(pool, &payload.task, task_id).await?;
+    let task = Task::create(pool, &create_task_data, task_id).await?;
 
     // Record task created event
     let event = CreateTaskEvent::task_created(task.id, ActorType::User, None);
@@ -239,10 +262,87 @@ pub async fn create_task_and_start(
         )
         .await;
 
-    let project = Project::find_by_id(pool, task.project_id)
-        .await?
-        .ok_or(ProjectError::ProjectNotFound)?;
+    // If we found a workflow column with an agent, use spawn_agent_execution
+    // This uses the column's agent configuration rather than the caller-provided executor
+    if let Some(wf_column) = workflow_column {
+        if let Some(agent_id) = wf_column.agent_id {
+            match Agent::find_by_id(pool, agent_id).await {
+                Ok(Some(agent)) => {
+                    tracing::info!(
+                        "Auto-start: using column agent '{}' for task {} in column '{}'",
+                        agent.name,
+                        task.id,
+                        wf_column.name
+                    );
 
+                    // Spawn agent execution - this creates workspace internally
+                    if let Err(e) = spawn_agent_execution(
+                        deployment.clone(),
+                        task.clone(),
+                        agent,
+                        &wf_column,
+                    ).await {
+                        tracing::error!(
+                            "Failed to auto-start agent execution for task {} in column {}: {}",
+                            task.id,
+                            wf_column.id,
+                            e
+                        );
+                        return Err(ApiError::BadRequest(format!(
+                            "Failed to start agent execution: {}",
+                            e
+                        )));
+                    }
+
+                    deployment
+                        .track_if_analytics_allowed(
+                            "task_attempt_started",
+                            serde_json::json!({
+                                "task_id": task.id.to_string(),
+                                "executor": "workflow_agent",
+                                "column": wf_column.name,
+                                "agent_id": agent_id.to_string(),
+                            }),
+                        )
+                        .await;
+
+                    // Fetch updated task and workspace info
+                    let task = Task::find_by_id(pool, task.id)
+                        .await?
+                        .ok_or(ApiError::Database(SqlxError::RowNotFound))?;
+
+                    let latest_workspace = Workspace::find_active_for_task(pool, task.id).await?;
+
+                    let task_with_status = TaskWithAttemptStatus {
+                        task,
+                        has_in_progress_attempt: true,
+                        last_attempt_failed: false,
+                        executor: "workflow_agent".to_string(),
+                        latest_attempt_id: latest_workspace.map(|w| w.id),
+                    };
+
+                    // Broadcast task creation via WebSocket
+                    deployment
+                        .events()
+                        .msg_store()
+                        .push_patch(task_patch::add(&task_with_status));
+
+                    tracing::info!("Auto-started workflow agent for task {}", task_with_status.task.id);
+                    return Ok(ResponseJson(ApiResponse::success(task_with_status)));
+                }
+                Ok(None) => {
+                    tracing::warn!("Agent {} not found for column {} - falling back to manual start", agent_id, wf_column.name);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to fetch agent {}: {} - falling back to manual start", agent_id, e);
+                }
+            }
+        } else {
+            tracing::debug!("Workflow column '{}' has no agent - falling back to manual start", wf_column.name);
+        }
+    }
+
+    // Fallback: use the caller-provided executor (original behavior)
     let attempt_id = Uuid::new_v4();
     let git_branch_name = deployment
         .container()

@@ -4,11 +4,16 @@ use std::{
 };
 
 use db::models::{
+    agent::{Agent, CreateAgent},
+    board::{Board, CreateBoard},
+    kanban_column::{CreateKanbanColumn, KanbanColumn},
     project::{CreateProject, Project, ProjectError, SearchMatchType, SearchResult, UpdateProject},
     project_repo::{CreateProjectRepo, ProjectRepo},
     repo::Repo,
+    state_transition::{CreateStateTransition, StateTransition},
     task::Task,
 };
+use std::collections::HashMap;
 use ignore::WalkBuilder;
 use sqlx::PgPool;
 use thiserror::Error;
@@ -73,6 +78,9 @@ impl ProjectService {
         Self
     }
 
+    /// Setup Board template group ID (well-known UUID from migration)
+    const SETUP_BOARD_TEMPLATE_GROUP_ID: &'static str = "33333333-3333-3333-3333-333333333333";
+
     pub async fn create_project(
         &self,
         pool: &PgPool,
@@ -121,9 +129,21 @@ impl ProjectService {
             }
         }
 
-        if normalized_repos.len() == 1
-            && let Some(repo) = created_repo
-        {
+        // Determine the default_agent_working_dir for single-repo projects
+        let default_agent_working_dir = if normalized_repos.len() == 1 {
+            created_repo.as_ref().map(|r| r.name.clone())
+        } else {
+            None
+        };
+
+        // Apply the Setup Board template to create a board for this project
+        let board_id = self
+            .apply_setup_board_template(pool, &payload.name)
+            .await
+            .ok();
+
+        // Update project with board_id and default_agent_working_dir
+        if board_id.is_some() || default_agent_working_dir.is_some() {
             Project::update(
                 pool,
                 project.id,
@@ -131,14 +151,133 @@ impl ProjectService {
                     name: None,
                     dev_script: None,
                     dev_script_working_dir: None,
-                    default_agent_working_dir: Some(repo.name),
-                    board_id: None,
+                    default_agent_working_dir,
+                    board_id,
                 },
             )
             .await?;
         }
 
+        // Refetch the project with updated board_id
+        let project = Project::find_by_id(pool, project.id)
+            .await?
+            .ok_or(ProjectError::ProjectNotFound)?;
+
         Ok(project)
+    }
+
+    /// Apply the Setup Board template to create a new board for a project
+    async fn apply_setup_board_template(
+        &self,
+        pool: &PgPool,
+        project_name: &str,
+    ) -> Result<Uuid> {
+        let template_group_id = Self::SETUP_BOARD_TEMPLATE_GROUP_ID;
+
+        // Get template entities
+        let template_agents = Agent::find_by_template_group(pool, template_group_id).await?;
+        let template_columns = KanbanColumn::find_by_template_group(pool, template_group_id).await?;
+        let template_transitions =
+            StateTransition::find_by_template_group(pool, template_group_id).await?;
+
+        // Create the project's board
+        let board = Board::create(
+            pool,
+            &CreateBoard {
+                name: format!("{} Board", project_name),
+                description: Some("Auto-generated from Setup Board template".to_string()),
+            },
+        )
+        .await?;
+
+        // Create real agents (build old_id -> new_id mapping)
+        let mut agent_id_map: HashMap<Uuid, Uuid> = HashMap::new();
+        for tmpl_agent in &template_agents {
+            let new_agent_id = Uuid::new_v4();
+            let new_agent = Agent::create(
+                pool,
+                CreateAgent {
+                    name: tmpl_agent.name.clone(),
+                    role: tmpl_agent.role.clone(),
+                    system_prompt: tmpl_agent.system_prompt.clone(),
+                    capabilities: None,
+                    tools: None,
+                    description: tmpl_agent.description.clone(),
+                    context_files: None,
+                    executor: Some(tmpl_agent.executor.clone()),
+                    color: tmpl_agent.color.clone(),
+                    start_command: tmpl_agent.start_command.clone(),
+                },
+                new_agent_id,
+            )
+            .await?;
+            agent_id_map.insert(tmpl_agent.id, new_agent.id);
+        }
+
+        // Create columns (build old_id -> new_id mapping)
+        let mut column_id_map: HashMap<Uuid, Uuid> = HashMap::new();
+        for tmpl_col in &template_columns {
+            // Remap agent_id to the newly created agent
+            let new_agent_id = tmpl_col
+                .agent_id
+                .and_then(|old_id| agent_id_map.get(&old_id).copied());
+
+            let column = KanbanColumn::create_for_board(
+                pool,
+                board.id,
+                &CreateKanbanColumn {
+                    name: tmpl_col.name.clone(),
+                    slug: tmpl_col.slug.clone(),
+                    position: tmpl_col.position,
+                    color: tmpl_col.color.clone(),
+                    is_initial: Some(tmpl_col.is_initial),
+                    is_terminal: Some(tmpl_col.is_terminal),
+                    starts_workflow: Some(tmpl_col.starts_workflow),
+                    status: Some(tmpl_col.status.clone()),
+                    agent_id: new_agent_id,
+                    deliverable: tmpl_col.deliverable.clone(),
+                    deliverable_variable: tmpl_col.deliverable_variable.clone(),
+                    deliverable_options: tmpl_col.deliverable_options.clone(),
+                },
+            )
+            .await?;
+            column_id_map.insert(tmpl_col.id, column.id);
+        }
+
+        // Create transitions with remapped column IDs
+        for tmpl_trans in &template_transitions {
+            let Some(new_from) = column_id_map.get(&tmpl_trans.from_column_id).copied() else {
+                continue;
+            };
+            let Some(new_to) = column_id_map.get(&tmpl_trans.to_column_id).copied() else {
+                continue;
+            };
+            let new_else = tmpl_trans
+                .else_column_id
+                .and_then(|id| column_id_map.get(&id).copied());
+            let new_escalation = tmpl_trans
+                .escalation_column_id
+                .and_then(|id| column_id_map.get(&id).copied());
+
+            StateTransition::create_for_board(
+                pool,
+                board.id,
+                &CreateStateTransition {
+                    from_column_id: new_from,
+                    to_column_id: new_to,
+                    else_column_id: new_else,
+                    escalation_column_id: new_escalation,
+                    name: tmpl_trans.name.clone(),
+                    requires_confirmation: Some(tmpl_trans.requires_confirmation),
+                    condition_key: tmpl_trans.condition_key.clone(),
+                    condition_value: tmpl_trans.condition_value.clone(),
+                    max_failures: tmpl_trans.max_failures,
+                },
+            )
+            .await?;
+        }
+
+        Ok(board.id)
     }
 
     pub async fn update_project(

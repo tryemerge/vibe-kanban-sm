@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                artifact_type,\n                path,\n                title,\n                content,\n                metadata,\n                source_task_id as \"source_task_id: Uuid\",\n                source_commit_hash,\n                scope,\n                file_path,\n                supersedes_id as \"supersedes_id: Uuid\",\n                chain_id as \"chain_id: Uuid\",\n                version as \"version!: i32\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM context_artifacts\n               WHERE project_id = $1 AND artifact_type = 'adr'\n               ORDER BY created_at DESC\n               LIMIT $2",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                artifact_type,\n                path,\n                title,\n                content,\n                metadata,\n                source_task_id as \"source_task_id: Uuid\",\n                source_commit_hash,\n                scope,\n                file_path,\n                supersedes_id as \"supersedes_id: Uuid\",\n                chain_id as \"chain_id: Uuid\",\n                version as \"version!: i32\",\n                token_estimate as \"token_estimate!: i32\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM context_artifacts\n               WHERE project_id = $1 AND scope = 'task' AND source_task_id = $2\n               ORDER BY updated_at DESC",
   "describe": {
     "columns": [
       {
@@ -75,11 +75,16 @@
       },
       {
         "ordinal": 14,
+        "name": "token_estimate!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 15,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "updated_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
@@ -87,7 +92,7 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -106,8 +111,9 @@
       true,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "b6a55253d40b8510a0b69d3db07a386c7d505e59a306576b1f608d210ac9692c"
+  "hash": "38a1e47063a249a52ebe68853c0782291d862d7513640dc8ee9e15fd239ce03e"
 }

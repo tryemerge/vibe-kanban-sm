@@ -270,6 +270,305 @@ pub struct GetTaskResponse {
     pub task: TaskDetails,
 }
 
+// ============================================
+// Board Management Types
+// ============================================
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct BoardSummary {
+    #[schemars(description = "The unique identifier of the board")]
+    pub id: String,
+    #[schemars(description = "The name of the board")]
+    pub name: String,
+    #[schemars(description = "Optional description of the board")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ListBoardsResponse {
+    pub boards: Vec<BoardSummary>,
+    pub count: usize,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateBoardRequest {
+    #[schemars(description = "The name of the board")]
+    pub name: String,
+    #[schemars(description = "Optional description of the board")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CreateBoardResponse {
+    pub board_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetBoardRequest {
+    #[schemars(description = "The ID of the board to retrieve")]
+    pub board_id: Uuid,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ColumnSummary {
+    #[schemars(description = "The unique identifier of the column")]
+    pub id: String,
+    #[schemars(description = "The name of the column")]
+    pub name: String,
+    #[schemars(description = "The slug/identifier for this column")]
+    pub slug: String,
+    #[schemars(description = "The color of the column")]
+    pub color: Option<String>,
+    #[schemars(description = "The workflow status (todo, inprogress, inreview, done, cancelled)")]
+    pub status: String,
+    #[schemars(description = "Whether this is the initial column")]
+    pub is_initial: bool,
+    #[schemars(description = "Whether this is a terminal column")]
+    pub is_terminal: bool,
+    #[schemars(description = "Whether entering this column starts a workflow")]
+    pub starts_workflow: bool,
+    #[schemars(description = "The agent ID assigned to this column, if any")]
+    pub agent_id: Option<String>,
+    #[schemars(description = "The position/order of this column")]
+    pub position: i32,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct TransitionSummary {
+    #[schemars(description = "The unique identifier of the transition")]
+    pub id: String,
+    #[schemars(description = "The source column ID")]
+    pub from_column_id: String,
+    #[schemars(description = "The target column ID")]
+    pub to_column_id: String,
+    #[schemars(description = "Optional name for the transition")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct GetBoardResponse {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub columns: Vec<ColumnSummary>,
+    pub transitions: Vec<TransitionSummary>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateColumnRequest {
+    #[schemars(description = "The ID of the board to add the column to")]
+    pub board_id: Uuid,
+    #[schemars(description = "The name of the column")]
+    pub name: String,
+    #[schemars(description = "The slug/identifier for this column (e.g., 'backlog', 'inprogress')")]
+    pub slug: String,
+    #[schemars(description = "The color of the column (hex format, e.g., '#3b82f6')")]
+    pub color: Option<String>,
+    #[schemars(description = "The workflow status: 'todo', 'inprogress', 'inreview', 'done', 'cancelled'")]
+    pub status: String,
+    #[schemars(description = "Whether this is the initial column (where new tasks start)")]
+    pub is_initial: Option<bool>,
+    #[schemars(description = "Whether this is a terminal column (done/cancelled)")]
+    pub is_terminal: Option<bool>,
+    #[schemars(description = "Whether entering this column starts a workflow (triggers agent)")]
+    pub starts_workflow: Option<bool>,
+    #[schemars(description = "The agent ID to assign to this column")]
+    pub agent_id: Option<Uuid>,
+    #[schemars(description = "The position/order of this column (0-indexed)")]
+    pub position: Option<i32>,
+    #[schemars(description = "Description of what the agent should deliver when task leaves this column")]
+    pub deliverable: Option<String>,
+    #[schemars(description = "Variable name for structured deliverable in .vibe/decision.json (e.g., 'review_outcome'). Agent must set this variable.")]
+    pub deliverable_variable: Option<String>,
+    #[schemars(description = "JSON array of allowed values for the deliverable variable (e.g., '[\"approve\", \"request_changes\"]'). Transitions route based on these values.")]
+    pub deliverable_options: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CreateColumnResponse {
+    pub column_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateTransitionRequest {
+    #[schemars(description = "The ID of the board")]
+    pub board_id: Uuid,
+    #[schemars(description = "The source column ID")]
+    pub from_column_id: Uuid,
+    #[schemars(description = "The target column ID")]
+    pub to_column_id: Uuid,
+    #[schemars(description = "Optional name for the transition (e.g., 'Approve', 'Reject')")]
+    pub name: Option<String>,
+    #[schemars(description = "JSON key to check in .vibe/decision.json for conditional routing (e.g., 'decision', 'review_outcome')")]
+    pub condition_key: Option<String>,
+    #[schemars(description = "Value to match for this transition (e.g., 'approve', 'reject'). When the decision file contains {condition_key: condition_value}, this transition is taken.")]
+    pub condition_value: Option<String>,
+    #[schemars(description = "Column ID to route to when condition doesn't match (else/retry path)")]
+    pub else_column_id: Option<Uuid>,
+    #[schemars(description = "Column ID to route to after max_failures is reached (escalation path)")]
+    pub escalation_column_id: Option<Uuid>,
+    #[schemars(description = "Number of times the else path can be taken before escalation")]
+    pub max_failures: Option<i32>,
+    #[schemars(description = "Whether this transition requires user confirmation before proceeding")]
+    pub requires_confirmation: Option<bool>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CreateTransitionResponse {
+    pub transition_id: String,
+}
+
+// ============================================
+// Agent Management Types
+// ============================================
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct AgentSummary {
+    #[schemars(description = "The unique identifier of the agent")]
+    pub id: String,
+    #[schemars(description = "The name of the agent")]
+    pub name: String,
+    #[schemars(description = "The executor type (CLAUDE_CODE, CODEX, GEMINI, etc.)")]
+    pub executor: String,
+    #[schemars(description = "The executor variant (e.g., OPUS, SONNET)")]
+    pub variant: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ListAgentsResponse {
+    pub agents: Vec<AgentSummary>,
+    pub count: usize,
+}
+
+// ============================================
+// Project Management Types
+// ============================================
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UpdateProjectMcpRequest {
+    #[schemars(description = "The ID of the project to update")]
+    pub project_id: Uuid,
+    #[schemars(description = "New name for the project")]
+    pub name: Option<String>,
+    #[schemars(description = "Board ID to assign to the project")]
+    pub board_id: Option<Uuid>,
+    #[schemars(description = "Setup script to run before agent starts")]
+    pub setup_script: Option<String>,
+    #[schemars(description = "Cleanup script to run after agent finishes")]
+    pub cleanup_script: Option<String>,
+    #[schemars(description = "Dev server script")]
+    pub dev_script: Option<String>,
+    #[schemars(description = "Working directory for the agent")]
+    pub agent_working_dir: Option<String>,
+    #[schemars(description = "Comma-separated list of files to copy to worktree")]
+    pub copy_files: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct UpdateProjectMcpResponse {
+    pub project_id: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetProjectRequest {
+    #[schemars(description = "The ID of the project to retrieve")]
+    pub project_id: Uuid,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct GetProjectResponse {
+    pub id: String,
+    pub name: String,
+    pub board_id: Option<String>,
+    pub setup_script: Option<String>,
+    pub cleanup_script: Option<String>,
+    pub dev_script: Option<String>,
+    pub agent_working_dir: Option<String>,
+    pub copy_files: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateProjectRepoInput {
+    #[schemars(description = "Display name for the repository")]
+    pub display_name: String,
+    #[schemars(description = "Path to the git repository on the local filesystem")]
+    pub git_repo_path: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateProjectMcpRequest {
+    #[schemars(description = "The name of the project")]
+    pub name: String,
+    #[schemars(
+        description = "List of repositories to add to the project. Each repository needs a display_name and git_repo_path."
+    )]
+    pub repositories: Vec<CreateProjectRepoInput>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CreateProjectMcpResponse {
+    pub project_id: String,
+    pub project_name: String,
+}
+
+// ============================================================================
+// Context Artifact MCP types
+// ============================================================================
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateArtifactRequest {
+    #[schemars(description = "The ID of the project to create the artifact in")]
+    pub project_id: Uuid,
+    #[schemars(description = "Type of artifact: 'adr', 'pattern', 'module_memory', 'decision', 'dependency', 'iplan', 'changelog_entry'")]
+    pub artifact_type: String,
+    #[schemars(description = "Human-readable title for the artifact")]
+    pub title: String,
+    #[schemars(description = "The artifact content (markdown)")]
+    pub content: String,
+    #[schemars(description = "Scope: 'global' (always injected), 'task' (specific task only), 'path' (file-path matched). Defaults to 'global'.")]
+    pub scope: Option<String>,
+    #[schemars(description = "File/module path (required for scope='path' or artifact_type='module_memory')")]
+    pub path: Option<String>,
+    #[schemars(description = "Source task ID that produced this artifact")]
+    pub source_task_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CreateArtifactResponse {
+    pub artifact_id: String,
+    pub title: String,
+    pub artifact_type: String,
+    pub scope: String,
+    pub token_estimate: i32,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListArtifactsRequest {
+    #[schemars(description = "The ID of the project to list artifacts from")]
+    pub project_id: Uuid,
+    #[schemars(description = "Optional type filter: 'adr', 'pattern', 'module_memory', 'decision', 'dependency', 'iplan', 'changelog_entry'")]
+    pub artifact_type: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ArtifactSummary {
+    pub id: String,
+    pub artifact_type: String,
+    pub title: String,
+    pub scope: String,
+    pub token_estimate: i32,
+    pub path: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct ListArtifactsResponse {
+    pub artifacts: Vec<ArtifactSummary>,
+    pub count: usize,
+    pub project_id: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct TaskServer {
     client: reqwest::Client,
@@ -972,12 +1271,457 @@ impl TaskServer {
 
         TaskServer::success(&response)
     }
+
+    // ============================================
+    // Board Management Tools
+    // ============================================
+
+    #[tool(description = "List all available board templates")]
+    async fn list_boards(&self) -> Result<CallToolResult, ErrorData> {
+        let url = self.url("/api/boards");
+        let boards: Vec<serde_json::Value> = match self.send_json(self.client.get(&url)).await {
+            Ok(bs) => bs,
+            Err(e) => return Ok(e),
+        };
+
+        let board_summaries: Vec<BoardSummary> = boards
+            .into_iter()
+            .map(|b| BoardSummary {
+                id: b["id"].as_str().unwrap_or("").to_string(),
+                name: b["name"].as_str().unwrap_or("").to_string(),
+                description: b["description"].as_str().map(|s| s.to_string()),
+            })
+            .collect();
+
+        let response = ListBoardsResponse {
+            count: board_summaries.len(),
+            boards: board_summaries,
+        };
+
+        TaskServer::success(&response)
+    }
+
+    #[tool(description = "Create a new board template")]
+    async fn create_board(
+        &self,
+        Parameters(CreateBoardRequest { name, description }): Parameters<CreateBoardRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url("/api/boards");
+        let payload = serde_json::json!({
+            "name": name,
+            "description": description
+        });
+
+        let board: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(b) => b,
+            Err(e) => return Ok(e),
+        };
+
+        TaskServer::success(&CreateBoardResponse {
+            board_id: board["id"].as_str().unwrap_or("").to_string(),
+        })
+    }
+
+    #[tool(description = "Get a board with its columns and transitions")]
+    async fn get_board(
+        &self,
+        Parameters(GetBoardRequest { board_id }): Parameters<GetBoardRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // Get board details
+        let url = self.url(&format!("/api/boards/{}", board_id));
+        let board: serde_json::Value = match self.send_json(self.client.get(&url)).await {
+            Ok(b) => b,
+            Err(e) => return Ok(e),
+        };
+
+        // Get columns
+        let columns_url = self.url(&format!("/api/boards/{}/columns", board_id));
+        let columns: Vec<serde_json::Value> = self
+            .send_json(self.client.get(&columns_url))
+            .await
+            .unwrap_or_default();
+
+        let column_summaries: Vec<ColumnSummary> = columns
+            .into_iter()
+            .map(|c| ColumnSummary {
+                id: c["id"].as_str().unwrap_or("").to_string(),
+                name: c["name"].as_str().unwrap_or("").to_string(),
+                slug: c["slug"].as_str().unwrap_or("").to_string(),
+                color: c["color"].as_str().map(|s| s.to_string()),
+                status: c["status"].as_str().unwrap_or("todo").to_string(),
+                is_initial: c["is_initial"].as_bool().unwrap_or(false),
+                is_terminal: c["is_terminal"].as_bool().unwrap_or(false),
+                starts_workflow: c["starts_workflow"].as_bool().unwrap_or(false),
+                agent_id: c["agent_id"].as_str().map(|s| s.to_string()),
+                position: c["position"].as_i64().unwrap_or(0) as i32,
+            })
+            .collect();
+
+        // Get transitions
+        let transitions_url = self.url(&format!("/api/boards/{}/transitions", board_id));
+        let transitions: Vec<serde_json::Value> = self
+            .send_json(self.client.get(&transitions_url))
+            .await
+            .unwrap_or_default();
+
+        let transition_summaries: Vec<TransitionSummary> = transitions
+            .into_iter()
+            .map(|t| TransitionSummary {
+                id: t["id"].as_str().unwrap_or("").to_string(),
+                from_column_id: t["from_column_id"].as_str().unwrap_or("").to_string(),
+                to_column_id: t["to_column_id"].as_str().unwrap_or("").to_string(),
+                name: t["name"].as_str().map(|s| s.to_string()),
+            })
+            .collect();
+
+        let response = GetBoardResponse {
+            id: board["id"].as_str().unwrap_or("").to_string(),
+            name: board["name"].as_str().unwrap_or("").to_string(),
+            description: board["description"].as_str().map(|s| s.to_string()),
+            columns: column_summaries,
+            transitions: transition_summaries,
+        };
+
+        TaskServer::success(&response)
+    }
+
+    #[tool(description = "Create a column on a board. Use deliverable_variable and deliverable_options to define structured deliverables that agents must set in .vibe/decision.json.")]
+    async fn create_column(
+        &self,
+        Parameters(CreateColumnRequest {
+            board_id,
+            name,
+            slug,
+            color,
+            status,
+            is_initial,
+            is_terminal,
+            starts_workflow,
+            agent_id,
+            position,
+            deliverable,
+            deliverable_variable,
+            deliverable_options,
+        }): Parameters<CreateColumnRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/boards/{}/columns", board_id));
+        let payload = serde_json::json!({
+            "name": name,
+            "slug": slug,
+            "color": color,
+            "status": status,
+            "is_initial": is_initial.unwrap_or(false),
+            "is_terminal": is_terminal.unwrap_or(false),
+            "starts_workflow": starts_workflow.unwrap_or(false),
+            "agent_id": agent_id,
+            "position": position,
+            "deliverable": deliverable,
+            "deliverable_variable": deliverable_variable,
+            "deliverable_options": deliverable_options,
+        });
+
+        let column: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(c) => c,
+            Err(e) => return Ok(e),
+        };
+
+        TaskServer::success(&CreateColumnResponse {
+            column_id: column["id"].as_str().unwrap_or("").to_string(),
+        })
+    }
+
+    #[tool(description = "Create a state transition between columns on a board. Supports conditional routing: set condition_key and condition_value to route based on .vibe/decision.json values.")]
+    async fn create_transition(
+        &self,
+        Parameters(CreateTransitionRequest {
+            board_id,
+            from_column_id,
+            to_column_id,
+            name,
+            condition_key,
+            condition_value,
+            else_column_id,
+            escalation_column_id,
+            max_failures,
+            requires_confirmation,
+        }): Parameters<CreateTransitionRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/boards/{}/transitions", board_id));
+        let payload = serde_json::json!({
+            "from_column_id": from_column_id,
+            "to_column_id": to_column_id,
+            "name": name,
+            "condition_key": condition_key,
+            "condition_value": condition_value,
+            "else_column_id": else_column_id,
+            "escalation_column_id": escalation_column_id,
+            "max_failures": max_failures,
+            "requires_confirmation": requires_confirmation,
+        });
+
+        let transition: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(t) => t,
+            Err(e) => return Ok(e),
+        };
+
+        TaskServer::success(&CreateTransitionResponse {
+            transition_id: transition["id"].as_str().unwrap_or("").to_string(),
+        })
+    }
+
+    // ============================================
+    // Agent Management Tools
+    // ============================================
+
+    #[tool(description = "List all available agents")]
+    async fn list_agents(&self) -> Result<CallToolResult, ErrorData> {
+        let url = self.url("/api/agents");
+        let agents: Vec<serde_json::Value> = match self.send_json(self.client.get(&url)).await {
+            Ok(a) => a,
+            Err(e) => return Ok(e),
+        };
+
+        let agent_summaries: Vec<AgentSummary> = agents
+            .into_iter()
+            .map(|a| AgentSummary {
+                id: a["id"].as_str().unwrap_or("").to_string(),
+                name: a["name"].as_str().unwrap_or("").to_string(),
+                executor: a["executor"].as_str().unwrap_or("").to_string(),
+                variant: a["variant"].as_str().map(|s| s.to_string()),
+            })
+            .collect();
+
+        let response = ListAgentsResponse {
+            count: agent_summaries.len(),
+            agents: agent_summaries,
+        };
+
+        TaskServer::success(&response)
+    }
+
+    // ============================================
+    // Project Management Tools
+    // ============================================
+
+    #[tool(description = "Get project details including board and settings")]
+    async fn get_project(
+        &self,
+        Parameters(GetProjectRequest { project_id }): Parameters<GetProjectRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/projects/{}", project_id));
+        let project: serde_json::Value = match self.send_json(self.client.get(&url)).await {
+            Ok(p) => p,
+            Err(e) => return Ok(e),
+        };
+
+        let response = GetProjectResponse {
+            id: project["id"].as_str().unwrap_or("").to_string(),
+            name: project["name"].as_str().unwrap_or("").to_string(),
+            board_id: project["board_id"].as_str().map(|s| s.to_string()),
+            setup_script: project["setup_script"].as_str().map(|s| s.to_string()),
+            cleanup_script: project["cleanup_script"].as_str().map(|s| s.to_string()),
+            dev_script: project["dev_script"].as_str().map(|s| s.to_string()),
+            agent_working_dir: project["agent_working_dir"].as_str().map(|s| s.to_string()),
+            copy_files: project["copy_files"].as_str().map(|s| s.to_string()),
+        };
+
+        TaskServer::success(&response)
+    }
+
+    #[tool(description = "Update project settings (board, scripts, agent_working_dir, copy_files)")]
+    async fn update_project(
+        &self,
+        Parameters(UpdateProjectMcpRequest {
+            project_id,
+            name,
+            board_id,
+            setup_script,
+            cleanup_script,
+            dev_script,
+            agent_working_dir,
+            copy_files,
+        }): Parameters<UpdateProjectMcpRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/projects/{}", project_id));
+        let payload = serde_json::json!({
+            "name": name,
+            "board_id": board_id,
+            "setup_script": setup_script,
+            "cleanup_script": cleanup_script,
+            "dev_script": dev_script,
+            "agent_working_dir": agent_working_dir,
+            "copy_files": copy_files
+        });
+
+        let _project: serde_json::Value = match self
+            .send_json(self.client.put(&url).json(&payload))
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => return Ok(e),
+        };
+
+        TaskServer::success(&UpdateProjectMcpResponse {
+            project_id: project_id.to_string(),
+        })
+    }
+
+    #[tool(description = "Create a new project with one or more repositories")]
+    async fn create_project(
+        &self,
+        Parameters(CreateProjectMcpRequest { name, repositories }): Parameters<CreateProjectMcpRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url("/api/projects");
+        let repos_payload: Vec<serde_json::Value> = repositories
+            .into_iter()
+            .map(|r| {
+                serde_json::json!({
+                    "display_name": r.display_name,
+                    "git_repo_path": r.git_repo_path
+                })
+            })
+            .collect();
+
+        let payload = serde_json::json!({
+            "name": name,
+            "repositories": repos_payload
+        });
+
+        let project: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => return Ok(e),
+        };
+
+        TaskServer::success(&CreateProjectMcpResponse {
+            project_id: project["id"].as_str().unwrap_or("").to_string(),
+            project_name: project["name"].as_str().unwrap_or("").to_string(),
+        })
+    }
+
+    #[tool(description = "Create a context artifact (ADR, pattern, decision, module memory, etc.) for a project. Artifacts are injected into future agent prompts based on their scope. Use scope='global' for project-wide knowledge, scope='task' for task-specific context, scope='path' for file-specific memories.")]
+    async fn create_artifact(
+        &self,
+        Parameters(CreateArtifactRequest {
+            project_id,
+            artifact_type,
+            title,
+            content,
+            scope,
+            path,
+            source_task_id,
+        }): Parameters<CreateArtifactRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let valid_types = ["adr", "pattern", "module_memory", "decision", "dependency", "iplan", "changelog_entry"];
+        if !valid_types.contains(&artifact_type.as_str()) {
+            return Self::err(
+                format!("Invalid artifact_type '{}'. Valid types: {}", artifact_type, valid_types.join(", ")),
+                None::<String>,
+            );
+        }
+
+        let scope_str = scope.unwrap_or_else(|| "global".to_string());
+        let valid_scopes = ["global", "task", "path"];
+        if !valid_scopes.contains(&scope_str.as_str()) {
+            return Self::err(
+                format!("Invalid scope '{}'. Valid scopes: {}", scope_str, valid_scopes.join(", ")),
+                None::<String>,
+            );
+        }
+
+        let url = self.url("/api/context-artifacts");
+        let mut payload = serde_json::json!({
+            "project_id": project_id.to_string(),
+            "artifact_type": artifact_type,
+            "title": title,
+            "content": content,
+            "scope": scope_str,
+        });
+
+        if let Some(p) = path {
+            payload["path"] = serde_json::Value::String(p);
+        }
+        if let Some(tid) = source_task_id {
+            payload["source_task_id"] = serde_json::Value::String(tid.to_string());
+        }
+
+        let artifact: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(a) => a,
+            Err(e) => return Ok(e),
+        };
+
+        TaskServer::success(&CreateArtifactResponse {
+            artifact_id: artifact["id"].as_str().unwrap_or("").to_string(),
+            title: artifact["title"].as_str().unwrap_or("").to_string(),
+            artifact_type: artifact["artifact_type"].as_str().unwrap_or("").to_string(),
+            scope: artifact["scope"].as_str().unwrap_or("").to_string(),
+            token_estimate: artifact["token_estimate"].as_i64().unwrap_or(0) as i32,
+        })
+    }
+
+    #[tool(description = "List context artifacts for a project, optionally filtered by type. Shows what knowledge will be injected into future agent prompts.")]
+    async fn list_artifacts(
+        &self,
+        Parameters(ListArtifactsRequest {
+            project_id,
+            artifact_type,
+        }): Parameters<ListArtifactsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let mut url = format!("/api/context-artifacts?project_id={}", project_id);
+        if let Some(ref at) = artifact_type {
+            url.push_str(&format!("&artifact_type={}", at));
+        }
+        let url = self.url(&url);
+
+        let artifacts: Vec<serde_json::Value> = match self
+            .send_json(self.client.get(&url))
+            .await
+        {
+            Ok(a) => a,
+            Err(e) => return Ok(e),
+        };
+
+        let summaries: Vec<ArtifactSummary> = artifacts
+            .iter()
+            .map(|a| ArtifactSummary {
+                id: a["id"].as_str().unwrap_or("").to_string(),
+                artifact_type: a["artifact_type"].as_str().unwrap_or("").to_string(),
+                title: a["title"].as_str().unwrap_or("").to_string(),
+                scope: a["scope"].as_str().unwrap_or("").to_string(),
+                token_estimate: a["token_estimate"].as_i64().unwrap_or(0) as i32,
+                path: a["path"].as_str().map(|s| s.to_string()),
+                created_at: a["created_at"].as_str().unwrap_or("").to_string(),
+                updated_at: a["updated_at"].as_str().unwrap_or("").to_string(),
+            })
+            .collect();
+
+        let count = summaries.len();
+        TaskServer::success(&ListArtifactsResponse {
+            artifacts: summaries,
+            count,
+            project_id: project_id.to_string(),
+        })
+    }
 }
 
 #[tool_handler]
 impl ServerHandler for TaskServer {
     fn get_info(&self) -> ServerInfo {
-        let mut instruction = "A task and project management server. If you need to create or update tickets or tasks then use these tools. Most of them absolutely require that you pass the `project_id` of the project that you are currently working on. You can get project ids by using `list projects`. Call `list_tasks` to fetch the `task_ids` of all the tasks in a project`.. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'start_workspace_session', 'get_task', 'update_task', 'delete_task', 'list_repos'. Make sure to pass `project_id` or `task_id` where required. You can use list tools to get the available ids.".to_string();
+        let mut instruction = "A task and project management server. If you need to create or update tickets or tasks then use these tools. Most of them absolutely require that you pass the `project_id` of the project that you are currently working on. You can get project ids by using `list projects`. Call `list_tasks` to fetch the `task_ids` of all the tasks in a project`.. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'start_workspace_session', 'get_task', 'update_task', 'delete_task', 'list_repos', 'list_boards', 'create_board', 'get_board', 'create_column', 'create_transition', 'list_agents', 'get_project', 'update_project', 'create_project', 'create_artifact', 'list_artifacts'. Make sure to pass `project_id` or `task_id` where required. You can use list tools to get the available ids.".to_string();
 
         if let Some(ctx) = &self.context {
             let context_instruction = "Use 'get_context' to fetch project/task/workspace metadata for the active Vibe Kanban workspace session when available.";

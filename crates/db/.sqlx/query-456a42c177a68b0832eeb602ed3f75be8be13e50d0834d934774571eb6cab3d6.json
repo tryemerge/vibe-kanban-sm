@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tasks SET task_state = $2, agent_status = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "task_state",
+            "kind": {
+              "Enum": [
+                "queued",
+                "transitioning"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "agent_status",
+            "kind": {
+              "Enum": [
+                "running",
+                "awaiting_response"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "456a42c177a68b0832eeb602ed3f75be8be13e50d0834d934774571eb6cab3d6"
+}

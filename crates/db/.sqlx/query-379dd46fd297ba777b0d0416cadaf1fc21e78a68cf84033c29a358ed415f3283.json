@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO tasks (id, project_id, title, description, status, column_id, parent_workspace_id, shared_task_id)\n               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n               RETURNING id as \"id!: Uuid\", project_id as \"project_id!: Uuid\", title, description, status as \"status!: TaskStatus\", column_id as \"column_id: Uuid\", parent_workspace_id as \"parent_workspace_id: Uuid\", shared_task_id as \"shared_task_id: Uuid\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\"",
+  "query": "UPDATE tasks\n               SET title = $3, description = $4, status = $5, column_id = $6, parent_workspace_id = $7\n               WHERE id = $1 AND project_id = $2\n               RETURNING id as \"id!: Uuid\", project_id as \"project_id!: Uuid\", title, description, status as \"status!: TaskStatus\", column_id as \"column_id: Uuid\", parent_workspace_id as \"parent_workspace_id: Uuid\", shared_task_id as \"shared_task_id: Uuid\", task_state as \"task_state!: TaskState\", agent_status as \"agent_status: AgentStatus\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\"",
   "describe": {
     "columns": [
       {
@@ -45,11 +45,41 @@
       },
       {
         "ordinal": 8,
+        "name": "task_state!: TaskState",
+        "type_info": {
+          "Custom": {
+            "name": "task_state",
+            "kind": {
+              "Enum": [
+                "queued",
+                "transitioning"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "agent_status: AgentStatus",
+        "type_info": {
+          "Custom": {
+            "name": "agent_status",
+            "kind": {
+              "Enum": [
+                "running",
+                "awaiting_response"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 10,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "updated_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
@@ -61,7 +91,6 @@
         "Text",
         "Text",
         "Text",
-        "Uuid",
         "Uuid",
         "Uuid"
       ]
@@ -76,8 +105,10 @@
       true,
       true,
       false,
+      true,
+      false,
       false
     ]
   },
-  "hash": "600accabb9536618b0ce80366d3b3ce96e3245d169f0c4d8a2aa028ac8d44b12"
+  "hash": "379dd46fd297ba777b0d0416cadaf1fc21e78a68cf84033c29a358ed415f3283"
 }

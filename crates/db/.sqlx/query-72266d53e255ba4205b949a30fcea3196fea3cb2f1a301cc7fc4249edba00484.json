@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id as \"id!: Uuid\", project_id as \"project_id!: Uuid\", title, description, status as \"status!: TaskStatus\", column_id as \"column_id: Uuid\", parent_workspace_id as \"parent_workspace_id: Uuid\", shared_task_id as \"shared_task_id: Uuid\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM tasks\n               WHERE shared_task_id IS NOT NULL",
+  "query": "SELECT id as \"id!: Uuid\", project_id as \"project_id!: Uuid\", title, description, status as \"status!: TaskStatus\", column_id as \"column_id: Uuid\", parent_workspace_id as \"parent_workspace_id: Uuid\", shared_task_id as \"shared_task_id: Uuid\", task_state as \"task_state!: TaskState\", agent_status as \"agent_status: AgentStatus\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM tasks\n               WHERE shared_task_id IS NOT NULL",
   "describe": {
     "columns": [
       {
@@ -45,11 +45,41 @@
       },
       {
         "ordinal": 8,
+        "name": "task_state!: TaskState",
+        "type_info": {
+          "Custom": {
+            "name": "task_state",
+            "kind": {
+              "Enum": [
+                "queued",
+                "transitioning"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "agent_status: AgentStatus",
+        "type_info": {
+          "Custom": {
+            "name": "agent_status",
+            "kind": {
+              "Enum": [
+                "running",
+                "awaiting_response"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 10,
         "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "updated_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
@@ -67,8 +97,10 @@
       true,
       true,
       false,
+      true,
+      false,
       false
     ]
   },
-  "hash": "200c70f140d0eac0e0e5456ed802bd49da4c550f8e5f9c36c98d223a0e342127"
+  "hash": "72266d53e255ba4205b949a30fcea3196fea3cb2f1a301cc7fc4249edba00484"
 }

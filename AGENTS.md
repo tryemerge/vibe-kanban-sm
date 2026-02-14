@@ -1,5 +1,21 @@
 # Repository Guidelines
 
+## InDusk Fork Context
+
+This is **InDusk**, an enhanced fork of Vibe Kanban (forked Dec 31, 2025).
+InDusk adds: workflow state machine, context compounding, structured deliverables,
+task triggers, file locking, swim lanes, and board templates.
+
+**Before starting significant work, read:**
+- `docs/architecture/ARCHITECTURE.md` — Full system understanding and codebase map
+- `docs/journal/STATUS.md` — Current state, active work, open questions
+
+**Reference docs (read as needed):**
+- `docs/adr/` — Architecture Decision Records (6 ADRs)
+- `docs/impl/` — Implementation plans
+- `docs/infinite-dusky/CHANGELOG.md` — Detailed feature history since fork
+- `docs/journal/EXPERIMENTS.md` — Research log: is InDusk's approach working?
+
 ## Project Structure & Module Organization
 - `crates/`: Rust workspace crates — `server` (API + bins), `db` (SQLx models/migrations), `executors`, `services`, `utils`, `deployment`, `local-deployment`, `remote`.
 - `frontend/`: React + TypeScript app (Vite, Tailwind). Source in `frontend/src`.
@@ -137,3 +153,10 @@ When a column's nullability changes, update SQLx query annotations:
 - `"column: Type"` = nullable, returns `Option<Type>`
 
 If SQLx still infers wrong types, it's reading from the actual DB schema. Run migrations first, then `pnpm run prepare-db`.
+
+## Documentation Maintenance
+
+When finishing significant work, consider updating:
+- `docs/journal/STATUS.md` — if the project state changed (features completed, new issues, decisions made)
+- `docs/architecture/ARCHITECTURE.md` — if you added new crates, models, routes, or changed data flows
+- `docs/infinite-dusky/CHANGELOG.md` — if you completed a feature

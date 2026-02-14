@@ -108,6 +108,24 @@ pub struct CreateStateTransition {
     pub max_failures: Option<i32>,
 }
 
+#[derive(Debug, Clone, Deserialize, TS)]
+pub struct UpdateStateTransition {
+    pub from_column_id: Option<Uuid>,
+    pub to_column_id: Option<Uuid>,
+    /// Double Option: None = keep existing, Some(None) = set null, Some(Some(id)) = set value
+    #[serde(default, deserialize_with = "crate::serde_helpers::deserialize_optional_nullable")]
+    #[ts(optional, type = "string | null")]
+    pub else_column_id: Option<Option<Uuid>>,
+    #[serde(default, deserialize_with = "crate::serde_helpers::deserialize_optional_nullable")]
+    #[ts(optional, type = "string | null")]
+    pub escalation_column_id: Option<Option<Uuid>>,
+    pub name: Option<String>,
+    pub requires_confirmation: Option<bool>,
+    pub condition_key: Option<String>,
+    pub condition_value: Option<String>,
+    pub max_failures: Option<i32>,
+}
+
 impl StateTransition {
     /// Find a transition by ID
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
@@ -672,6 +690,71 @@ impl StateTransition {
             template_group_id
         )
         .fetch_one(executor)
+        .await
+    }
+
+    /// Update a transition
+    pub async fn update(
+        pool: &PgPool,
+        id: Uuid,
+        data: &UpdateStateTransition,
+    ) -> Result<Self, sqlx::Error> {
+        let existing = Self::find_by_id(pool, id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+
+        let from_column_id = data.from_column_id.unwrap_or(existing.from_column_id);
+        let to_column_id = data.to_column_id.unwrap_or(existing.to_column_id);
+        let else_column_id = match &data.else_column_id {
+            None => existing.else_column_id,
+            Some(inner) => inner.clone(),
+        };
+        let escalation_column_id = match &data.escalation_column_id {
+            None => existing.escalation_column_id,
+            Some(inner) => inner.clone(),
+        };
+        let name = data.name.clone().or(existing.name);
+        let requires_confirmation: bool = data.requires_confirmation.unwrap_or(existing.requires_confirmation);
+        let requires_confirmation_i32: i32 = if requires_confirmation { 1 } else { 0 };
+        let condition_key = data.condition_key.clone().or(existing.condition_key);
+        let condition_value = data.condition_value.clone().or(existing.condition_value);
+        let max_failures = data.max_failures.or(existing.max_failures);
+
+        sqlx::query_as!(
+            StateTransition,
+            r#"UPDATE state_transitions
+               SET from_column_id = $2, to_column_id = $3, else_column_id = $4,
+                   escalation_column_id = $5, name = $6, requires_confirmation = $7,
+                   condition_key = $8, condition_value = $9, max_failures = $10
+               WHERE id = $1
+               RETURNING id as "id!: Uuid",
+                         board_id as "board_id: Uuid",
+                         project_id as "project_id: Uuid",
+                         task_id as "task_id: Uuid",
+                         from_column_id as "from_column_id!: Uuid",
+                         to_column_id as "to_column_id!: Uuid",
+                         else_column_id as "else_column_id: Uuid",
+                         escalation_column_id as "escalation_column_id: Uuid",
+                         name,
+                         requires_confirmation as "requires_confirmation!: bool",
+                         condition_key,
+                         condition_value,
+                         max_failures,
+                         is_template as "is_template!: bool",
+                         template_group_id,
+                         created_at as "created_at!: DateTime<Utc>""#,
+            id,
+            from_column_id,
+            to_column_id,
+            else_column_id,
+            escalation_column_id,
+            name,
+            requires_confirmation_i32,
+            condition_key,
+            condition_value,
+            max_failures
+        )
+        .fetch_one(pool)
         .await
     }
 

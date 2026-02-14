@@ -27,7 +27,7 @@ use db::{
         session::{CreateSession, Session, SessionError},
         state_transition::StateTransition,
         tag::Tag,
-        task::{Task, TaskStatus},
+        task::{AgentStatus, Task, TaskState, TaskStatus},
         task_event::{ActorType, CreateTaskEvent, EventTriggerType, TaskEvent},
         workspace::{Workspace, WorkspaceError},
         workspace_repo::WorkspaceRepo,
@@ -346,82 +346,6 @@ pub fn validate_decision_variable(
     DecisionValidationResult::Valid
 }
 
-/// Build project context string from context artifacts (ADRs, patterns, recent decisions)
-/// This provides project-level knowledge to agents when they start execution
-async fn build_project_context(pool: &sqlx::PgPool, project_id: uuid::Uuid) -> Option<String> {
-    tracing::info!(
-        target: "vibe_kanban::context",
-        "📚 Building project context for project {}",
-        project_id
-    );
-
-    let mut context = String::new();
-    let mut adr_count = 0;
-    let mut pattern_count = 0;
-
-    // Get recent ADRs (architecture decision records)
-    if let Ok(adrs) = ContextArtifact::get_recent_adrs(pool, project_id, 5).await {
-        if !adrs.is_empty() {
-            adr_count = adrs.len();
-            tracing::info!(
-                target: "vibe_kanban::context",
-                "  ├─ Found {} ADRs: {}",
-                adr_count,
-                adrs.iter().map(|a| a.title.as_str()).collect::<Vec<_>>().join(", ")
-            );
-            context.push_str("## Architecture Decisions\n\n");
-            for adr in adrs {
-                context.push_str(&format!("### {}\n", adr.title));
-                context.push_str(&adr.content);
-                context.push_str("\n\n");
-            }
-        }
-    }
-
-    // Get patterns for this project
-    if let Ok(patterns) = ContextArtifact::find_by_project_and_type(
-        pool,
-        project_id,
-        &db::models::context_artifact::ArtifactType::Pattern,
-    )
-    .await
-    {
-        if !patterns.is_empty() {
-            pattern_count = patterns.len().min(5);
-            tracing::info!(
-                target: "vibe_kanban::context",
-                "  ├─ Found {} patterns (using {}): {}",
-                patterns.len(),
-                pattern_count,
-                patterns.iter().take(5).map(|p| p.title.as_str()).collect::<Vec<_>>().join(", ")
-            );
-            context.push_str("## Patterns & Best Practices\n\n");
-            for pattern in patterns.iter().take(5) {
-                context.push_str(&format!("### {}\n", pattern.title));
-                context.push_str(&pattern.content);
-                context.push_str("\n\n");
-            }
-        }
-    }
-
-    if context.is_empty() {
-        tracing::info!(
-            target: "vibe_kanban::context",
-            "  └─ No project context artifacts found"
-        );
-        None
-    } else {
-        tracing::info!(
-            target: "vibe_kanban::context",
-            "  └─ Project context built: {} ADRs, {} patterns ({} chars)",
-            adr_count,
-            pattern_count,
-            context.len()
-        );
-        Some(context)
-    }
-}
-
 /// Result of evaluating a transition against a decision value
 pub enum TransitionResult {
     /// Condition matched - use to_column_id (success path)
@@ -655,6 +579,10 @@ pub trait ContainerService {
 
     /// Finalize task execution by updating status to InReview and sending notifications.
     /// Also handles auto-transition to next column if configured.
+    ///
+    /// Key behavior with nested state machines:
+    /// - If decision.json exists: agent finished work → set task_state=Transitioning, run auto-transition
+    /// - If no decision.json: agent is waiting for user input → set agent_status=AwaitingResponse, DON'T transition
     async fn finalize_task(
         &self,
         share_publisher: Option<&SharePublisher>,
@@ -662,10 +590,52 @@ pub trait ContainerService {
     ) {
         let pool = &self.db().pool;
 
-        // Try to auto-transition if execution completed successfully
-        let transitioned = if matches!(ctx.execution_process.status, ExecutionProcessStatus::Completed) {
-            self.try_auto_transition(ctx).await
+        // Check if the agent wrote a decision file (indicating true completion)
+        let decision = read_decision_file(&ctx.workspace).await;
+        let has_decision = decision.is_some();
+
+        // Try to auto-transition only if:
+        // 1. Execution completed successfully
+        // 2. Agent wrote a decision.json (indicating it's done, not just waiting for user input)
+        let transitioned = if matches!(ctx.execution_process.status, ExecutionProcessStatus::Completed) && has_decision {
+            // Agent truly finished - set transitioning state and run auto-transition
+            if let Err(e) = Task::update_task_and_agent_state(
+                pool,
+                ctx.task.id,
+                TaskState::Transitioning,
+                None, // No agent owns the task during transition
+            ).await {
+                tracing::error!("Failed to set task to transitioning state: {}", e);
+            }
+
+            let transitioned = self.try_auto_transition(ctx).await;
+
+            // After transition (or if no transition matched), set back to queued
+            if let Err(e) = Task::update_task_state(pool, ctx.task.id, TaskState::Queued).await {
+                tracing::error!("Failed to set task back to queued state: {}", e);
+            }
+
+            transitioned
+        } else if matches!(ctx.execution_process.status, ExecutionProcessStatus::Completed) && !has_decision {
+            // Agent exited but no decision.json - it's waiting for user input
+            tracing::info!(
+                target: "vibe_kanban::agent",
+                "Agent for task {} exited without decision.json - setting status to awaiting response",
+                ctx.task.id
+            );
+            if let Err(e) = Task::update_agent_status(
+                pool,
+                ctx.task.id,
+                Some(AgentStatus::AwaitingResponse),
+            ).await {
+                tracing::error!("Failed to set agent status to awaiting response: {}", e);
+            }
+            false
         } else {
+            // Failed or killed execution - clear agent status
+            if let Err(e) = Task::update_agent_status(pool, ctx.task.id, None).await {
+                tracing::error!("Failed to clear agent status: {}", e);
+            }
             false
         };
 
@@ -1185,6 +1155,11 @@ pub trait ContainerService {
             column_name
         );
 
+        // Set agent status to Running - agent is now actively working on this task
+        if let Err(e) = Task::update_agent_status(pool, task.id, Some(AgentStatus::Running)).await {
+            tracing::error!("Failed to set agent status to running: {}", e);
+        }
+
         // Expand @tagname references in agent start_command and column deliverable
         let expanded_start_command = Tag::expand_tags_optional(pool, agent.start_command.as_deref()).await;
         let expanded_deliverable = Tag::expand_tags_optional(pool, column.deliverable.as_deref()).await;
@@ -1270,21 +1245,37 @@ pub trait ContainerService {
                 }
             };
 
-            // Build project context from context artifacts (ADRs, patterns)
-            let project_context = build_project_context(pool, task.project_id).await;
-
-            if let Some(ref ctx) = project_context {
-                tracing::info!(
-                    target: "vibe_kanban::agent",
-                    "  │  ├─ Project context: {} chars (ADRs + patterns)",
-                    ctx.len()
-                );
-            } else {
-                tracing::info!(
-                    target: "vibe_kanban::agent",
-                    "  │  ├─ Project context: none"
-                );
-            }
+            // Build budgeted context from context artifacts (ADR-007)
+            let project_context = match ContextArtifact::build_full_context(
+                pool,
+                task.project_id,
+                Some(task.id),
+                &[], // Path-scoped context requires knowing which files the agent will touch
+            ).await {
+                Ok(ctx) if !ctx.is_empty() => {
+                    tracing::info!(
+                        target: "vibe_kanban::agent",
+                        "  │  ├─ Project context: {} chars (budgeted: global + task)",
+                        ctx.len()
+                    );
+                    Some(ctx)
+                }
+                Ok(_) => {
+                    tracing::info!(
+                        target: "vibe_kanban::agent",
+                        "  │  ├─ Project context: none"
+                    );
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "vibe_kanban::agent",
+                        "  │  ├─ Project context: error building - {}",
+                        e
+                    );
+                    None
+                }
+            };
 
             if let Some(ref del) = expanded_deliverable {
                 tracing::info!(
@@ -2155,6 +2146,11 @@ pub trait ContainerService {
             .parent_task(&self.db().pool)
             .await?
             .ok_or(SqlxError::RowNotFound)?;
+
+        // Set agent status to Running - agent is now actively working on this task
+        if let Err(e) = Task::update_agent_status(&self.db().pool, task.id, Some(AgentStatus::Running)).await {
+            tracing::error!("Failed to set agent status to running: {}", e);
+        }
 
         // Get parent project
         let project = task

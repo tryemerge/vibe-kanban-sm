@@ -83,6 +83,19 @@ impl ArtifactType {
             _ => None,
         }
     }
+
+    /// Priority ordering for context budget allocation (lower = higher priority)
+    pub fn priority(&self) -> i32 {
+        match self {
+            ArtifactType::Adr => 1,
+            ArtifactType::Pattern => 2,
+            ArtifactType::IPlan => 3,
+            ArtifactType::ModuleMemory => 4,
+            ArtifactType::Decision => 5,
+            ArtifactType::Dependency => 6,
+            ArtifactType::ChangelogEntry => 7,
+        }
+    }
 }
 
 /// A context artifact stores learned knowledge from agent work
@@ -108,6 +121,8 @@ pub struct ContextArtifact {
     pub chain_id: Option<Uuid>,
     /// Version number within a chain (1, 2, 3...)
     pub version: i32,
+    /// Approximate token count for budget-aware context injection (content.len() / 4)
+    pub token_estimate: i32,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -165,6 +180,7 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -200,6 +216,7 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -235,6 +252,7 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -267,6 +285,7 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -310,11 +329,14 @@ impl ContextArtifact {
             1
         };
 
+        // Estimate token count: ~4 chars per token for English text
+        let token_estimate = (data.content.len() / 4) as i32;
+
         sqlx::query_as!(
             ContextArtifact,
             r#"INSERT INTO context_artifacts
-               (id, project_id, artifact_type, path, title, content, metadata, source_task_id, source_commit_hash, scope, file_path, supersedes_id, chain_id, version)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+               (id, project_id, artifact_type, path, title, content, metadata, source_task_id, source_commit_hash, scope, file_path, supersedes_id, chain_id, version, token_estimate)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                RETURNING
                 id as "id!: Uuid",
                 project_id as "project_id!: Uuid",
@@ -330,6 +352,7 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>""#,
             artifact_id,
@@ -345,7 +368,8 @@ impl ContextArtifact {
             data.file_path,
             data.supersedes_id,
             chain_id,
-            version
+            version,
+            token_estimate
         )
         .fetch_one(pool)
         .await
@@ -363,6 +387,7 @@ impl ContextArtifact {
 
         let title = data.title.unwrap_or(existing.title);
         let content = data.content.unwrap_or(existing.content);
+        let token_estimate = (content.len() / 4) as i32;
         let metadata_json = data
             .metadata
             .map(|m| serde_json::to_string(&m).ok())
@@ -377,7 +402,7 @@ impl ContextArtifact {
             ContextArtifact,
             r#"UPDATE context_artifacts
                SET title = $2, content = $3, metadata = $4, scope = $5,
-                   updated_at = NOW()
+                   token_estimate = $6, updated_at = NOW()
                WHERE id = $1
                RETURNING
                 id as "id!: Uuid",
@@ -394,13 +419,15 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             title,
             content,
             metadata_json,
-            scope_str
+            scope_str,
+            token_estimate
         )
         .fetch_one(pool)
         .await
@@ -486,63 +513,114 @@ impl ContextArtifact {
         Ok(context)
     }
 
-    /// Build full context for agent prompting including global, task, and path artifacts
+    /// Default token budget for context injection
+    const DEFAULT_TOKEN_BUDGET: i32 = 8000;
+
+    /// Build full context for agent prompting with token budget (ADR-007).
+    ///
+    /// Budget allocation: Global 50%, Task 30%, Path 20%.
+    /// Unused budget rolls over to the next scope.
+    /// Within each scope, artifacts are prioritized by type (ADR > Pattern > ...) then recency.
+    /// Only the latest version per chain_id is included.
     pub async fn build_full_context(
         pool: &PgPool,
         project_id: Uuid,
         task_id: Option<Uuid>,
         paths: &[String],
     ) -> Result<String, sqlx::Error> {
+        let total_budget = Self::DEFAULT_TOKEN_BUDGET;
+
         tracing::info!(
             target: "vibe_kanban::context",
-            "📚 Building full context for project {} (task: {:?}, paths: {})",
+            "📚 Building budgeted context for project {} (task: {:?}, paths: {}, budget: {} tokens)",
             project_id,
             task_id,
-            paths.len()
+            paths.len(),
+            total_budget
         );
 
         let mut context_parts = Vec::new();
+        let mut remaining_budget = total_budget;
 
-        // 1. Global artifacts (always included)
+        // 1. Global artifacts — 50% of budget
+        let global_budget = total_budget / 2;
         let global_artifacts = Self::find_global_artifacts(pool, project_id).await?;
+        let global_artifacts = Self::dedup_by_chain(global_artifacts);
+        let global_artifacts = Self::sort_by_priority(global_artifacts);
+
         if !global_artifacts.is_empty() {
-            tracing::info!(
-                target: "vibe_kanban::context",
-                "  ├─ Global artifacts: {} found - {}",
-                global_artifacts.len(),
-                global_artifacts.iter().map(|a| a.title.as_str()).collect::<Vec<_>>().join(", ")
-            );
-            let mut global_section = String::from("# Project Context\n\n");
-            for artifact in global_artifacts {
-                global_section.push_str(&format!("## {}\n\n", artifact.title));
-                global_section.push_str(&artifact.content);
-                global_section.push_str("\n\n");
+            let mut section = String::from("# Project Context\n\n");
+            let mut included = 0;
+            let mut tokens_used = 0;
+
+            for artifact in &global_artifacts {
+                if tokens_used + artifact.token_estimate > global_budget.max(remaining_budget) {
+                    break;
+                }
+                section.push_str(&format!("## {}\n\n", artifact.title));
+                section.push_str(&artifact.content);
+                section.push_str("\n\n");
+                tokens_used += artifact.token_estimate;
+                included += 1;
             }
-            context_parts.push(global_section);
+
+            if included > 0 {
+                tracing::info!(
+                    target: "vibe_kanban::context",
+                    "  ├─ Global: {}/{} artifacts, {} tokens",
+                    included,
+                    global_artifacts.len(),
+                    tokens_used
+                );
+                context_parts.push(section);
+                remaining_budget -= tokens_used;
+            }
         } else {
             tracing::info!(
                 target: "vibe_kanban::context",
                 "  ├─ Global artifacts: none"
             );
+            // Unused global budget rolls over
         }
 
-        // 2. Task-specific artifacts (if task_id provided)
+        // 2. Task-specific artifacts — 30% of budget (+ rollover)
+        let task_budget = (total_budget * 3) / 10;
         if let Some(tid) = task_id {
             let task_artifacts = Self::find_task_artifacts(pool, project_id, tid).await?;
+            let task_artifacts = Self::dedup_by_chain(task_artifacts);
+            let task_artifacts = Self::sort_by_priority(task_artifacts);
+
             if !task_artifacts.is_empty() {
-                tracing::info!(
-                    target: "vibe_kanban::context",
-                    "  ├─ Task artifacts: {} found - {}",
-                    task_artifacts.len(),
-                    task_artifacts.iter().map(|a| a.title.as_str()).collect::<Vec<_>>().join(", ")
-                );
-                let mut task_section = String::from("# Task Context\n\n");
-                for artifact in task_artifacts {
-                    task_section.push_str(&format!("## {}\n\n", artifact.title));
-                    task_section.push_str(&artifact.content);
-                    task_section.push_str("\n\n");
+                let mut section = String::from("# Task Context\n\n");
+                let mut included = 0;
+                let mut tokens_used = 0;
+                let effective_budget = task_budget.max(remaining_budget.min(task_budget + (total_budget / 2 - (total_budget - remaining_budget)).max(0)));
+
+                for artifact in &task_artifacts {
+                    if tokens_used + artifact.token_estimate > remaining_budget {
+                        break;
+                    }
+                    if tokens_used + artifact.token_estimate > effective_budget && included > 0 {
+                        break;
+                    }
+                    section.push_str(&format!("## {}\n\n", artifact.title));
+                    section.push_str(&artifact.content);
+                    section.push_str("\n\n");
+                    tokens_used += artifact.token_estimate;
+                    included += 1;
                 }
-                context_parts.push(task_section);
+
+                if included > 0 {
+                    tracing::info!(
+                        target: "vibe_kanban::context",
+                        "  ├─ Task: {}/{} artifacts, {} tokens",
+                        included,
+                        task_artifacts.len(),
+                        tokens_used
+                    );
+                    context_parts.push(section);
+                    remaining_budget -= tokens_used;
+                }
             } else {
                 tracing::info!(
                     target: "vibe_kanban::context",
@@ -552,33 +630,102 @@ impl ContextArtifact {
             }
         }
 
-        // 3. Path-based artifacts (module memories for relevant files)
-        let path_context = Self::build_context_for_paths(pool, project_id, paths).await?;
-        if !path_context.is_empty() {
-            tracing::info!(
-                target: "vibe_kanban::context",
-                "  ├─ Path artifacts: {} chars for {} paths",
-                path_context.len(),
-                paths.len()
-            );
-            context_parts.push(format!("# Module Context\n\n{}", path_context));
-        } else if !paths.is_empty() {
-            tracing::info!(
-                target: "vibe_kanban::context",
-                "  ├─ Path artifacts: none for {} paths",
-                paths.len()
-            );
+        // 3. Path-based artifacts — 20% of budget (+ rollover from above)
+        if !paths.is_empty() && remaining_budget > 0 {
+            let mut section = String::from("# Module Context\n\n");
+            let mut included = 0;
+            let mut tokens_used = 0;
+
+            for path in paths {
+                if let Some(memory) = Self::find_module_memory(pool, project_id, path).await? {
+                    if tokens_used + memory.token_estimate > remaining_budget {
+                        break;
+                    }
+                    section.push_str(&format!("## Module: {}\n\n", path));
+                    section.push_str(&memory.content);
+                    section.push_str("\n\n");
+                    tokens_used += memory.token_estimate;
+                    included += 1;
+                }
+            }
+
+            if included > 0 {
+                tracing::info!(
+                    target: "vibe_kanban::context",
+                    "  ├─ Path: {} modules, {} tokens",
+                    included,
+                    tokens_used
+                );
+                context_parts.push(section);
+                remaining_budget -= tokens_used;
+            } else {
+                tracing::info!(
+                    target: "vibe_kanban::context",
+                    "  ├─ Path artifacts: none for {} paths",
+                    paths.len()
+                );
+            }
         }
 
-        let total_chars: usize = context_parts.iter().map(|p| p.len()).sum();
+        let tokens_used = total_budget - remaining_budget;
         tracing::info!(
             target: "vibe_kanban::context",
-            "  └─ Total context: {} sections, {} chars",
+            "  └─ Total: {} sections, {}/{} tokens used",
             context_parts.len(),
-            total_chars
+            tokens_used,
+            total_budget
         );
 
         Ok(context_parts.join("\n---\n\n"))
+    }
+
+    /// Deduplicate artifacts by chain_id, keeping only the latest version per chain.
+    /// Artifacts without a chain_id are always kept.
+    fn dedup_by_chain(artifacts: Vec<Self>) -> Vec<Self> {
+        let mut seen_chains: std::collections::HashMap<Uuid, i32> = std::collections::HashMap::new();
+        let mut result = Vec::new();
+
+        // First pass: find max version per chain
+        for artifact in &artifacts {
+            if let Some(chain_id) = artifact.chain_id {
+                let entry = seen_chains.entry(chain_id).or_insert(0);
+                if artifact.version > *entry {
+                    *entry = artifact.version;
+                }
+            }
+        }
+
+        // Second pass: keep only latest version per chain, and all non-chain artifacts
+        for artifact in artifacts {
+            match artifact.chain_id {
+                Some(chain_id) => {
+                    if let Some(&max_version) = seen_chains.get(&chain_id) {
+                        if artifact.version == max_version {
+                            result.push(artifact);
+                            // Remove from map so we don't include duplicates at same version
+                            seen_chains.remove(&chain_id);
+                        }
+                    }
+                }
+                None => result.push(artifact),
+            }
+        }
+
+        result
+    }
+
+    /// Sort artifacts by type priority (ADR=1, Pattern=2, ...) then by recency (newest first).
+    fn sort_by_priority(mut artifacts: Vec<Self>) -> Vec<Self> {
+        artifacts.sort_by(|a, b| {
+            let a_priority = ArtifactType::from_str(&a.artifact_type)
+                .map(|t| t.priority())
+                .unwrap_or(99);
+            let b_priority = ArtifactType::from_str(&b.artifact_type)
+                .map(|t| t.priority())
+                .unwrap_or(99);
+            a_priority.cmp(&b_priority).then(b.updated_at.cmp(&a.updated_at))
+        });
+        artifacts
     }
 
     /// Get recent ADRs for a project
@@ -605,6 +752,7 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -640,6 +788,7 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
@@ -674,6 +823,7 @@ impl ContextArtifact {
                 supersedes_id as "supersedes_id: Uuid",
                 chain_id as "chain_id: Uuid",
                 version as "version!: i32",
+                token_estimate as "token_estimate!: i32",
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM context_artifacts
