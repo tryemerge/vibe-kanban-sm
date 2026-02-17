@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
   Card,
   CardContent,
@@ -45,8 +44,6 @@ const iconMap: Record<string, React.ElementType> = {
 };
 
 export function TemplatesSettings() {
-  const { t } = useTranslation(['settings', 'common']);
-
   // Templates state
   const [templates, setTemplates] = useState<TemplateInfo[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
@@ -73,11 +70,11 @@ export function TemplatesSettings() {
       setTemplates(result);
     } catch (err) {
       console.error('Failed to fetch templates:', err);
-      setTemplatesError(t('settings:templates.errors.loadFailed'));
+      setTemplatesError('Failed to load templates');
     } finally {
       setTemplatesLoading(false);
     }
-  }, [t]);
+  }, []);
 
   // Load templates on mount
   useEffect(() => {
@@ -104,11 +101,7 @@ export function TemplatesSettings() {
       );
       setApplyDialogOpen(false);
       setSuccessMessage(
-        t('settings:templates.apply.success', {
-          agents: result.agents_created,
-          columns: result.columns_created,
-          transitions: result.transitions_created,
-        })
+        `Template applied successfully! Created ${result.agents_created} agents, ${result.columns_created} columns, and ${result.transitions_created} transitions.`
       );
       setTimeout(() => setSuccessMessage(null), 5000);
     } catch (err) {
@@ -116,7 +109,7 @@ export function TemplatesSettings() {
       setTemplatesError(
         err instanceof Error
           ? err.message
-          : t('settings:templates.errors.applyFailed')
+          : 'Failed to apply template'
       );
     } finally {
       setApplying(false);
@@ -148,7 +141,7 @@ export function TemplatesSettings() {
               onClick={() => openApplyDialog(template)}
               disabled={projects.length === 0}
             >
-              {t('settings:templates.apply.button')}
+              Apply to Project
             </Button>
           </div>
         </div>
@@ -175,21 +168,21 @@ export function TemplatesSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t('settings:templates.title')}</CardTitle>
+          <CardTitle>Board Templates</CardTitle>
           <CardDescription>
-            {t('settings:templates.description')}
+            Pre-built board configurations to get started quickly with common development patterns.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {templatesLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="ml-2">{t('settings:templates.loading')}</span>
+              <span className="ml-2">Loading templates...</span>
             </div>
           ) : templates.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <LayoutTemplate className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>{t('settings:templates.empty')}</p>
+              <p>No templates available</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -204,12 +197,10 @@ export function TemplatesSettings() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {t('settings:templates.apply.title')}
+              Apply Template
             </DialogTitle>
             <DialogDescription>
-              {t('settings:templates.apply.description', {
-                name: selectedTemplate?.name,
-              })}
+              Apply the &quot;{selectedTemplate?.name}&quot; template to a project. This will configure the project&apos;s board with pre-defined columns, agents, and transitions.
             </DialogDescription>
           </DialogHeader>
 
@@ -217,13 +208,13 @@ export function TemplatesSettings() {
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                {t('settings:templates.apply.warning')}
+                This will replace any existing columns and transitions on the selected project&apos;s board.
               </AlertDescription>
             </Alert>
 
             <div className="space-y-2">
               <Label htmlFor="project-select">
-                {t('settings:templates.apply.selectProject')} *
+                Select Project *
               </Label>
               <Select
                 value={selectedProjectId}
@@ -234,8 +225,8 @@ export function TemplatesSettings() {
                   <SelectValue
                     placeholder={
                       projectsLoading
-                        ? t('settings:templates.apply.loadingProjects')
-                        : t('settings:templates.apply.projectPlaceholder')
+                        ? 'Loading projects...'
+                        : 'Choose a project...'
                     }
                   />
                 </SelectTrigger>
@@ -256,14 +247,14 @@ export function TemplatesSettings() {
               onClick={() => setApplyDialogOpen(false)}
               disabled={applying}
             >
-              {t('common:buttons.cancel')}
+              Cancel
             </Button>
             <Button
               onClick={handleApplyTemplate}
               disabled={applying || !selectedProjectId}
             >
               {applying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('settings:templates.apply.confirm')}
+              Apply Template
             </Button>
           </DialogFooter>
         </DialogContent>

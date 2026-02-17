@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE task_dependencies SET satisfied_at = NULL WHERE depends_on_task_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "18354fb5ac9d78e91f6fb2f3d805d7c9785cb24104d1883f4e2da3d4803f35d8"
+}

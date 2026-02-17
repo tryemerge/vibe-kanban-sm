@@ -5,7 +5,7 @@ use axum::{
     response::Json as ResponseJson,
     routing::{get, post},
 };
-use db::models::agent::{Agent, CreateAgent};
+use db::models::agent::Agent;
 use db::models::board::{Board, TemplateInfo};
 use db::models::kanban_column::{CreateKanbanColumn, KanbanColumn};
 use db::models::project::Project;
@@ -84,46 +84,19 @@ pub async fn apply_template(
     };
 
     // 3. Get all template entities by group_id
-    let template_agents = Agent::find_by_template_group(pool, template_group_id).await?;
     let template_columns = KanbanColumn::find_by_template_group(pool, template_group_id).await?;
     let template_transitions =
         StateTransition::find_by_template_group(pool, template_group_id).await?;
 
-    // 4. Create real agents (build old_id -> new_id mapping)
-    let mut agent_id_map: HashMap<Uuid, Uuid> = HashMap::new();
-    for tmpl_agent in &template_agents {
-        let new_agent_id = Uuid::new_v4();
-        let new_agent = Agent::create(
-            pool,
-            CreateAgent {
-                name: tmpl_agent.name.clone(),
-                role: tmpl_agent.role.clone(),
-                system_prompt: tmpl_agent.system_prompt.clone(),
-                capabilities: None,
-                tools: None,
-                description: tmpl_agent.description.clone(),
-                context_files: None,
-                executor: Some(tmpl_agent.executor.clone()),
-                color: tmpl_agent.color.clone(),
-                start_command: tmpl_agent.start_command.clone(),
-            },
-            new_agent_id,
-        )
-        .await?;
-        agent_id_map.insert(tmpl_agent.id, new_agent.id);
-    }
-
-    // 5. Delete existing columns and transitions for this board
+    // 4. Delete existing columns and transitions for this board
     StateTransition::delete_by_board(pool, board.id).await?;
     KanbanColumn::delete_by_board(pool, board.id).await?;
 
-    // 6. Create columns (build old_id -> new_id mapping)
+    // 5. Create columns (build old_id -> new_id mapping)
+    // Reuse template agents directly — agents are shared, not cloned
     let mut column_id_map: HashMap<Uuid, Uuid> = HashMap::new();
     for tmpl_col in &template_columns {
-        // Remap agent_id to the newly created agent
-        let new_agent_id = tmpl_col
-            .agent_id
-            .and_then(|old_id| agent_id_map.get(&old_id).copied());
+        let new_agent_id = tmpl_col.agent_id;
 
         let column = KanbanColumn::create_for_board(
             pool,
@@ -193,7 +166,7 @@ pub async fn apply_template(
                 "project_id": project.id.to_string(),
                 "template_group_id": template_group_id,
                 "template_name": template_board.template_name,
-                "agents_created": agent_id_map.len(),
+                "agents_created": 0,
                 "columns_created": column_id_map.len(),
                 "transitions_created": transitions_created,
             }),
@@ -202,9 +175,153 @@ pub async fn apply_template(
 
     Ok(ResponseJson(ApiResponse::success(ApplyTemplateResponse {
         board_id: board.id,
-        agents_created: agent_id_map.len(),
+        agents_created: 0,
         columns_created: column_id_map.len(),
         transitions_created,
+    })))
+}
+
+#[derive(Debug, Deserialize, TS)]
+pub struct SaveAsTemplateRequest {
+    pub template_name: String,
+    pub template_description: String,
+    #[serde(default = "default_template_icon")]
+    pub template_icon: String,
+}
+
+fn default_template_icon() -> String {
+    "LayoutTemplate".to_string()
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct SaveAsTemplateResponse {
+    pub template_board_id: Uuid,
+    pub template_group_id: String,
+    pub agents_cloned: usize,
+    pub columns_cloned: usize,
+    pub transitions_cloned: usize,
+}
+
+/// Save a board as a reusable template
+pub async fn save_as_template(
+    Extension(board): Extension<Board>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<SaveAsTemplateRequest>,
+) -> Result<ResponseJson<ApiResponse<SaveAsTemplateResponse>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    if board.is_template {
+        return Err(ApiError::BadRequest(
+            "Cannot save a template as a template".to_string(),
+        ));
+    }
+
+    let template_group_id = Uuid::new_v4().to_string();
+
+    // 1. Get the board's columns, transitions, and referenced agents
+    let columns = KanbanColumn::find_by_board(pool, board.id).await?;
+    let transitions = StateTransition::find_by_board(pool, board.id).await?;
+
+    // Collect unique agent IDs from columns
+    let agent_ids: Vec<Uuid> = columns
+        .iter()
+        .filter_map(|col| col.agent_id)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    // 2. Clone agents as templates (build old_id -> new_id mapping)
+    let mut agent_id_map: HashMap<Uuid, Uuid> = HashMap::new();
+    for agent_id in &agent_ids {
+        if let Some(agent) = Agent::find_by_id(pool, *agent_id).await? {
+            let new_agent =
+                Agent::clone_as_template(pool, &agent, &template_group_id).await?;
+            agent_id_map.insert(*agent_id, new_agent.id);
+        }
+    }
+
+    // 3. Create template board
+    let template_board = Board::create_template(
+        pool,
+        &format!("{} Template", board.name),
+        board.description.as_deref(),
+        &template_group_id,
+        &payload.template_name,
+        &payload.template_description,
+        &payload.template_icon,
+    )
+    .await?;
+
+    // 4. Clone columns as templates (build old_id -> new_id mapping)
+    let mut column_id_map: HashMap<Uuid, Uuid> = HashMap::new();
+    for col in &columns {
+        let new_agent_id = col
+            .agent_id
+            .and_then(|old_id| agent_id_map.get(&old_id).copied());
+
+        let new_col = KanbanColumn::clone_as_template(
+            pool,
+            col,
+            template_board.id,
+            &template_group_id,
+            new_agent_id,
+        )
+        .await?;
+        column_id_map.insert(col.id, new_col.id);
+    }
+
+    // 5. Clone transitions as templates with remapped column IDs
+    let mut transitions_cloned = 0;
+    for trans in &transitions {
+        let new_from = match column_id_map.get(&trans.from_column_id) {
+            Some(id) => *id,
+            None => continue,
+        };
+        let new_to = match column_id_map.get(&trans.to_column_id) {
+            Some(id) => *id,
+            None => continue,
+        };
+        let new_else = trans
+            .else_column_id
+            .and_then(|id| column_id_map.get(&id).copied());
+        let new_escalation = trans
+            .escalation_column_id
+            .and_then(|id| column_id_map.get(&id).copied());
+
+        StateTransition::clone_as_template(
+            pool,
+            trans,
+            template_board.id,
+            &template_group_id,
+            new_from,
+            new_to,
+            new_else,
+            new_escalation,
+        )
+        .await?;
+        transitions_cloned += 1;
+    }
+
+    deployment
+        .track_if_analytics_allowed(
+            "board_saved_as_template",
+            serde_json::json!({
+                "source_board_id": board.id.to_string(),
+                "template_group_id": template_group_id,
+                "template_name": payload.template_name,
+                "agents_cloned": agent_id_map.len(),
+                "columns_cloned": column_id_map.len(),
+                "transitions_cloned": transitions_cloned,
+            }),
+        )
+        .await;
+
+    Ok(ResponseJson(ApiResponse::success(SaveAsTemplateResponse {
+        template_board_id: template_board.id,
+        template_group_id,
+        agents_cloned: agent_id_map.len(),
+        columns_cloned: column_id_map.len(),
+        transitions_cloned,
     })))
 }
 

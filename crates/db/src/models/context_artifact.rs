@@ -98,6 +98,16 @@ impl ArtifactType {
     }
 }
 
+/// Stats returned by build_full_context_with_stats for the preview endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct ContextPreviewStats {
+    pub context: String,
+    pub tokens_used: i32,
+    pub token_budget: i32,
+    pub artifacts_included: i32,
+    pub artifacts_total: i32,
+}
+
 /// A context artifact stores learned knowledge from agent work
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct ContextArtifact {
@@ -514,7 +524,7 @@ impl ContextArtifact {
     }
 
     /// Default token budget for context injection
-    const DEFAULT_TOKEN_BUDGET: i32 = 8000;
+    pub const DEFAULT_TOKEN_BUDGET: i32 = 8000;
 
     /// Build full context for agent prompting with token budget (ADR-007).
     ///
@@ -677,6 +687,123 @@ impl ContextArtifact {
         );
 
         Ok(context_parts.join("\n---\n\n"))
+    }
+
+    /// Build full context and return stats alongside the context string.
+    pub async fn build_full_context_with_stats(
+        pool: &PgPool,
+        project_id: Uuid,
+        task_id: Option<Uuid>,
+        paths: &[String],
+    ) -> Result<ContextPreviewStats, sqlx::Error> {
+        // Count total artifacts for the project
+        let all_artifacts = Self::find_by_project(pool, project_id).await?;
+        let artifacts_total = all_artifacts.len() as i32;
+
+        // Build context normally
+        let total_budget = Self::DEFAULT_TOKEN_BUDGET;
+
+        let mut context_parts = Vec::new();
+        let mut remaining_budget = total_budget;
+        let mut artifacts_included = 0i32;
+
+        // 1. Global artifacts — 50% of budget
+        let global_budget = total_budget / 2;
+        let global_artifacts = Self::find_global_artifacts(pool, project_id).await?;
+        let global_artifacts = Self::dedup_by_chain(global_artifacts);
+        let global_artifacts = Self::sort_by_priority(global_artifacts);
+
+        if !global_artifacts.is_empty() {
+            let mut section = String::from("# Project Context\n\n");
+            let mut tokens_used = 0;
+
+            for artifact in &global_artifacts {
+                if tokens_used + artifact.token_estimate > global_budget.max(remaining_budget) {
+                    break;
+                }
+                section.push_str(&format!("## {}\n\n", artifact.title));
+                section.push_str(&artifact.content);
+                section.push_str("\n\n");
+                tokens_used += artifact.token_estimate;
+                artifacts_included += 1;
+            }
+
+            if artifacts_included > 0 {
+                context_parts.push(section);
+                remaining_budget -= tokens_used;
+            }
+        }
+
+        // 2. Task-specific artifacts — 30% of budget (+ rollover)
+        let task_budget = (total_budget * 3) / 10;
+        if let Some(tid) = task_id {
+            let task_artifacts = Self::find_task_artifacts(pool, project_id, tid).await?;
+            let task_artifacts = Self::dedup_by_chain(task_artifacts);
+            let task_artifacts = Self::sort_by_priority(task_artifacts);
+
+            if !task_artifacts.is_empty() {
+                let mut section = String::from("# Task Context\n\n");
+                let mut included = 0;
+                let mut tokens_used = 0;
+                let effective_budget = task_budget.max(remaining_budget.min(task_budget + (total_budget / 2 - (total_budget - remaining_budget)).max(0)));
+
+                for artifact in &task_artifacts {
+                    if tokens_used + artifact.token_estimate > remaining_budget {
+                        break;
+                    }
+                    if tokens_used + artifact.token_estimate > effective_budget && included > 0 {
+                        break;
+                    }
+                    section.push_str(&format!("## {}\n\n", artifact.title));
+                    section.push_str(&artifact.content);
+                    section.push_str("\n\n");
+                    tokens_used += artifact.token_estimate;
+                    included += 1;
+                }
+
+                if included > 0 {
+                    context_parts.push(section);
+                    remaining_budget -= tokens_used;
+                    artifacts_included += included;
+                }
+            }
+        }
+
+        // 3. Path-based artifacts — 20% of budget (+ rollover)
+        if !paths.is_empty() && remaining_budget > 0 {
+            let mut section = String::from("# Module Context\n\n");
+            let mut included = 0;
+            let mut tokens_used = 0;
+
+            for path in paths {
+                if let Some(memory) = Self::find_module_memory(pool, project_id, path).await? {
+                    if tokens_used + memory.token_estimate > remaining_budget {
+                        break;
+                    }
+                    section.push_str(&format!("## Module: {}\n\n", path));
+                    section.push_str(&memory.content);
+                    section.push_str("\n\n");
+                    tokens_used += memory.token_estimate;
+                    included += 1;
+                }
+            }
+
+            if included > 0 {
+                context_parts.push(section);
+                remaining_budget -= tokens_used;
+                artifacts_included += included;
+            }
+        }
+
+        let tokens_used = total_budget - remaining_budget;
+
+        Ok(ContextPreviewStats {
+            context: context_parts.join("\n---\n\n"),
+            tokens_used,
+            token_budget: total_budget,
+            artifacts_included,
+            artifacts_total,
+        })
     }
 
     /// Deduplicate artifacts by chain_id, keeping only the latest version per chain.

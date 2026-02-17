@@ -35,7 +35,11 @@
     "fly:deploy:clean": "docker builder prune --filter type=exec.cachemount -f && fly deploy --local-only",
     "fly:creds:push": "./scripts/push-claude-creds.sh",
     "build:npx": "bash ./local-build.sh",
-    "prepack": "npm run build:npx"
+    "prepack": "npm run build:npx",
+    "scenario": "node scripts/scenarios/run-scenario.js",
+    "scenario:teardown": "node scripts/scenarios/teardown-scenario.js",
+    "pi:setup": "node scripts/scenarios/pi-calculator-setup.js",
+    "pi:report": "node scripts/scenarios/pi-calculator-report.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

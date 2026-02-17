@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
-import { Link, Loader2, XCircle } from 'lucide-react';
+import { Link, Loader2, Lock, XCircle } from 'lucide-react';
 import type { TaskWithAttemptStatus } from 'shared/types';
 import { ActionsDropdown } from '@/components/ui/actions-dropdown';
 import { Button } from '@/components/ui/button';
-import { useNavigateWithSearch } from '@/hooks';
+import { useNavigateWithSearch, useTaskDependencies } from '@/hooks';
 import { paths } from '@/lib/paths';
 import { attemptsApi } from '@/lib/api';
 import type { SharedTaskRecord } from '@/hooks/useProjectTasks';
@@ -41,6 +41,8 @@ export function TaskCard({
   const { isSignedIn } = useAuth();
   const { getLabelsForTask } = useTaskLabelsContextSafe();
   const taskLabels = getLabelsForTask(task.id);
+  const { data: dependencies = [] } = useTaskDependencies(task.id);
+  const isBlocked = dependencies.some((d) => d.satisfied_at === null);
 
   const handleClick = useCallback(() => {
     onViewDetails(task);
@@ -114,7 +116,33 @@ export function TaskCard({
           }
           right={
             <>
-              {task.has_in_progress_attempt && (
+              {isBlocked && (
+                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                  <Lock className="h-2.5 w-2.5" />
+                  Blocked
+                </span>
+              )}
+              {task.agent_status === 'running' && (
+                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500" />
+                  </span>
+                  Running
+                </span>
+              )}
+              {task.agent_status === 'awaitingresponse' && (
+                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  Awaiting
+                </span>
+              )}
+              {task.task_state === 'queued' && !task.agent_status && !task.has_in_progress_attempt && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border">
+                  Queued
+                </span>
+              )}
+              {task.has_in_progress_attempt && !task.agent_status && (
                 <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
               )}
               {task.last_attempt_failed && (

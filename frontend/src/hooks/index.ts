@@ -34,6 +34,8 @@ export { useVariant } from './useVariant';
 export { useRetryProcess } from './useRetryProcess';
 export { useProjectColumns, findColumnBySlug, buildColumnBySlugMap } from './useProjectColumns';
 export { useTaskEvents } from './useTaskEvents';
+export { useContextArtifacts, useContextPreview, contextArtifactsKeys } from './useContextArtifacts';
 export { useProjects } from './useProjects';
 export { useSwimLaneConfig, type SwimLaneConfig, type SwimLaneGroupBy } from './useSwimLaneConfig';
 export { useTaskTriggers, useTaskTriggerMutations, taskTriggersKeys } from './useTaskTriggers';
+export { useTaskDependencies, useTaskDependencyMutations, taskDependenciesKeys } from './useTaskDependencies';

@@ -20,6 +20,7 @@ import type { TaskEventWithNames, TaskEventType, ActorType } from 'shared/types'
 
 interface TaskEventTimelineProps {
   taskId: string;
+  workspaceId?: string;
   className?: string;
 }
 
@@ -191,8 +192,8 @@ function EventItem({ event }: { event: TaskEventWithNames }) {
   );
 }
 
-export function TaskEventTimeline({ taskId, className }: TaskEventTimelineProps) {
-  const { data: events, isLoading, error } = useTaskEvents(taskId);
+export function TaskEventTimeline({ taskId, workspaceId, className }: TaskEventTimelineProps) {
+  const { data: events, isLoading, error } = useTaskEvents(taskId, workspaceId);
 
   if (isLoading) {
     return (

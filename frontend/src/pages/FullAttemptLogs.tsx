@@ -39,7 +39,7 @@ export function FullAttemptLogsPage() {
                   key={attempt.id}
                   attemptId={attempt.id}
                 >
-                  <TaskAttemptPanel attempt={attempt} task={task}>
+                  <TaskAttemptPanel attempt={attempt} task={task} projectId={projectId}>
                     {({ logs, followUp }) => (
                       <div className="h-full min-h-0 flex flex-col">
                         <div className="flex-1 min-h-0 flex flex-col">
@@ -57,7 +57,7 @@ export function FullAttemptLogsPage() {
               </ReviewProvider>
             </ClickedElementsProvider>
           ) : (
-            <TaskAttemptPanel attempt={attempt} task={task}>
+            <TaskAttemptPanel attempt={attempt} task={task} projectId={projectId}>
               {({ logs, followUp }) => (
                 <div className="h-full min-h-0 flex flex-col">
                   <div className="flex-1 min-h-0 flex flex-col">{logs}</div>

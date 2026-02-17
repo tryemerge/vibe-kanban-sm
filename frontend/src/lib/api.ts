@@ -107,11 +107,18 @@ import {
   UpdateStateTransition,
   TemplateInfo,
   ApplyTemplateResponse,
+  SaveAsTemplateResponse,
   TaskTrigger,
   CreateTaskTrigger,
+  TaskDependency,
+  CreateTaskDependency,
   TaskLabel,
   CreateTaskLabel,
   UpdateTaskLabel,
+  ContextArtifact,
+  ContextPreviewStats,
+  EvaluateRun,
+  CreateEvaluateRun,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -516,6 +523,34 @@ export const taskTriggersApi = {
   delete: async (taskId: string, triggerId: string): Promise<void> => {
     const response = await makeRequest(
       `/api/tasks/${taskId}/triggers/${triggerId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+};
+
+export const taskDependenciesApi = {
+  list: async (taskId: string): Promise<TaskDependency[]> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/dependencies`);
+    return handleApiResponse<TaskDependency[]>(response);
+  },
+
+  create: async (
+    taskId: string,
+    data: Omit<CreateTaskDependency, 'task_id'>
+  ): Promise<TaskDependency> => {
+    const response = await makeRequest(`/api/tasks/${taskId}/dependencies`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, task_id: taskId }),
+    });
+    return handleApiResponse<TaskDependency>(response);
+  },
+
+  delete: async (taskId: string, dependencyId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/dependencies/${dependencyId}`,
       {
         method: 'DELETE',
       }
@@ -1359,7 +1394,7 @@ export const queueApi = {
   },
 };
 
-// Agents API (subagents for workflow automation)
+// Agents API (agents for workflow automation)
 export const agentsApi = {
   list: async (): Promise<Agent[]> => {
     const response = await makeRequest('/api/agents');
@@ -1669,8 +1704,9 @@ export const columnsApi = {
 
 // Task Events API
 export const taskEventsApi = {
-  getByTaskId: async (taskId: string): Promise<TaskEventWithNames[]> => {
-    const response = await makeRequest(`/api/tasks/${taskId}/events`);
+  getByTaskId: async (taskId: string, workspaceId?: string): Promise<TaskEventWithNames[]> => {
+    const params = workspaceId ? `?workspace_id=${workspaceId}` : '';
+    const response = await makeRequest(`/api/tasks/${taskId}/events${params}`);
     return handleApiResponse<TaskEventWithNames[]>(response);
   },
 
@@ -1683,6 +1719,64 @@ export const taskEventsApi = {
       body: JSON.stringify({ ...data, task_id: taskId }),
     });
     return handleApiResponse<TaskEvent>(response);
+  },
+};
+
+// Context Artifacts API
+export const contextArtifactsApi = {
+  list: async (
+    projectId: string,
+    artifactType?: string
+  ): Promise<ContextArtifact[]> => {
+    const params = new URLSearchParams({ project_id: projectId });
+    if (artifactType) params.set('artifact_type', artifactType);
+    const response = await makeRequest(
+      `/api/context-artifacts?${params.toString()}`
+    );
+    return handleApiResponse<ContextArtifact[]>(response);
+  },
+
+  delete: async (artifactId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/context-artifacts/${artifactId}`,
+      { method: 'DELETE' }
+    );
+    await handleApiResponse<void>(response);
+  },
+
+  previewContext: async (
+    projectId: string,
+    taskId?: string
+  ): Promise<ContextPreviewStats> => {
+    const params = new URLSearchParams({ project_id: projectId });
+    if (taskId) params.set('task_id', taskId);
+    const response = await makeRequest(
+      `/api/context-artifacts/preview-context?${params.toString()}`
+    );
+    return handleApiResponse<ContextPreviewStats>(response);
+  },
+};
+
+// Evaluate Runs API
+export const evaluateRunsApi = {
+  list: async (): Promise<EvaluateRun[]> => {
+    const response = await makeRequest('/api/evaluate-runs');
+    return handleApiResponse<EvaluateRun[]>(response);
+  },
+
+  create: async (data: CreateEvaluateRun): Promise<EvaluateRun> => {
+    const response = await makeRequest('/api/evaluate-runs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<EvaluateRun>(response);
+  },
+
+  delete: async (runId: string): Promise<void> => {
+    const response = await makeRequest(`/api/evaluate-runs/${runId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
   },
 };
 
@@ -1705,6 +1799,20 @@ export const templatesApi = {
       }
     );
     return handleApiResponse<ApplyTemplateResponse>(response);
+  },
+
+  saveAsTemplate: async (
+    boardId: string,
+    data: { template_name: string; template_description: string; template_icon: string }
+  ): Promise<SaveAsTemplateResponse> => {
+    const response = await makeRequest(
+      `/api/boards/${boardId}/save-as-template`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<SaveAsTemplateResponse>(response);
   },
 };
 

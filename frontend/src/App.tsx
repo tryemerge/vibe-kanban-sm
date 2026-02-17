@@ -11,9 +11,12 @@ import { useAuth } from '@/hooks';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 
 import {
+  AgentDefinitionsSettings,
   AgentSettings,
   BoardSettings,
+  EvaluateSettings,
   GeneralSettings,
+  KnowledgeBaseSettings,
   McpSettings,
   OrganizationSettings,
   ProjectSettings,
@@ -151,7 +154,10 @@ function AppContent() {
                   />
                   <Route path="boards" element={<BoardSettings />} />
                   <Route path="agents" element={<AgentSettings />} />
+                  <Route path="agent-definitions" element={<AgentDefinitionsSettings />} />
                   <Route path="templates" element={<TemplatesSettings />} />
+                  <Route path="knowledge" element={<KnowledgeBaseSettings />} />
+                  <Route path="evaluate" element={<EvaluateSettings />} />
                   <Route path="mcp" element={<McpSettings />} />
                 </Route>
                 <Route

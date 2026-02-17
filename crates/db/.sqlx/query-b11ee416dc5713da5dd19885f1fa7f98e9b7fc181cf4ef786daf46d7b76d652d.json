@@ -1,0 +1,136 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                e.id as \"id!: Uuid\",\n                e.task_id as \"task_id!: Uuid\",\n                e.event_type as \"event_type!: TaskEventType\",\n                e.from_column_id as \"from_column_id: Uuid\",\n                e.to_column_id as \"to_column_id: Uuid\",\n                e.workspace_id as \"workspace_id: Uuid\",\n                e.session_id as \"session_id: Uuid\",\n                e.executor,\n                e.automation_rule_id as \"automation_rule_id: Uuid\",\n                e.trigger_type as \"trigger_type: EventTriggerType\",\n                e.commit_hash,\n                e.commit_message,\n                e.metadata as \"metadata: JsonValue\",\n                e.actor_type as \"actor_type!: ActorType\",\n                e.actor_id,\n                e.created_at as \"created_at!: DateTime<Utc>\",\n                fc.name as \"from_column_name?\",\n                tc.name as \"to_column_name?\",\n                a.name as \"agent_name?\",\n                a.color as \"agent_color?\"\n            FROM task_events e\n            LEFT JOIN kanban_columns fc ON e.from_column_id = fc.id\n            LEFT JOIN kanban_columns tc ON e.to_column_id = tc.id\n            LEFT JOIN agents a ON tc.agent_id = a.id\n            WHERE e.workspace_id = $1\n            ORDER BY e.created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "event_type!: TaskEventType",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "from_column_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "to_column_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "session_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "executor",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "automation_rule_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "trigger_type: EventTriggerType",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "commit_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "commit_message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "metadata: JsonValue",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "actor_type!: ActorType",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "actor_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "from_column_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "to_column_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
+        "name": "agent_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "agent_color?",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "b11ee416dc5713da5dd19885f1fa7f98e9b7fc181cf4ef786daf46d7b76d652d"
+}

@@ -52,6 +52,7 @@ import type {
 } from 'shared/types';
 import { LabelPicker } from '@/components/tasks/LabelPicker';
 import { TriggerPicker } from '@/components/tasks/TriggerPicker';
+import { DependencyPicker } from '@/components/tasks/DependencyPicker';
 import { useTaskLabelAssignments, taskLabelsKeys } from '@/hooks/useTaskLabels';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -525,6 +526,19 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
                       queryKey: taskLabelsKeys.assignments(projectId),
                     });
                   }}
+                />
+              </div>
+            )}
+            {/* Dependencies in edit mode - blocking constraints */}
+            {editMode && (
+              <div className="space-y-2 pt-4 border-t">
+                <Label className="text-sm font-medium">Dependencies</Label>
+                <p className="text-xs text-muted-foreground">
+                  This task <strong>cannot start</strong> until all selected prerequisite tasks are complete.
+                </p>
+                <DependencyPicker
+                  projectId={projectId}
+                  taskId={props.task.id}
                 />
               </div>
             )}

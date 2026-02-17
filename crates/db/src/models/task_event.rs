@@ -333,6 +333,73 @@ impl TaskEvent {
         .await
     }
 
+    /// Find events by workspace with column/agent names resolved
+    pub async fn find_by_workspace_id_with_names(
+        pool: &PgPool,
+        workspace_id: Uuid,
+    ) -> Result<Vec<TaskEventWithNames>, sqlx::Error> {
+        let records = sqlx::query!(
+            r#"SELECT
+                e.id as "id!: Uuid",
+                e.task_id as "task_id!: Uuid",
+                e.event_type as "event_type!: TaskEventType",
+                e.from_column_id as "from_column_id: Uuid",
+                e.to_column_id as "to_column_id: Uuid",
+                e.workspace_id as "workspace_id: Uuid",
+                e.session_id as "session_id: Uuid",
+                e.executor,
+                e.automation_rule_id as "automation_rule_id: Uuid",
+                e.trigger_type as "trigger_type: EventTriggerType",
+                e.commit_hash,
+                e.commit_message,
+                e.metadata as "metadata: JsonValue",
+                e.actor_type as "actor_type!: ActorType",
+                e.actor_id,
+                e.created_at as "created_at!: DateTime<Utc>",
+                fc.name as "from_column_name?",
+                tc.name as "to_column_name?",
+                a.name as "agent_name?",
+                a.color as "agent_color?"
+            FROM task_events e
+            LEFT JOIN kanban_columns fc ON e.from_column_id = fc.id
+            LEFT JOIN kanban_columns tc ON e.to_column_id = tc.id
+            LEFT JOIN agents a ON tc.agent_id = a.id
+            WHERE e.workspace_id = $1
+            ORDER BY e.created_at DESC"#,
+            workspace_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        Ok(records
+            .into_iter()
+            .map(|r| TaskEventWithNames {
+                event: TaskEvent {
+                    id: r.id,
+                    task_id: r.task_id,
+                    event_type: r.event_type,
+                    from_column_id: r.from_column_id,
+                    to_column_id: r.to_column_id,
+                    workspace_id: r.workspace_id,
+                    session_id: r.session_id,
+                    executor: r.executor,
+                    automation_rule_id: r.automation_rule_id,
+                    trigger_type: r.trigger_type,
+                    commit_hash: r.commit_hash,
+                    commit_message: r.commit_message,
+                    metadata: r.metadata,
+                    actor_type: r.actor_type,
+                    actor_id: r.actor_id,
+                    created_at: r.created_at,
+                },
+                from_column_name: r.from_column_name,
+                to_column_name: r.to_column_name,
+                agent_name: r.agent_name,
+                agent_color: r.agent_color,
+            })
+            .collect())
+    }
+
     /// Delete all events for a task
     pub async fn delete_by_task_id(pool: &PgPool, task_id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!("DELETE FROM task_events WHERE task_id = $1", task_id)

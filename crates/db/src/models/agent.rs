@@ -80,7 +80,6 @@ impl Agent {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM agents
-               WHERE is_template = FALSE
                ORDER BY created_at DESC"#
         )
         .fetch_all(pool)
@@ -195,6 +194,51 @@ impl Agent {
             executor,
             data.color,
             data.start_command
+        )
+        .fetch_one(pool)
+        .await
+    }
+
+    /// Clone an agent as a template with the given template_group_id
+    pub async fn clone_as_template(
+        pool: &PgPool,
+        source: &Agent,
+        template_group_id: &str,
+    ) -> Result<Self, sqlx::Error> {
+        let new_id = Uuid::new_v4();
+
+        sqlx::query_as!(
+            Agent,
+            r#"INSERT INTO agents (id, name, role, system_prompt, capabilities, tools, description, context_files, executor, color, start_command, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, $12)
+               RETURNING
+                id as "id!: Uuid",
+                name,
+                role,
+                system_prompt,
+                capabilities,
+                tools,
+                description,
+                context_files,
+                executor,
+                color,
+                start_command,
+                is_template as "is_template!: bool",
+                template_group_id,
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>""#,
+            new_id,
+            source.name,
+            source.role,
+            source.system_prompt,
+            source.capabilities,
+            source.tools,
+            source.description,
+            source.context_files,
+            source.executor,
+            source.color,
+            source.start_command,
+            template_group_id
         )
         .fetch_one(pool)
         .await

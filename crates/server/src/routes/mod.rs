@@ -13,6 +13,7 @@ pub mod config;
 pub mod containers;
 pub mod context_artifacts;
 pub mod debug_events;
+pub mod evaluate_runs;
 pub mod filesystem;
 // pub mod github;
 pub mod events;
@@ -31,6 +32,7 @@ pub mod shared_tasks;
 pub mod state_transitions;
 pub mod tags;
 pub mod task_attempts;
+pub mod task_dependencies;
 pub mod task_events;
 pub mod task_labels;
 pub mod task_triggers;
@@ -48,6 +50,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(task_events::router(&deployment))
         .merge(task_labels::router(&deployment))
         .merge(task_triggers::router(&deployment))
+        .merge(task_dependencies::router(&deployment))
         .merge(shared_tasks::router())
         .merge(task_attempts::router(&deployment))
         .merge(execution_processes::router(&deployment))
@@ -66,6 +69,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(automation_rules::router(&deployment))
         .merge(boards::router(&deployment))
         .merge(debug_events::router(&deployment))
+        .merge(evaluate_runs::router(&deployment))
         .merge(context_artifacts::router(&deployment))
         .merge(workflow_templates::router(&deployment))
         .nest("/images", images::routes())

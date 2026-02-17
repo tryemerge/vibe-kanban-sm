@@ -1,0 +1,130 @@
+{
+  "name": "Baseline: Context Compounding on API Tasks",
+  "description": "Three related API tasks on a minimal board. Tests whether knowledge from Task 1 flows to Tasks 2 and 3, and whether unrelated tasks receive irrelevant context.",
+
+  "board": {
+    "name": "Simple Pipeline",
+    "columns": [
+      {
+        "name": "Backlog",
+        "slug": "backlog",
+        "status": "todo",
+        "is_initial": true
+      },
+      {
+        "name": "Work",
+        "slug": "work",
+        "status": "inprogress",
+        "starts_workflow": true
+      },
+      {
+        "name": "Done",
+        "slug": "done",
+        "status": "done",
+        "is_terminal": true
+      }
+    ],
+    "transitions": [
+      { "from": "backlog", "to": "work", "name": "Start" },
+      { "from": "work", "to": "done", "name": "Complete" }
+    ]
+  },
+
+  "steps": [
+    {
+      "action": "create_task",
+      "task_ref": "task-1",
+      "title": "Add health check endpoint to the API server",
+      "description": "Add a GET /api/health endpoint that returns server status, database connectivity, and uptime. This is the first API endpoint — establish patterns for response format, error handling, and route structure.",
+      "labels": ["api", "infrastructure"]
+    },
+    {
+      "action": "create_task",
+      "task_ref": "task-2",
+      "title": "Add metrics endpoint for monitoring",
+      "description": "Add a GET /api/metrics endpoint returning request counts, error rates, and response time percentiles. Should follow the same patterns established by the health check endpoint.",
+      "labels": ["api", "infrastructure"]
+    },
+    {
+      "action": "create_task",
+      "task_ref": "task-3",
+      "title": "Add user preferences API",
+      "description": "Add CRUD endpoints for user preferences: GET/PUT /api/users/:id/preferences. Stores theme, notification settings, and dashboard layout. Completely unrelated to infrastructure monitoring.",
+      "labels": ["api", "user-facing"]
+    },
+
+    {
+      "action": "simulate_agent_output",
+      "task_ref": "task-1",
+      "description": "Agent completes health check endpoint — produces an ADR about response format and a pattern for error handling",
+      "artifacts": [
+        {
+          "artifact_type": "adr",
+          "title": "ADR: JSON:API Response Envelope",
+          "content": "## Context\nWe need a consistent response format for all API endpoints.\n\n## Decision\nAll endpoints return a JSON envelope: `{ data: T, error: { code: string, message: string } | null, meta: { request_id: string, timestamp: string } }`. Success responses have `error: null`. Error responses have `data: null`.\n\n## Consequences\n- Clients can always check `error` field to detect failures\n- `meta.request_id` enables log correlation\n- Breaking this contract requires a new API version",
+          "scope": "global"
+        },
+        {
+          "artifact_type": "pattern",
+          "title": "API Route Error Handling Pattern",
+          "content": "All async route handlers follow this structure:\n\n```rust\nasync fn handler(State(app): State<AppState>) -> Result<Json<ApiResponse<T>>, ApiError> {\n    // 1. Validate input\n    // 2. Call service layer\n    // 3. Return ApiResponse::success(data)\n    // On error: return Err(ApiError::from(e)) — the error middleware converts to the envelope format\n}\n```\n\nNever return raw errors to clients. Never panic in handlers. Always use the `ApiError` type for error responses.",
+          "scope": "global"
+        }
+      ],
+      "decision": { "decision": "complete" }
+    },
+
+    {
+      "action": "checkpoint",
+      "name": "After Task 1 — baseline knowledge created",
+      "measurements": [
+        {
+          "type": "artifact_count",
+          "description": "Should be 2 artifacts (ADR + pattern) from task 1"
+        },
+        {
+          "type": "context_preview",
+          "for_task": "task-2",
+          "description": "Task 2 (metrics endpoint) — RELATED to task 1. Should receive both artifacts."
+        },
+        {
+          "type": "context_preview",
+          "for_task": "task-3",
+          "description": "Task 3 (user preferences) — UNRELATED to infra. Currently receives same artifacts (no gating)."
+        }
+      ]
+    },
+
+    {
+      "action": "simulate_agent_output",
+      "task_ref": "task-2",
+      "description": "Agent completes metrics endpoint — produces a module memory about the monitoring directory",
+      "artifacts": [
+        {
+          "artifact_type": "module_memory",
+          "title": "Monitoring Module Overview",
+          "content": "The `src/monitoring/` directory contains:\n- `health.rs` — GET /api/health endpoint, checks DB connectivity via a simple SELECT 1 query\n- `metrics.rs` — GET /api/metrics endpoint, reads from an in-memory metrics store (AtomicU64 counters)\n- `mod.rs` — Re-exports and router setup\n\nBoth endpoints follow the JSON:API response envelope (see ADR). Error handling uses the standard ApiError pattern.",
+          "scope": "path",
+          "path": "src/monitoring"
+        }
+      ],
+      "decision": { "decision": "complete" }
+    },
+
+    {
+      "action": "checkpoint",
+      "name": "After Task 2 — compound effect",
+      "measurements": [
+        {
+          "type": "artifact_count",
+          "description": "Should be 3 artifacts (ADR + pattern + module_memory)"
+        },
+        {
+          "type": "context_preview",
+          "for_task": "task-3",
+          "description": "Task 3 (user preferences) — receives all 3 artifacts, including infra-specific module memory. Is this useful or noise?"
+        }
+      ]
+    }
+  ]
+}

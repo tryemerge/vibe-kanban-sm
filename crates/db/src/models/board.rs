@@ -167,6 +167,44 @@ impl Board {
         .await
     }
 
+    /// Create a template board from a source board
+    pub async fn create_template(
+        pool: &PgPool,
+        name: &str,
+        description: Option<&str>,
+        template_group_id: &str,
+        template_name: &str,
+        template_description: &str,
+        template_icon: &str,
+    ) -> Result<Self, sqlx::Error> {
+        let id = Uuid::new_v4();
+
+        sqlx::query_as!(
+            Board,
+            r#"INSERT INTO boards (id, name, description, is_template, template_group_id, template_name, template_description, template_icon)
+               VALUES ($1, $2, $3, TRUE, $4, $5, $6, $7)
+               RETURNING id as "id!: Uuid",
+                         name,
+                         description,
+                         is_template as "is_template!: bool",
+                         template_group_id,
+                         template_name,
+                         template_description,
+                         template_icon,
+                         created_at as "created_at!: DateTime<Utc>",
+                         updated_at as "updated_at!: DateTime<Utc>""#,
+            id,
+            name,
+            description,
+            template_group_id,
+            template_name,
+            template_description,
+            template_icon
+        )
+        .fetch_one(pool)
+        .await
+    }
+
     /// Delete a board
     pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
         let result: sqlx::postgres::PgQueryResult =

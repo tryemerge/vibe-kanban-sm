@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                id as \"id!: Uuid\",\n                name,\n                role,\n                system_prompt,\n                capabilities,\n                tools,\n                description,\n                context_files,\n                executor,\n                color,\n                start_command,\n                is_template as \"is_template!: bool\",\n                template_group_id,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM agents\n               WHERE is_template = FALSE\n               ORDER BY created_at DESC",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                name,\n                role,\n                system_prompt,\n                capabilities,\n                tools,\n                description,\n                context_files,\n                executor,\n                color,\n                start_command,\n                is_template as \"is_template!: bool\",\n                template_group_id,\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM agents\n               ORDER BY created_at DESC",
   "describe": {
     "columns": [
       {
@@ -100,5 +100,5 @@
       false
     ]
   },
-  "hash": "96ef693dcbeaa76c1711ac93f3ea3a489383f26aa8e827ef65448fd960799094"
+  "hash": "ed49748e2a3bf43f43794929fbfbcddbdf4c75d05c6990e21fddefd03611de05"
 }

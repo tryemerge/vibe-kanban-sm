@@ -24,6 +24,7 @@ use db::models::{
     repo::Repo,
     tag::Tag,
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
+    task_dependency::TaskDependency,
     task_event::{ActorType, CreateTaskEvent, EventTriggerType, TaskEvent},
     workspace::{CreateWorkspace, Workspace},
     workspace_repo::{CreateWorkspaceRepo, WorkspaceRepo},
@@ -492,6 +493,15 @@ pub async fn update_task(
                              Wait for the current execution to complete or stop it first.".to_string()
                         ));
                     }
+
+                    // Block starting a task with unsatisfied dependencies
+                    let is_blocked = TaskDependency::has_unsatisfied(pool, existing_task.id).await?;
+                    if is_blocked {
+                        return Err(ApiError::Conflict(
+                            "Cannot start task: unsatisfied dependencies. \
+                             Complete all prerequisite tasks first.".to_string()
+                        ));
+                    }
                 }
             }
         }
@@ -512,6 +522,33 @@ pub async fn update_task(
     if let Some(image_ids) = &payload.image_ids {
         TaskImage::delete_by_task_id(pool, task.id).await?;
         TaskImage::associate_many_dedup(pool, task.id, image_ids).await?;
+    }
+
+    // Satisfy or reset dependencies based on column change
+    if is_column_changing {
+        if let Some(target_column_id) = payload.column_id {
+            if let Some(target_col) = KanbanColumn::find_by_id(pool, target_column_id).await? {
+                use db::models::task::TaskStatus;
+                if target_col.is_terminal && target_col.status == TaskStatus::Done {
+                    // Task moved to done — satisfy all dependencies waiting on it
+                    if let Err(e) = TaskDependency::satisfy_by_prerequisite(pool, task.id).await {
+                        tracing::error!("Failed to satisfy dependencies for task {}: {}", task.id, e);
+                    }
+                } else if !target_col.is_terminal {
+                    // Task moved back from terminal — reset satisfaction
+                    // Only reset if the task was previously in a done terminal column
+                    if let Some(old_col_id) = existing_task.column_id {
+                        if let Some(old_col) = KanbanColumn::find_by_id(pool, old_col_id).await? {
+                            if old_col.is_terminal && old_col.status == TaskStatus::Done {
+                                if let Err(e) = TaskDependency::unsatisfy_by_prerequisite(pool, task.id).await {
+                                    tracing::error!("Failed to reset dependencies for task {}: {}", task.id, e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Trigger automation rules on column change

@@ -35,8 +35,9 @@ import {
   ArrowRight,
   GitBranch,
   X,
+  LayoutTemplate,
 } from 'lucide-react';
-import { boardsApi, agentsApi, stateTransitionsApi } from '@/lib/api';
+import { boardsApi, agentsApi, stateTransitionsApi, templatesApi } from '@/lib/api';
 import {
   DndContext,
   closestCenter,
@@ -92,6 +93,16 @@ export function BoardSettings() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [boardToDelete, setBoardToDelete] = useState<Board | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Save as template state
+  const [saveTemplateDialogOpen, setSaveTemplateDialogOpen] = useState(false);
+  const [saveTemplateBoard, setSaveTemplateBoard] = useState<Board | null>(null);
+  const [saveTemplateSaving, setSaveTemplateSaving] = useState(false);
+  const [saveTemplateForm, setSaveTemplateForm] = useState({
+    template_name: '',
+    template_description: '',
+    template_icon: 'LayoutTemplate',
+  });
 
   // Expanded boards (for showing columns)
   const [expandedBoards, setExpandedBoards] = useState<Set<string>>(new Set());
@@ -317,6 +328,32 @@ export function BoardSettings() {
       );
     } finally {
       setBoardSaving(false);
+    }
+  };
+
+  // Save board as template
+  const handleSaveAsTemplate = async () => {
+    if (!saveTemplateBoard) return;
+    setSaveTemplateSaving(true);
+    setBoardsError(null);
+    try {
+      const result = await templatesApi.saveAsTemplate(
+        saveTemplateBoard.id,
+        saveTemplateForm
+      );
+      setSaveTemplateDialogOpen(false);
+      setSaveTemplateBoard(null);
+      setSuccessMessage(
+        `Template saved! Cloned ${result.agents_cloned} agents, ${result.columns_cloned} columns, and ${result.transitions_cloned} transitions.`
+      );
+      setTimeout(() => setSuccessMessage(null), 5000);
+    } catch (err) {
+      console.error('Failed to save as template:', err);
+      setBoardsError(
+        err instanceof Error ? err.message : 'Failed to save as template'
+      );
+    } finally {
+      setSaveTemplateSaving(false);
     }
   };
 
@@ -885,6 +922,23 @@ export function BoardSettings() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        title="Save as Template"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSaveTemplateBoard(board);
+                          setSaveTemplateForm({
+                            template_name: board.name,
+                            template_description: board.description || '',
+                            template_icon: 'LayoutTemplate',
+                          });
+                          setSaveTemplateDialogOpen(true);
+                        }}
+                      >
+                        <LayoutTemplate className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           setBoardToDelete(board);
@@ -1052,6 +1106,65 @@ export function BoardSettings() {
             >
               {boardSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('common:buttons.delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save as Template Dialog */}
+      <Dialog open={saveTemplateDialogOpen} onOpenChange={setSaveTemplateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as Template</DialogTitle>
+            <DialogDescription>
+              Save &quot;{saveTemplateBoard?.name}&quot; as a reusable template. This creates a copy of the board&apos;s columns, transitions, and agents.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="template-name">Template Name *</Label>
+              <Input
+                id="template-name"
+                placeholder="e.g., Code Review Pipeline"
+                value={saveTemplateForm.template_name}
+                onChange={(e) =>
+                  setSaveTemplateForm({ ...saveTemplateForm, template_name: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="template-description">Description *</Label>
+              <Textarea
+                id="template-description"
+                placeholder="Describe what this template is useful for..."
+                value={saveTemplateForm.template_description}
+                onChange={(e) =>
+                  setSaveTemplateForm({ ...saveTemplateForm, template_description: e.target.value })
+                }
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSaveTemplateDialogOpen(false);
+                setSaveTemplateBoard(null);
+              }}
+              disabled={saveTemplateSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveAsTemplate}
+              disabled={saveTemplateSaving || !saveTemplateForm.template_name.trim() || !saveTemplateForm.template_description.trim()}
+            >
+              {saveTemplateSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Template
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1565,37 +1678,57 @@ export function BoardSettings() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>{t('settings.boards.transitions.form.conditionTitle', 'Condition (optional)')}</Label>
-              <p className="text-xs text-muted-foreground mb-2">
-                {t('settings.boards.transitions.form.conditionHelp', 'Route based on decision file value (e.g., decision=approve)')}
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  placeholder={t('settings.boards.transitions.form.conditionKey', 'key')}
-                  value={transitionForm.condition_key || ''}
-                  onChange={(e) =>
-                    setTransitionForm({
-                      ...transitionForm,
-                      condition_key: e.target.value || null,
-                    })
-                  }
-                  className="flex-1"
-                />
-                <span className="flex items-center text-muted-foreground">=</span>
-                <Input
-                  placeholder={t('settings.boards.transitions.form.conditionValue', 'value')}
-                  value={transitionForm.condition_value || ''}
-                  onChange={(e) =>
-                    setTransitionForm({
-                      ...transitionForm,
-                      condition_value: e.target.value || null,
-                    })
-                  }
-                  className="flex-1"
-                />
-              </div>
-            </div>
+            {(() => {
+              const fromColumn = (columnsMap.get(transitionBoardId || '') || [])
+                .find((col) => col.id === transitionForm.from_column_id);
+              const deliverableVariable = fromColumn?.deliverable_variable;
+              const deliverableOptions: string[] = fromColumn?.deliverable_options
+                ? JSON.parse(fromColumn.deliverable_options)
+                : [];
+
+              if (!deliverableVariable) {
+                return (
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">Condition</Label>
+                    <p className="text-xs text-muted-foreground">
+                      No structured decision variable defined on the source column.
+                      Edit the column to add a deliverable variable and options to enable conditional routing.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-2">
+                  <Label>Condition</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Route when <code className="bg-muted px-1 rounded">{deliverableVariable}</code> equals:
+                  </p>
+                  <Select
+                    value={transitionForm.condition_value || 'none'}
+                    onValueChange={(value) =>
+                      setTransitionForm({
+                        ...transitionForm,
+                        condition_key: value === 'none' ? null : deliverableVariable,
+                        condition_value: value === 'none' ? null : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a value..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">(unconditional)</SelectItem>
+                      {deliverableOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })()}
 
             <div className="space-y-2">
               <Label htmlFor="transition-else">

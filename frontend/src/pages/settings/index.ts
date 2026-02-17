@@ -4,5 +4,8 @@ export { ProjectSettings } from './ProjectSettings';
 export { OrganizationSettings } from './OrganizationSettings';
 export { BoardSettings } from './BoardSettings';
 export { AgentSettings } from './AgentSettings';
+export { AgentDefinitionsSettings } from './AgentDefinitionsSettings';
 export { McpSettings } from './McpSettings';
 export { TemplatesSettings } from './TemplatesSettings';
+export { KnowledgeBaseSettings } from './KnowledgeBaseSettings';
+export { EvaluateSettings } from './EvaluateSettings';

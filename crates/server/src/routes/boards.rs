@@ -75,21 +75,7 @@ pub async fn delete_board(
     Extension(board): Extension<Board>,
     State(deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    // Check if any columns belong to this board
-    let columns_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kanban_columns WHERE board_id = $1"
-    )
-    .bind(board.id)
-    .fetch_one(&deployment.db().pool)
-    .await?;
-
-    if columns_count > 0 {
-        return Err(ApiError::BadRequest(format!(
-            "Cannot delete board '{}': {} column(s) still belong to this board. Delete them first.",
-            board.name, columns_count
-        )));
-    }
-
+    // Columns and transitions cascade via ON DELETE CASCADE in the DB schema
     let rows_affected = Board::delete(&deployment.db().pool, board.id).await?;
     if rows_affected == 0 {
         Err(ApiError::Database(sqlx::Error::RowNotFound))
@@ -259,6 +245,10 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route(
             "/columns/{column_id}",
             axum::routing::put(update_board_column).delete(delete_board_column),
+        )
+        .route(
+            "/save-as-template",
+            axum::routing::post(super::workflow_templates::save_as_template),
         )
         .layer(from_fn_with_state(
             deployment.clone(),

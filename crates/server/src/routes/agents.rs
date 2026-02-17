@@ -72,9 +72,9 @@ pub async fn delete_agent(
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
     // Check if agent is assigned to any automation rules
     let rules_using_agent: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM automation_rules WHERE action_type = 'run_agent' AND json_extract(action_config, '$.agent_id') = $1"
+        "SELECT COUNT(*) FROM automation_rules WHERE action_type = 'run_agent' AND action_config::jsonb->>'agent_id' = $1::text"
     )
-    .bind(agent.id)
+    .bind(agent.id.to_string())
     .fetch_one(&deployment.db().pool)
     .await?;
 

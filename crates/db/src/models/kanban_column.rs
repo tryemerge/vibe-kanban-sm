@@ -302,6 +302,61 @@ impl KanbanColumn {
         .await
     }
 
+    /// Clone a column as a template
+    pub async fn clone_as_template(
+        pool: &PgPool,
+        source: &KanbanColumn,
+        template_board_id: Uuid,
+        template_group_id: &str,
+        new_agent_id: Option<Uuid>,
+    ) -> Result<Self, sqlx::Error> {
+        let id = Uuid::new_v4();
+        let status_str = source.status.to_string();
+        let is_template: bool = true;
+
+        sqlx::query_as!(
+            KanbanColumn,
+            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable, deliverable_variable, deliverable_options, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+               RETURNING id as "id!: Uuid",
+                         board_id as "board_id!: Uuid",
+                         name,
+                         slug,
+                         position as "position!: i32",
+                         color,
+                         is_initial as "is_initial!: bool",
+                         is_terminal as "is_terminal!: bool",
+                         starts_workflow as "starts_workflow!: bool",
+                         status as "status!: TaskStatus",
+                         agent_id as "agent_id: Uuid",
+                         deliverable,
+                         deliverable_variable,
+                         deliverable_options,
+                         is_template as "is_template!: bool",
+                         template_group_id,
+                         created_at as "created_at!: DateTime<Utc>",
+                         updated_at as "updated_at!: DateTime<Utc>""#,
+            id,
+            template_board_id,
+            source.name,
+            source.slug,
+            source.position,
+            source.color,
+            source.is_initial,
+            source.is_terminal,
+            source.starts_workflow,
+            status_str,
+            new_agent_id,
+            source.deliverable,
+            source.deliverable_variable,
+            source.deliverable_options,
+            is_template,
+            template_group_id
+        )
+        .fetch_one(pool)
+        .await
+    }
+
     /// Update a column
     pub async fn update(
         pool: &PgPool,

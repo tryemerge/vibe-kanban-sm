@@ -4,7 +4,6 @@ use std::{
 };
 
 use db::models::{
-    agent::{Agent, CreateAgent},
     board::{Board, CreateBoard},
     kanban_column::{CreateKanbanColumn, KanbanColumn},
     project::{CreateProject, Project, ProjectError, SearchMatchType, SearchResult, UpdateProject},
@@ -175,7 +174,6 @@ impl ProjectService {
         let template_group_id = Self::SETUP_BOARD_TEMPLATE_GROUP_ID;
 
         // Get template entities
-        let template_agents = Agent::find_by_template_group(pool, template_group_id).await?;
         let template_columns = KanbanColumn::find_by_template_group(pool, template_group_id).await?;
         let template_transitions =
             StateTransition::find_by_template_group(pool, template_group_id).await?;
@@ -190,37 +188,14 @@ impl ProjectService {
         )
         .await?;
 
-        // Create real agents (build old_id -> new_id mapping)
-        let mut agent_id_map: HashMap<Uuid, Uuid> = HashMap::new();
-        for tmpl_agent in &template_agents {
-            let new_agent_id = Uuid::new_v4();
-            let new_agent = Agent::create(
-                pool,
-                CreateAgent {
-                    name: tmpl_agent.name.clone(),
-                    role: tmpl_agent.role.clone(),
-                    system_prompt: tmpl_agent.system_prompt.clone(),
-                    capabilities: None,
-                    tools: None,
-                    description: tmpl_agent.description.clone(),
-                    context_files: None,
-                    executor: Some(tmpl_agent.executor.clone()),
-                    color: tmpl_agent.color.clone(),
-                    start_command: tmpl_agent.start_command.clone(),
-                },
-                new_agent_id,
-            )
-            .await?;
-            agent_id_map.insert(tmpl_agent.id, new_agent.id);
-        }
+        // Reuse template agents directly (no cloning)
+        // Columns reference the shared template agents by their original IDs
 
         // Create columns (build old_id -> new_id mapping)
         let mut column_id_map: HashMap<Uuid, Uuid> = HashMap::new();
         for tmpl_col in &template_columns {
-            // Remap agent_id to the newly created agent
-            let new_agent_id = tmpl_col
-                .agent_id
-                .and_then(|old_id| agent_id_map.get(&old_id).copied());
+            // Use the template agent_id directly — agents are shared, not cloned
+            let new_agent_id = tmpl_col.agent_id;
 
             let column = KanbanColumn::create_for_board(
                 pool,

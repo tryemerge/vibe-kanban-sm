@@ -31,6 +31,7 @@ use db::models::{
     repo::{Repo, RepoError},
     session::{CreateSession, Session},
     task::{Task, TaskRelationships, TaskStatus, TaskWithAttemptStatus},
+    task_dependency::TaskDependency,
     task_trigger::{TaskTrigger, TriggerCondition},
     workspace::{CreateWorkspace, Workspace, WorkspaceError},
     workspace_repo::{CreateWorkspaceRepo, RepoWithTargetBranch, WorkspaceRepo},
@@ -153,6 +154,15 @@ pub async fn create_task_attempt(
         return Err(ApiError::Conflict(
             "Cannot create attempt: an execution is already running for this task. \
              Wait for the current execution to complete or stop it first.".to_string()
+        ));
+    }
+
+    // Block starting a task with unsatisfied dependencies
+    let is_blocked = TaskDependency::has_unsatisfied(pool, task.id).await?;
+    if is_blocked {
+        return Err(ApiError::Conflict(
+            "Cannot start task: unsatisfied dependencies. \
+             Complete all prerequisite tasks first.".to_string()
         ));
     }
 
@@ -382,6 +392,11 @@ pub async fn merge_task_attempt(
     )
     .await?;
     Task::update_status(pool, task.id, TaskStatus::Done).await?;
+
+    // Satisfy all dependencies waiting on this task
+    if let Err(e) = TaskDependency::satisfy_by_prerequisite(pool, task.id).await {
+        tracing::error!("Failed to satisfy dependencies for task {}: {}", task.id, e);
+    }
 
     // Stop any running dev servers for this workspace
     let dev_servers =
@@ -1623,8 +1638,18 @@ pub async fn execute_task_triggers(
             continue;
         }
 
+        // Check if task still has unsatisfied dependencies
+        let is_blocked = TaskDependency::has_unsatisfied(pool, task_id).await.unwrap_or(true);
+        if is_blocked {
+            tracing::info!(
+                "Task {} has all triggers fired but still has unsatisfied dependencies, skipping auto-start",
+                task_id
+            );
+            continue;
+        }
+
         tracing::info!(
-            "All triggers fired for task {}, proceeding with auto-start",
+            "All triggers fired for task {} and dependencies satisfied, proceeding with auto-start",
             task_id
         );
 

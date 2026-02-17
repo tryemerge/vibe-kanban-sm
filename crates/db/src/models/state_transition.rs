@@ -589,6 +589,59 @@ impl StateTransition {
         .await
     }
 
+    /// Clone a transition as a template
+    pub async fn clone_as_template(
+        pool: &PgPool,
+        source: &StateTransition,
+        template_board_id: Uuid,
+        template_group_id: &str,
+        new_from_column_id: Uuid,
+        new_to_column_id: Uuid,
+        new_else_column_id: Option<Uuid>,
+        new_escalation_column_id: Option<Uuid>,
+    ) -> Result<Self, sqlx::Error> {
+        let id = Uuid::new_v4();
+        let requires_confirmation: i32 = if source.requires_confirmation { 1 } else { 0 };
+        let is_template: bool = true;
+
+        sqlx::query_as!(
+            StateTransition,
+            r#"INSERT INTO state_transitions (id, board_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+               RETURNING id as "id!: Uuid",
+                         board_id as "board_id: Uuid",
+                         project_id as "project_id: Uuid",
+                         task_id as "task_id: Uuid",
+                         from_column_id as "from_column_id!: Uuid",
+                         to_column_id as "to_column_id!: Uuid",
+                         else_column_id as "else_column_id: Uuid",
+                         escalation_column_id as "escalation_column_id: Uuid",
+                         name,
+                         requires_confirmation as "requires_confirmation!: bool",
+                         condition_key,
+                         condition_value,
+                         max_failures,
+                         is_template as "is_template!: bool",
+                         template_group_id,
+                         created_at as "created_at!: DateTime<Utc>""#,
+            id,
+            template_board_id,
+            new_from_column_id,
+            new_to_column_id,
+            new_else_column_id,
+            new_escalation_column_id,
+            source.name,
+            requires_confirmation,
+            source.condition_key,
+            source.condition_value,
+            source.max_failures,
+            is_template,
+            template_group_id
+        )
+        .fetch_one(pool)
+        .await
+    }
+
     /// Create a project-level transition
     pub async fn create_for_project<'e, E>(
         executor: E,

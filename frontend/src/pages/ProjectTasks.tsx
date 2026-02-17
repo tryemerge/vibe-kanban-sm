@@ -1161,7 +1161,7 @@ export function ProjectTasks() {
       {isTaskView ? (
         <TaskPanel task={selectedTask} />
       ) : (
-        <TaskAttemptPanel attempt={attempt} task={selectedTask}>
+        <TaskAttemptPanel attempt={attempt} task={selectedTask} projectId={projectId}>
           {({ logs, followUp }) => (
             <>
               <GitErrorBanner />

@@ -611,7 +611,7 @@ pub trait ContainerService {
             let transitioned = self.try_auto_transition(ctx).await;
 
             // After transition (or if no transition matched), set back to queued
-            if let Err(e) = Task::update_task_state(pool, ctx.task.id, TaskState::Queued).await {
+            if let Err(e) = Task::update_task_and_agent_state(pool, ctx.task.id, TaskState::Queued, None).await {
                 tracing::error!("Failed to set task back to queued state: {}", e);
             }
 

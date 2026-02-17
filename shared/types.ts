@@ -199,6 +199,22 @@ export type CreateTaskTrigger = { task_id: string, trigger_task_id: string, trig
 
 export type TriggerCondition = "completed" | { "completed_with_status": string } | "merged";
 
+export type TaskDependency = { id: string, 
+/**
+ * The blocked task
+ */
+task_id: string, 
+/**
+ * The prerequisite task that must complete first
+ */
+depends_on_task_id: string, created_at: Date, 
+/**
+ * When this dependency was satisfied (null if still blocking)
+ */
+satisfied_at: Date | null, };
+
+export type CreateTaskDependency = { task_id: string, depends_on_task_id: string, };
+
 export type TaskLabel = { id: string, project_id: string, name: string, color: string | null, position: number, created_at: Date, };
 
 export type CreateTaskLabel = { 
@@ -410,6 +426,10 @@ export type ImageMetadata = { exists: boolean, file_name: string | null, path: s
 export type ApplyTemplateRequest = { template_board_id: string, };
 
 export type ApplyTemplateResponse = { board_id: string, agents_created: number, columns_created: number, transitions_created: number, };
+
+export type SaveAsTemplateRequest = { template_name: string, template_description: string, template_icon: string, };
+
+export type SaveAsTemplateResponse = { template_board_id: string, template_group_id: string, agents_cloned: number, columns_cloned: number, transitions_cloned: number, };
 
 export type CreateTaskAttemptBody = { task_id: string, executor_profile_id: ExecutorProfileId, repos: Array<WorkspaceRepoInput>, };
 
@@ -805,6 +825,28 @@ supersedes_id: string | null,
 chain_id: string | null, };
 
 export type UpdateContextArtifact = { title: string | null, content: string | null, metadata: JsonValue | null, scope: ArtifactScope | null, };
+
+export type ContextPreviewStats = { context: string, tokens_used: number, token_budget: number, artifacts_included: number, artifacts_total: number, };
+
+export type EvaluateRun = { id: string, commit_hash: string | null, commit_message: string | null, project_name: string, started_at: string, completed_at: string, 
+/**
+ * JSON blob: { tasks, artifacts, events, context_previews }
+ */
+summary: EvaluateRunSummary, notes: string | null, created_at: string, };
+
+export type EvaluateRunSummary = { tasks: Array<EvaluateRunTask>, artifacts: Array<EvaluateRunArtifact>, events: Array<EvaluateRunEvent>, stats: EvaluateRunStats, };
+
+export type EvaluateRunTask = { title: string, status: string, agent_status: string | null, attempts: Array<EvaluateRunAttempt>, };
+
+export type EvaluateRunAttempt = { branch: string, completion_summary: string | null, final_context: string | null, };
+
+export type EvaluateRunArtifact = { artifact_type: string, scope: string, title: string, token_estimate: number, content: string, };
+
+export type EvaluateRunEvent = { event_type: string, column_name: string | null, commit_message: string | null, created_at: string, };
+
+export type EvaluateRunStats = { total_tasks: number, tasks_completed: number, total_artifacts: number, total_tokens: number, total_events: number, };
+
+export type CreateEvaluateRun = { commit_hash: string | null, commit_message: string | null, project_name: string, started_at: string, summary: JsonValue, notes: string | null, };
 
 export const DEFAULT_PR_DESCRIPTION_PROMPT = `Update the GitHub PR that was just created with a better title and description.
 The PR number is #{pr_number} and the URL is {pr_url}.

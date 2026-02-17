@@ -49,6 +49,8 @@ fn generate_types_content() -> String {
         db::models::task_trigger::TaskTrigger::decl(),
         db::models::task_trigger::CreateTaskTrigger::decl(),
         db::models::task_trigger::TriggerCondition::decl(),
+        db::models::task_dependency::TaskDependency::decl(),
+        db::models::task_dependency::CreateTaskDependency::decl(),
         db::models::task_label::TaskLabel::decl(),
         db::models::task_label::CreateTaskLabel::decl(),
         db::models::task_label::UpdateTaskLabel::decl(),
@@ -138,6 +140,8 @@ fn generate_types_content() -> String {
         server::routes::images::ImageMetadata::decl(),
         server::routes::workflow_templates::ApplyTemplateRequest::decl(),
         server::routes::workflow_templates::ApplyTemplateResponse::decl(),
+        server::routes::workflow_templates::SaveAsTemplateRequest::decl(),
+        server::routes::workflow_templates::SaveAsTemplateResponse::decl(),
         server::routes::task_attempts::CreateTaskAttemptBody::decl(),
         server::routes::task_attempts::WorkspaceRepoInput::decl(),
         server::routes::task_attempts::RunAgentSetupRequest::decl(),
@@ -256,6 +260,16 @@ fn generate_types_content() -> String {
         db::models::context_artifact::ContextArtifact::decl(),
         db::models::context_artifact::CreateContextArtifact::decl(),
         db::models::context_artifact::UpdateContextArtifact::decl(),
+        db::models::context_artifact::ContextPreviewStats::decl(),
+        // Evaluate run types
+        db::models::evaluate_run::EvaluateRun::decl(),
+        db::models::evaluate_run::EvaluateRunSummary::decl(),
+        db::models::evaluate_run::EvaluateRunTask::decl(),
+        db::models::evaluate_run::EvaluateRunAttempt::decl(),
+        db::models::evaluate_run::EvaluateRunArtifact::decl(),
+        db::models::evaluate_run::EvaluateRunEvent::decl(),
+        db::models::evaluate_run::EvaluateRunStats::decl(),
+        db::models::evaluate_run::CreateEvaluateRun::decl(),
     ];
 
     let body = decls

@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings, Cpu, Server, X, FolderOpen, Building2, LayoutGrid, LayoutTemplate } from 'lucide-react';
+import { Settings, Cpu, Server, X, FolderOpen, Building2, LayoutGrid, Bot, Brain, FlaskConical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useEffect } from 'react';
@@ -15,28 +15,36 @@ const settingsNavigation = [
     icon: Settings,
   },
   {
-    path: 'projects',
-    icon: FolderOpen,
-  },
-  {
     path: 'organizations',
     icon: Building2,
-  },
-  {
-    path: 'boards',
-    icon: LayoutGrid,
   },
   {
     path: 'agents',
     icon: Cpu,
   },
   {
-    path: 'templates',
-    icon: LayoutTemplate,
-  },
-  {
     path: 'mcp',
     icon: Server,
+  },
+  {
+    path: 'agent-definitions',
+    icon: Bot,
+  },
+  {
+    path: 'boards',
+    icon: LayoutGrid,
+  },
+  {
+    path: 'projects',
+    icon: FolderOpen,
+  },
+  {
+    path: 'knowledge',
+    icon: Brain,
+  },
+  {
+    path: 'evaluate',
+    icon: FlaskConical,
   },
 ];
 

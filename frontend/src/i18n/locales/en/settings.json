@@ -9,10 +9,16 @@
         "projectsDesc": "Project scripts and configuration",
         "boards": "Boards",
         "boardsDesc": "Kanban board templates",
-        "agents": "Agents",
-        "agentsDesc": "Coding agent configurations",
+        "agents": "AI Provider",
+        "agentsDesc": "Provider configurations",
+        "agent-definitions": "Agents",
+        "agent-definitionsDesc": "Agent roles, prompts, and capabilities",
         "templates": "Templates",
-        "templatesDesc": "Pre-built workflow templates",
+        "templatesDesc": "Pre-built board templates",
+        "knowledge": "Knowledge Base",
+        "knowledgeDesc": "Context artifacts for agent prompts",
+        "evaluate": "Test & Evaluate",
+        "evaluateDesc": "Test scenarios and context evaluation",
         "mcp": "MCP Servers",
         "mcpDesc": "Model Context Protocol servers",
         "organizations": "Organization Settings",
@@ -237,12 +243,12 @@
       }
     },
     "agents": {
-      "title": "Coding Agent Configurations",
-      "description": "Customize the behavior of coding agents with different configurations.",
-      "loading": "Loading agent configurations...",
+      "title": "AI Provider Configurations",
+      "description": "Customize the behavior of AI providers with different configurations.",
+      "loading": "Loading provider configurations...",
       "save": {
-        "button": "Save Agent Configurations",
-        "success": "✓ Executor configurations saved successfully!"
+        "button": "Save Provider Configurations",
+        "success": "✓ Provider configurations saved successfully!"
       },
       "availability": {
         "checking": "Checking...",
@@ -515,8 +521,8 @@
       }
     },
     "templates": {
-      "title": "Workflow Templates",
-      "description": "Pre-built workflow configurations to get started quickly with common development patterns.",
+      "title": "Board Templates",
+      "description": "Pre-built board configurations to get started quickly with common development patterns.",
       "loading": "Loading templates...",
       "empty": "No templates available",
       "errors": {
@@ -568,6 +574,40 @@
             "andAuthenticate": "and then authenticate with your GitHub account."
           }
         }
+      }
+    },
+    "evaluate": {
+      "title": "Test & Evaluate",
+      "description": "Create test projects, monitor task execution, and evaluate context assembly.",
+      "testProject": {
+        "title": "Test Project",
+        "description": "Create or destroy a test project to observe how agents receive and produce context.",
+        "createButton": "Create Pi Calculator Test",
+        "destroyButton": "Destroy Test Project",
+        "creating": "Creating...",
+        "active": "Test Project Active",
+        "projectId": "Project ID"
+      },
+      "tasks": {
+        "title": "Task Status",
+        "empty": "No tasks in this project."
+      },
+      "artifacts": {
+        "title": "Context Artifacts",
+        "empty": "No artifacts created yet.",
+        "total": "Total: {{count}} artifacts, ~{{tokens}} tokens"
+      },
+      "contextPreview": {
+        "title": "Context Preview",
+        "description": "What context would an agent receive for this task right now?",
+        "selectTask": "Select a task to preview...",
+        "tokens": "{{used}} / {{budget}} tokens ({{percent}}%)",
+        "artifacts": "{{included}} / {{total}} artifacts included",
+        "empty": "No context available"
+      },
+      "events": {
+        "title": "Event Log",
+        "empty": "No events recorded."
       }
     }
   }

@@ -8,6 +8,7 @@ use db::{
         merge::{Merge, MergeStatus, PrMerge},
         project::Project,
         task::{Task, TaskStatus},
+        task_dependency::TaskDependency,
         task_trigger::TaskTrigger,
         workspace::{Workspace, WorkspaceError},
     },
@@ -134,6 +135,11 @@ impl PrMonitorService {
                 );
                 Task::update_status(&self.db.pool, workspace.task_id, TaskStatus::Done).await?;
 
+                // Satisfy all dependencies waiting on this task
+                if let Err(e) = TaskDependency::satisfy_by_prerequisite(&self.db.pool, workspace.task_id).await {
+                    error!("Failed to satisfy dependencies for task {}: {}", workspace.task_id, e);
+                }
+
                 // Track analytics event
                 if let Some(analytics) = &self.analytics
                     && let Ok(Some(task)) = Task::find_by_id(&self.db.pool, workspace.task_id).await
@@ -258,6 +264,16 @@ impl PrMonitorService {
                     continue;
                 }
             };
+
+            // Check if task has unsatisfied dependencies before auto-starting
+            let is_blocked = TaskDependency::has_unsatisfied(pool, task.id).await.unwrap_or(true);
+            if is_blocked {
+                info!(
+                    "Task {} has unsatisfied dependencies, skipping auto-start via trigger",
+                    task.id
+                );
+                continue;
+            }
 
             // Move the task to the workflow-starting column
             if let Err(e) = Task::update_column_id(pool, task.id, Some(target_column.id)).await {

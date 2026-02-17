@@ -1,6 +1,6 @@
 use axum::{
     Extension, Json, Router,
-    extract::State,
+    extract::{Query, State},
     middleware::from_fn_with_state,
     response::Json as ResponseJson,
     routing::get,
@@ -10,16 +10,28 @@ use db::models::{
     task_event::{CreateTaskEvent, TaskEvent, TaskEventWithNames},
 };
 use deployment::Deployment;
+use uuid::Uuid;
 use utils::response::ApiResponse;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_task_middleware};
 
+#[derive(serde::Deserialize)]
+pub struct EventsQuery {
+    pub workspace_id: Option<Uuid>,
+}
+
 /// Get all events for a task (with column names resolved)
+/// If workspace_id query param is provided, returns only events for that workspace
 pub async fn get_task_events(
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
+    Query(query): Query<EventsQuery>,
 ) -> Result<ResponseJson<ApiResponse<Vec<TaskEventWithNames>>>, ApiError> {
-    let events = TaskEvent::find_by_task_id_with_names(&deployment.db().pool, task.id).await?;
+    let events = if let Some(workspace_id) = query.workspace_id {
+        TaskEvent::find_by_workspace_id_with_names(&deployment.db().pool, workspace_id).await?
+    } else {
+        TaskEvent::find_by_task_id_with_names(&deployment.db().pool, task.id).await?
+    };
     Ok(ResponseJson(ApiResponse::success(events)))
 }
 

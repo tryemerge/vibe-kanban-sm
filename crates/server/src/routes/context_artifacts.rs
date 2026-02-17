@@ -6,7 +6,7 @@ use axum::{
     routing::get,
 };
 use db::models::context_artifact::{
-    ArtifactType, ContextArtifact, CreateContextArtifact, UpdateContextArtifact,
+    ArtifactType, ContextArtifact, ContextPreviewStats, CreateContextArtifact, UpdateContextArtifact,
 };
 use deployment::Deployment;
 use serde::Deserialize;
@@ -223,6 +223,30 @@ pub async fn get_recent_adrs(
     Ok(ResponseJson(ApiResponse::success(adrs)))
 }
 
+#[derive(Deserialize, TS)]
+pub struct PreviewContextQuery {
+    pub project_id: Uuid,
+    #[serde(default)]
+    pub task_id: Option<Uuid>,
+}
+
+/// Preview the assembled context that an agent would receive for a task.
+/// Returns the context string alongside budget usage stats.
+pub async fn preview_context(
+    State(deployment): State<DeploymentImpl>,
+    Query(params): Query<PreviewContextQuery>,
+) -> Result<ResponseJson<ApiResponse<ContextPreviewStats>>, ApiError> {
+    let stats = ContextArtifact::build_full_context_with_stats(
+        &deployment.db().pool,
+        params.project_id,
+        params.task_id,
+        &[],
+    )
+    .await?;
+
+    Ok(ResponseJson(ApiResponse::success(stats)))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let artifact_router = Router::new()
         .route("/", get(get_context_artifact).put(update_context_artifact).delete(delete_context_artifact))
@@ -232,6 +256,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/", get(get_context_artifacts).post(create_context_artifact))
         .route("/module-memory", get(get_module_memory).post(upsert_module_memory))
         .route("/build-context", get(build_context))
+        .route("/preview-context", get(preview_context))
         .route("/adrs", get(get_recent_adrs))
         .nest("/{artifact_id}", artifact_router);
 
