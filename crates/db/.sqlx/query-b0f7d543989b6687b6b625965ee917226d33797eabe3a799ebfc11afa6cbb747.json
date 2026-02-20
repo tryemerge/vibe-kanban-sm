@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id as \"id!: Uuid\",\n                      project_id as \"project_id!: Uuid\",\n                      name,\n                      color as \"color: String\",\n                      position as \"position!: i32\",\n                      started_at as \"started_at: DateTime<Utc>\",\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      state,\n                      is_backlog as \"is_backlog!: bool\",\n                      execution_dag as \"execution_dag: String\",\n                      workspace_id as \"workspace_id: Uuid\"\n               FROM task_groups\n               WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "color: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "position!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "started_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "state",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "is_backlog!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "execution_dag: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "b0f7d543989b6687b6b625965ee917226d33797eabe3a799ebfc11afa6cbb747"
+}

@@ -12,6 +12,8 @@
             "kind": {
               "Enum": [
                 "queued",
+                "inprogress",
+                "awaitingresponse",
                 "transitioning"
               ]
             }

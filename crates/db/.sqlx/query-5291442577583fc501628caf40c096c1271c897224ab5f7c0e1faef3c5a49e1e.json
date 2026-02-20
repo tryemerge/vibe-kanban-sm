@@ -1,0 +1,108 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH prioritized AS (\n                SELECT *,\n                    CASE\n                        WHEN task_id IS NOT NULL THEN 1\n                        WHEN project_id IS NOT NULL THEN 2\n                        ELSE 3\n                    END as priority\n                FROM state_transitions\n                WHERE is_template = FALSE\n                  AND (task_id = $1\n                   OR (project_id = $2 AND task_id IS NULL)\n                   OR (board_id = $3 AND project_id IS NULL AND task_id IS NULL))\n            ),\n            ranked AS (\n                SELECT *,\n                    ROW_NUMBER() OVER (\n                        PARTITION BY from_column_id, to_column_id, condition_value\n                        ORDER BY priority ASC\n                    ) as rn\n                FROM prioritized\n            )\n            SELECT id as \"id!: Uuid\",\n                   board_id as \"board_id: Uuid\",\n                   project_id as \"project_id: Uuid\",\n                   task_id as \"task_id: Uuid\",\n                   from_column_id as \"from_column_id!: Uuid\",\n                   to_column_id as \"to_column_id!: Uuid\",\n                   else_column_id as \"else_column_id: Uuid\",\n                   escalation_column_id as \"escalation_column_id: Uuid\",\n                   name,\n                   requires_confirmation as \"requires_confirmation!: bool\",\n                   condition_value,\n                   max_failures,\n                   is_template as \"is_template!: bool\",\n                   template_group_id,\n                   created_at as \"created_at!: DateTime<Utc>\"\n            FROM ranked\n            WHERE rn = 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "board_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "task_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "from_column_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "to_column_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "else_column_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "escalation_column_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "requires_confirmation!: bool",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "condition_value",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "max_failures",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 12,
+        "name": "is_template!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "template_group_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "5291442577583fc501628caf40c096c1271c897224ab5f7c0e1faef3c5a49e1e"
+}

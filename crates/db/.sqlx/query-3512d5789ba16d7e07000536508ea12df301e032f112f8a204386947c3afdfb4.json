@@ -1,0 +1,124 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id as \"id!: Uuid\",\n                      board_id as \"board_id!: Uuid\",\n                      name,\n                      slug,\n                      position as \"position!: i32\",\n                      color,\n                      is_initial as \"is_initial!: bool\",\n                      is_terminal as \"is_terminal!: bool\",\n                      starts_workflow as \"starts_workflow!: bool\",\n                      status as \"status!: TaskStatus\",\n                      agent_id as \"agent_id: Uuid\",\n                      deliverable,\n                      question,\n                      answer_options,\n                      is_template as \"is_template!: bool\",\n                      template_group_id,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM kanban_columns\n               WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "board_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "position!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "color",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_initial!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "is_terminal!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "starts_workflow!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "status!: TaskStatus",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "agent_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 11,
+        "name": "deliverable",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "question",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "answer_options",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "is_template!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "template_group_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 17,
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "3512d5789ba16d7e07000536508ea12df301e032f112f8a204386947c3afdfb4"
+}

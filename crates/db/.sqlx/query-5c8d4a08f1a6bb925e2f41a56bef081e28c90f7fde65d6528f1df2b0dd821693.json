@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM task_dependencies WHERE (task_id = $1 OR depends_on_task_id = $1) AND is_auto_group = TRUE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5c8d4a08f1a6bb925e2f41a56bef081e28c90f7fde65d6528f1df2b0dd821693"
+}

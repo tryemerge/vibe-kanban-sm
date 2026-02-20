@@ -1,0 +1,117 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO state_transitions (id, board_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_value, max_failures, is_template, template_group_id)\n               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\n               RETURNING id as \"id!: Uuid\",\n                         board_id as \"board_id: Uuid\",\n                         project_id as \"project_id: Uuid\",\n                         task_id as \"task_id: Uuid\",\n                         from_column_id as \"from_column_id!: Uuid\",\n                         to_column_id as \"to_column_id!: Uuid\",\n                         else_column_id as \"else_column_id: Uuid\",\n                         escalation_column_id as \"escalation_column_id: Uuid\",\n                         name,\n                         requires_confirmation as \"requires_confirmation!: bool\",\n                         condition_value,\n                         max_failures,\n                         is_template as \"is_template!: bool\",\n                         template_group_id,\n                         created_at as \"created_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "board_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "task_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "from_column_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "to_column_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "else_column_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "escalation_column_id: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "requires_confirmation!: bool",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "condition_value",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "max_failures",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 12,
+        "name": "is_template!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "template_group_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int4",
+        "Text",
+        "Int4",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "18e4cd308f90fe4578081dcbd59da8440695c0268d3c7dfb0d182f673207c4f9"
+}

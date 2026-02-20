@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE kanban_columns SET is_initial = FALSE, updated_at = NOW() WHERE board_id = $1 AND is_initial = TRUE AND is_template = FALSE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ff39c81c093266bdd90be1482f276c761cd0df820198ead57ac47be6134bbcd4"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE task_groups\n             SET started_at = NOW(),\n                 state = CASE WHEN state = 'ready' THEN 'executing' ELSE state END\n             WHERE id = $1 AND started_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a5060bd03437bcf319bb7615aafbf4e35c8c087dad845b537a9cfe20bc37471d"
+}

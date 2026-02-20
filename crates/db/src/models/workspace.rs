@@ -62,6 +62,8 @@ pub struct Workspace {
     pub completion_summary: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// The TaskGroup that owns this workspace (ADR-015: group-level worktrees)
+    pub task_group_id: Option<Uuid>,
 }
 
 /// GitHub PR creation parameters
@@ -126,7 +128,8 @@ impl Workspace {
                               final_context,
                               completion_summary,
                               created_at AS "created_at!: DateTime<Utc>",
-                              updated_at AS "updated_at!: DateTime<Utc>"
+                              updated_at AS "updated_at!: DateTime<Utc>",
+                              task_group_id AS "task_group_id: Uuid"
                        FROM workspaces
                        WHERE task_id = $1
                        ORDER BY created_at DESC"#,
@@ -147,7 +150,8 @@ impl Workspace {
                               final_context,
                               completion_summary,
                               created_at AS "created_at!: DateTime<Utc>",
-                              updated_at AS "updated_at!: DateTime<Utc>"
+                              updated_at AS "updated_at!: DateTime<Utc>",
+                              task_group_id AS "task_group_id: Uuid"
                        FROM workspaces
                        ORDER BY created_at DESC"#
             )
@@ -178,7 +182,8 @@ impl Workspace {
                        w.final_context,
                        w.completion_summary,
                        w.created_at        AS "created_at!: DateTime<Utc>",
-                       w.updated_at        AS "updated_at!: DateTime<Utc>"
+                       w.updated_at        AS "updated_at!: DateTime<Utc>",
+                       w.task_group_id     AS "task_group_id: Uuid"
                FROM    workspaces w
                JOIN    tasks t ON w.task_id = t.id
                JOIN    projects p ON t.project_id = p.id
@@ -263,7 +268,8 @@ impl Workspace {
                        final_context,
                        completion_summary,
                        created_at        AS "created_at!: DateTime<Utc>",
-                       updated_at        AS "updated_at!: DateTime<Utc>"
+                       updated_at        AS "updated_at!: DateTime<Utc>",
+                       task_group_id     AS "task_group_id: Uuid"
                FROM    workspaces
                WHERE   id = $1"#,
             id
@@ -289,7 +295,8 @@ impl Workspace {
                        final_context,
                        completion_summary,
                        created_at        AS "created_at!: DateTime<Utc>",
-                       updated_at        AS "updated_at!: DateTime<Utc>"
+                       updated_at        AS "updated_at!: DateTime<Utc>",
+                       task_group_id     AS "task_group_id: Uuid"
                FROM    workspaces
                WHERE   task_id = $1
                  AND   cancelled_at IS NULL
@@ -316,7 +323,8 @@ impl Workspace {
                        final_context,
                        completion_summary,
                        created_at        AS "created_at!: DateTime<Utc>",
-                       updated_at        AS "updated_at!: DateTime<Utc>"
+                       updated_at        AS "updated_at!: DateTime<Utc>",
+                       task_group_id     AS "task_group_id: Uuid"
                FROM (
                    SELECT *, ROW_NUMBER() OVER (ORDER BY created_at) as rn
                    FROM workspaces
@@ -360,7 +368,8 @@ impl Workspace {
                 w.final_context,
                 w.completion_summary,
                 w.created_at as "created_at!: DateTime<Utc>",
-                w.updated_at as "updated_at!: DateTime<Utc>"
+                w.updated_at as "updated_at!: DateTime<Utc>",
+                w.task_group_id as "task_group_id: Uuid"
             FROM workspaces w
             LEFT JOIN sessions s ON w.id = s.workspace_id
             LEFT JOIN execution_processes ep ON s.id = ep.session_id AND ep.completed_at IS NOT NULL
@@ -373,7 +382,7 @@ impl Workspace {
                 )
             GROUP BY w.id, w.task_id, w.container_ref, w.branch, w.agent_working_dir,
                      w.setup_completed_at, w.cancelled_at, w.final_context, w.completion_summary,
-                     w.created_at, w.updated_at
+                     w.created_at, w.updated_at, w.task_group_id
             HAVING NOW() - INTERVAL '72 hours' > MAX(COALESCE(ep.completed_at, w.updated_at))
             ORDER BY MAX(COALESCE(ep.completed_at, w.updated_at)) ASC
             "#
@@ -392,7 +401,7 @@ impl Workspace {
             Workspace,
             r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
                VALUES ($1, $2, $3, $4, $5, $6)
-               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", cancelled_at as "cancelled_at: DateTime<Utc>", final_context, completion_summary, created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", cancelled_at as "cancelled_at: DateTime<Utc>", final_context, completion_summary, created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>", task_group_id as "task_group_id: Uuid""#,
             id,
             task_id,
             Option::<String>::None,

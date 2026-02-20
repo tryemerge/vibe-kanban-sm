@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*) as \"count!: i64\"\n               FROM execution_processes ep\n               JOIN sessions s ON ep.session_id = s.id\n               JOIN workspaces w ON s.workspace_id = w.id\n               WHERE w.task_id = $1\n                 AND ep.status = 'running'\n                 AND ep.run_reason IN ('setupscript', 'cleanupscript', 'codingagent')",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!: i64",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4e4af7dbe5c2120cb62bfb73151c675b0d0372938af813a710fd990a551a2626"
+}

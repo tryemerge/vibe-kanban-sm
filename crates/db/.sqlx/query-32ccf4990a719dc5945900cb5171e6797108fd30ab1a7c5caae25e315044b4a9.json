@@ -1,0 +1,86 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO task_groups (id, project_id, name, color, position, is_backlog)\n               VALUES ($1, $2, $3, $4,\n                       COALESCE((SELECT MAX(position) FROM task_groups WHERE project_id = $2), -1) + 1, $5)\n               RETURNING id as \"id!: Uuid\",\n                         project_id as \"project_id!: Uuid\",\n                         name,\n                         color as \"color: String\",\n                         position as \"position!: i32\",\n                         started_at as \"started_at: DateTime<Utc>\",\n                         created_at as \"created_at!: DateTime<Utc>\",\n                         state,\n                         is_backlog as \"is_backlog!: bool\",\n                         execution_dag as \"execution_dag: String\",\n                         workspace_id as \"workspace_id: Uuid\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "color: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "position!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "started_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "state",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "is_backlog!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "execution_dag: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "32ccf4990a719dc5945900cb5171e6797108fd30ab1a7c5caae25e315044b4a9"
+}

@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT tg.id as \"id!: Uuid\",\n                      tg.project_id as \"project_id!: Uuid\",\n                      tg.name,\n                      tg.color as \"color: String\",\n                      tg.position as \"position!: i32\",\n                      tg.started_at as \"started_at: DateTime<Utc>\",\n                      tg.created_at as \"created_at!: DateTime<Utc>\",\n                      tg.state,\n                      tg.is_backlog as \"is_backlog!: bool\",\n                      tg.execution_dag as \"execution_dag: String\",\n                      tg.workspace_id as \"workspace_id: Uuid\"\n               FROM task_groups tg\n               WHERE tg.project_id = $1\n                 AND tg.is_backlog = TRUE\n                 AND tg.state = 'draft'\n                 AND NOT EXISTS (\n                   SELECT 1 FROM task_group_dependencies tgd\n                   WHERE tgd.task_group_id = tg.id\n                     AND tgd.satisfied_at IS NULL\n                 )",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "color: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "position!: i32",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "started_at: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "state",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "is_backlog!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "execution_dag: String",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "workspace_id: Uuid",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "080e960ce978d7147b6b22f259e8ba0b1fbf467906bf5e327576c1a0d1d0a773"
+}
