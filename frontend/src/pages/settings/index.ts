@@ -8,4 +8,5 @@ export { AgentDefinitionsSettings } from './AgentDefinitionsSettings';
 export { McpSettings } from './McpSettings';
 export { TemplatesSettings } from './TemplatesSettings';
 export { KnowledgeBaseSettings } from './KnowledgeBaseSettings';
+export { TaskGroupsSettings } from './TaskGroupsSettings';
 export { EvaluateSettings } from './EvaluateSettings';

@@ -112,12 +112,18 @@ pub async fn create_board_column(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateKanbanColumn>,
 ) -> Result<ResponseJson<ApiResponse<KanbanColumn>>, ApiError> {
-    let column = KanbanColumn::create_for_board(
-        &deployment.db().pool,
-        board.id,
-        &payload,
-    )
-    .await?;
+    let pool = &deployment.db().pool;
+
+    // Enforce uniqueness: if this column wants is_initial or starts_workflow,
+    // clear the flag from other columns first (atomic swap)
+    if payload.is_initial == Some(true) {
+        KanbanColumn::clear_initial(pool, board.id).await?;
+    }
+    if payload.starts_workflow == Some(true) {
+        KanbanColumn::clear_workflow_start(pool, board.id).await?;
+    }
+
+    let column = KanbanColumn::create_for_board(pool, board.id, &payload).await?;
 
     deployment
         .track_if_analytics_allowed(
@@ -232,6 +238,91 @@ pub async fn reorder_board_columns(
     Ok(ResponseJson(ApiResponse::success(columns)))
 }
 
+// ============================================================================
+// Board configuration (board-level column roles)
+// ============================================================================
+
+/// Board config uses String for column IDs so we can distinguish:
+/// - absent field (Option is None) → don't change
+/// - empty string "" → clear the setting
+/// - valid UUID string → set that column
+#[derive(Debug, Deserialize)]
+pub struct UpdateBoardConfig {
+    /// Column ID string: UUID to set, empty string to clear, absent to skip
+    #[serde(default)]
+    pub initial_column_id: Option<String>,
+    /// Column ID string: UUID to set, empty string to clear, absent to skip
+    #[serde(default)]
+    pub workflow_column_id: Option<String>,
+    /// List of column IDs that should be terminal (replaces all). Absent = skip.
+    #[serde(default)]
+    pub terminal_column_ids: Option<Vec<Uuid>>,
+}
+
+/// Update board-level column configuration (initial, workflow start, terminal)
+pub async fn update_board_config(
+    Extension(board): Extension<Board>,
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<UpdateBoardConfig>,
+) -> Result<ResponseJson<ApiResponse<Vec<KanbanColumn>>>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    if let Some(ref initial_str) = payload.initial_column_id {
+        if initial_str.is_empty() {
+            KanbanColumn::clear_initial(pool, board.id).await?;
+        } else {
+            let initial_id = Uuid::parse_str(initial_str)
+                .map_err(|_| ApiError::BadRequest("Invalid UUID for initial_column_id".to_string()))?;
+            let col = KanbanColumn::find_by_id(pool, initial_id)
+                .await?
+                .ok_or(ApiError::BadRequest("Column not found".to_string()))?;
+            if col.board_id != board.id {
+                return Err(ApiError::BadRequest(
+                    "Column does not belong to this board".to_string(),
+                ));
+            }
+            KanbanColumn::set_as_initial(pool, board.id, initial_id).await?;
+        }
+    }
+
+    if let Some(ref workflow_str) = payload.workflow_column_id {
+        if workflow_str.is_empty() {
+            KanbanColumn::clear_workflow_start(pool, board.id).await?;
+        } else {
+            let workflow_id = Uuid::parse_str(workflow_str)
+                .map_err(|_| ApiError::BadRequest("Invalid UUID for workflow_column_id".to_string()))?;
+            let col = KanbanColumn::find_by_id(pool, workflow_id)
+                .await?
+                .ok_or(ApiError::BadRequest("Column not found".to_string()))?;
+            if col.board_id != board.id {
+                return Err(ApiError::BadRequest(
+                    "Column does not belong to this board".to_string(),
+                ));
+            }
+            KanbanColumn::set_as_workflow_start(pool, board.id, workflow_id).await?;
+        }
+    }
+
+    if let Some(ref terminal_ids) = payload.terminal_column_ids {
+        // Validate all columns belong to this board
+        for tid in terminal_ids {
+            let col = KanbanColumn::find_by_id(pool, *tid)
+                .await?
+                .ok_or(ApiError::BadRequest("Column not found".to_string()))?;
+            if col.board_id != board.id {
+                return Err(ApiError::BadRequest(
+                    "Column does not belong to this board".to_string(),
+                ));
+            }
+        }
+        KanbanColumn::set_terminal_columns(pool, board.id, terminal_ids).await?;
+    }
+
+    // Return updated columns
+    let columns = KanbanColumn::find_by_board(pool, board.id).await?;
+    Ok(ResponseJson(ApiResponse::success(columns)))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     // Routes for a specific board (requires board_id)
     let board_router = Router::new()
@@ -242,6 +333,8 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             get(list_board_columns).post(create_board_column),
         )
         .route("/columns/reorder", axum::routing::post(reorder_board_columns))
+        // Board-level column configuration
+        .route("/config", axum::routing::put(update_board_config))
         .route(
             "/columns/{column_id}",
             axum::routing::put(update_board_column).delete(delete_board_column),

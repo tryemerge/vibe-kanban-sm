@@ -36,11 +36,57 @@ pub struct CreateTaskRequest {
     pub description: Option<String>,
     #[schemars(description = "Optional labels to assign to the task. If a label doesn't exist, it will be created.")]
     pub labels: Option<Vec<String>>,
+    #[schemars(description = "Optional task group ID to add the task to")]
+    pub task_group_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct CreateTaskResponse {
     pub task_id: String,
+}
+
+// ============================================
+// Task Group Types
+// ============================================
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateTaskGroupMcpRequest {
+    #[schemars(description = "The ID of the project to create the task group in")]
+    pub project_id: Uuid,
+    #[schemars(description = "Name of the task group")]
+    pub name: String,
+    #[schemars(description = "Optional color for the task group (hex format, e.g., '#3b82f6')")]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddTaskToGroupMcpRequest {
+    #[schemars(description = "The ID of the task to add")]
+    pub task_id: Uuid,
+    #[schemars(description = "The ID of the task group")]
+    pub group_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddGroupDependencyMcpRequest {
+    #[schemars(description = "The ID of the project")]
+    pub project_id: Uuid,
+    #[schemars(description = "The ID of the group that should be blocked")]
+    pub group_id: Uuid,
+    #[schemars(description = "The ID of the prerequisite group")]
+    pub depends_on_group_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StartGroupAnalysisRequest {
+    #[schemars(description = "The ID of the task group to analyze")]
+    pub group_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AnalyzeBacklogRequest {
+    #[schemars(description = "The ID of the project whose backlog should be analyzed for grouping")]
+    pub project_id: Uuid,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -343,6 +389,16 @@ pub struct TransitionSummary {
     pub to_column_id: String,
     #[schemars(description = "Optional name for the transition")]
     pub name: Option<String>,
+    #[schemars(description = "Answer value that triggers this transition (e.g., 'yes', 'approve')")]
+    pub condition_value: Option<String>,
+    #[schemars(description = "Column ID to route to when condition doesn't match (else/fallback path)")]
+    pub else_column_id: Option<String>,
+    #[schemars(description = "Column ID to route to after max_failures is reached")]
+    pub escalation_column_id: Option<String>,
+    #[schemars(description = "Number of times the else path can be taken before escalation")]
+    pub max_failures: Option<i32>,
+    #[schemars(description = "Whether this transition requires user confirmation before proceeding")]
+    pub requires_confirmation: bool,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -378,10 +434,10 @@ pub struct CreateColumnRequest {
     pub position: Option<i32>,
     #[schemars(description = "Description of what the agent should deliver when task leaves this column")]
     pub deliverable: Option<String>,
-    #[schemars(description = "Variable name for structured deliverable in .vibe/decision.json (e.g., 'review_outcome'). Agent must set this variable.")]
-    pub deliverable_variable: Option<String>,
-    #[schemars(description = "JSON array of allowed values for the deliverable variable (e.g., '[\"approve\", \"request_changes\"]'). Transitions route based on these values.")]
-    pub deliverable_options: Option<String>,
+    #[schemars(description = "Question the agent must answer before moving to the next column (e.g., 'Does this task need development?')")]
+    pub question: Option<String>,
+    #[schemars(description = "JSON array of valid answer options for the question (e.g., '[\"yes\", \"no\"]'). Transitions route based on the agent's answer.")]
+    pub answer_options: Option<String>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -399,9 +455,7 @@ pub struct CreateTransitionRequest {
     pub to_column_id: Uuid,
     #[schemars(description = "Optional name for the transition (e.g., 'Approve', 'Reject')")]
     pub name: Option<String>,
-    #[schemars(description = "JSON key to check in .vibe/decision.json for conditional routing (e.g., 'decision', 'review_outcome')")]
-    pub condition_key: Option<String>,
-    #[schemars(description = "Value to match for this transition (e.g., 'approve', 'reject'). When the decision file contains {condition_key: condition_value}, this transition is taken.")]
+    #[schemars(description = "Answer value that triggers this transition (e.g., 'yes', 'no'). Matched against the agent's answer in .vibe/decision.json.")]
     pub condition_value: Option<String>,
     #[schemars(description = "Column ID to route to when condition doesn't match (else/retry path)")]
     pub else_column_id: Option<Uuid>,
@@ -875,6 +929,7 @@ impl TaskServer {
             title,
             description,
             labels,
+            task_group_id,
         }): Parameters<CreateTaskRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         // Expand @tagname references in description
@@ -976,6 +1031,33 @@ impl TaskServer {
                             tracing::debug!("Assigned label {} to task {}", label_id, task.id);
                         }
                     }
+                }
+            }
+        }
+
+        // Handle task group assignment if provided
+        if let Some(group_id) = task_group_id {
+            let group_url = self.url(&format!("/api/tasks/{}/task-group/{}", task.id, group_id));
+            let resp = self.client.post(&group_url).send().await;
+            match resp {
+                Ok(r) if !r.status().is_success() => {
+                    tracing::warn!(
+                        "Failed to add task {} to group {}: status {}",
+                        task.id,
+                        group_id,
+                        r.status()
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to add task {} to group {}: {:?}",
+                        task.id,
+                        group_id,
+                        e
+                    );
+                }
+                _ => {
+                    tracing::debug!("Added task {} to group {}", task.id, group_id);
                 }
             }
         }
@@ -1211,6 +1293,7 @@ impl TaskServer {
             column_id: None,
             parent_workspace_id: None,
             image_ids: None,
+            task_group_id: None,
         };
         let url = self.url(&format!("/api/tasks/{}", task_id));
         let updated_task: Task = match self.send_json(self.client.put(&url).json(&payload)).await {
@@ -1270,6 +1353,130 @@ impl TaskServer {
         let response = GetTaskResponse { task: details };
 
         TaskServer::success(&response)
+    }
+
+    // ============================================
+    // Task Group Tools
+    // ============================================
+
+    #[tool(
+        description = "Create a new task group in a project. Task groups allow grouping related tasks for sequential execution."
+    )]
+    async fn create_task_group(
+        &self,
+        Parameters(CreateTaskGroupMcpRequest {
+            project_id,
+            name,
+            color,
+        }): Parameters<CreateTaskGroupMcpRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/projects/{}/task-groups", project_id));
+        let payload = serde_json::json!({
+            "project_id": project_id.to_string(),
+            "name": name,
+            "color": color,
+        });
+        let result: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "Add a task to a task group. Creates auto-dependencies on the previous task in the group for sequential execution."
+    )]
+    async fn add_task_to_group(
+        &self,
+        Parameters(AddTaskToGroupMcpRequest { task_id, group_id }): Parameters<
+            AddTaskToGroupMcpRequest,
+        >,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/tasks/{}/task-group/{}", task_id, group_id));
+        let result: serde_json::Value =
+            match self.send_json(self.client.post(&url)).await {
+                Ok(r) => r,
+                Err(e) => return Ok(e),
+            };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "Add a dependency between task groups. The blocked group cannot start until the prerequisite group completes."
+    )]
+    async fn add_group_dependency(
+        &self,
+        Parameters(AddGroupDependencyMcpRequest {
+            project_id,
+            group_id,
+            depends_on_group_id,
+        }): Parameters<AddGroupDependencyMcpRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!(
+            "/api/projects/{}/task-group-dependencies",
+            project_id
+        ));
+        let payload = serde_json::json!({
+            "task_group_id": group_id.to_string(),
+            "depends_on_group_id": depends_on_group_id.to_string(),
+        });
+        let result: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "Start analysis for a task group. Transitions the group from draft to analyzing state and creates an analysis task for the Group Evaluator agent."
+    )]
+    async fn start_group_analysis(
+        &self,
+        Parameters(StartGroupAnalysisRequest { group_id }): Parameters<StartGroupAnalysisRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // First transition the group to analyzing state
+        let url = self.url(&format!("/api/task-groups/{}/transition", group_id));
+        let payload = serde_json::json!({
+            "from": "draft",
+            "to": "analyzing",
+        });
+
+        let group: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+
+        TaskServer::success(&serde_json::json!({
+            "group": group,
+            "message": "Group transitioned to analyzing state. Analysis task will be created automatically."
+        }))
+    }
+
+    #[tool(
+        description = "Manually trigger the Task Grouper agent to analyze ungrouped tasks in a project's backlog and organize them into task groups. The Task Grouper runs automatically every 5 minutes, but this tool lets you trigger it on-demand."
+    )]
+    async fn analyze_backlog(
+        &self,
+        Parameters(AnalyzeBacklogRequest { project_id }): Parameters<AnalyzeBacklogRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/projects/{}/analyze-backlog", project_id));
+        let result: serde_json::Value = match self
+            .send_json(self.client.post(&url))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
     }
 
     // ============================================
@@ -1374,6 +1581,11 @@ impl TaskServer {
                 from_column_id: t["from_column_id"].as_str().unwrap_or("").to_string(),
                 to_column_id: t["to_column_id"].as_str().unwrap_or("").to_string(),
                 name: t["name"].as_str().map(|s| s.to_string()),
+                condition_value: t["condition_value"].as_str().map(|s| s.to_string()),
+                else_column_id: t["else_column_id"].as_str().map(|s| s.to_string()),
+                escalation_column_id: t["escalation_column_id"].as_str().map(|s| s.to_string()),
+                max_failures: t["max_failures"].as_i64().map(|n| n as i32),
+                requires_confirmation: t["requires_confirmation"].as_bool().unwrap_or(false),
             })
             .collect();
 
@@ -1388,7 +1600,7 @@ impl TaskServer {
         TaskServer::success(&response)
     }
 
-    #[tool(description = "Create a column on a board. Use deliverable_variable and deliverable_options to define structured deliverables that agents must set in .vibe/decision.json.")]
+    #[tool(description = "Create a column on a board. Use question and answer_options to define a decision the agent must make. Transitions route based on the agent's answer.")]
     async fn create_column(
         &self,
         Parameters(CreateColumnRequest {
@@ -1403,8 +1615,8 @@ impl TaskServer {
             agent_id,
             position,
             deliverable,
-            deliverable_variable,
-            deliverable_options,
+            question,
+            answer_options,
         }): Parameters<CreateColumnRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let url = self.url(&format!("/api/boards/{}/columns", board_id));
@@ -1419,8 +1631,8 @@ impl TaskServer {
             "agent_id": agent_id,
             "position": position,
             "deliverable": deliverable,
-            "deliverable_variable": deliverable_variable,
-            "deliverable_options": deliverable_options,
+            "question": question,
+            "answer_options": answer_options,
         });
 
         let column: serde_json::Value = match self
@@ -1436,7 +1648,7 @@ impl TaskServer {
         })
     }
 
-    #[tool(description = "Create a state transition between columns on a board. Supports conditional routing: set condition_key and condition_value to route based on .vibe/decision.json values.")]
+    #[tool(description = "Create a state transition between columns on a board. Supports conditional routing: set condition_value to route based on the agent's answer in .vibe/decision.json.")]
     async fn create_transition(
         &self,
         Parameters(CreateTransitionRequest {
@@ -1444,7 +1656,6 @@ impl TaskServer {
             from_column_id,
             to_column_id,
             name,
-            condition_key,
             condition_value,
             else_column_id,
             escalation_column_id,
@@ -1457,7 +1668,6 @@ impl TaskServer {
             "from_column_id": from_column_id,
             "to_column_id": to_column_id,
             "name": name,
-            "condition_key": condition_key,
             "condition_value": condition_value,
             "else_column_id": else_column_id,
             "escalation_column_id": escalation_column_id,
@@ -1721,7 +1931,7 @@ impl TaskServer {
 #[tool_handler]
 impl ServerHandler for TaskServer {
     fn get_info(&self) -> ServerInfo {
-        let mut instruction = "A task and project management server. If you need to create or update tickets or tasks then use these tools. Most of them absolutely require that you pass the `project_id` of the project that you are currently working on. You can get project ids by using `list projects`. Call `list_tasks` to fetch the `task_ids` of all the tasks in a project`.. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'start_workspace_session', 'get_task', 'update_task', 'delete_task', 'list_repos', 'list_boards', 'create_board', 'get_board', 'create_column', 'create_transition', 'list_agents', 'get_project', 'update_project', 'create_project', 'create_artifact', 'list_artifacts'. Make sure to pass `project_id` or `task_id` where required. You can use list tools to get the available ids.".to_string();
+        let mut instruction = "A task and project management server. If you need to create or update tickets or tasks then use these tools. Most of them absolutely require that you pass the `project_id` of the project that you are currently working on. You can get project ids by using `list projects`. Call `list_tasks` to fetch the `task_ids` of all the tasks in a project`.. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'start_workspace_session', 'get_task', 'update_task', 'delete_task', 'list_repos', 'create_task_group', 'add_task_to_group', 'add_group_dependency', 'list_boards', 'create_board', 'get_board', 'create_column', 'create_transition', 'list_agents', 'get_project', 'update_project', 'create_project', 'create_artifact', 'list_artifacts'. Make sure to pass `project_id` or `task_id` where required. You can use list tools to get the available ids.".to_string();
 
         if let Some(ctx) = &self.context {
             let context_instruction = "Use 'get_context' to fetch project/task/workspace metadata for the active Vibe Kanban workspace session when available.";

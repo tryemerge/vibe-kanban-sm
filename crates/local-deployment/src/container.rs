@@ -20,7 +20,7 @@ use db::{
         project_repo::ProjectRepo,
         repo::Repo,
         scratch::{DraftFollowUpData, Scratch, ScratchType},
-        task::{Task, TaskStatus},
+        task::{Task, TaskStatus, TaskWithAttemptStatus},
         task_event::{CreateTaskEvent, TaskEvent},
         workspace::Workspace,
         workspace_repo::WorkspaceRepo,
@@ -47,6 +47,7 @@ use services::services::{
     config::Config,
     container::{ContainerError, ContainerRef, ContainerService},
     diff_stream::{self, DiffStreamHandle},
+    events::task_patch,
     git::{Commit, GitCli, GitService},
     image::ImageService,
     notification::NotificationService,
@@ -78,6 +79,7 @@ pub struct LocalContainerService {
     child_store: Arc<RwLock<HashMap<Uuid, Arc<RwLock<AsyncGroupChild>>>>>,
     interrupt_senders: Arc<RwLock<HashMap<Uuid, InterruptSender>>>,
     msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
+    events_msg_store: Arc<MsgStore>,
     config: Arc<RwLock<Config>>,
     git: GitService,
     image_service: ImageService,
@@ -93,6 +95,7 @@ impl LocalContainerService {
     pub async fn new(
         db: DBService,
         msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
+        events_msg_store: Arc<MsgStore>,
         config: Arc<RwLock<Config>>,
         git: GitService,
         image_service: ImageService,
@@ -110,6 +113,7 @@ impl LocalContainerService {
             child_store,
             interrupt_senders,
             msg_stores,
+            events_msg_store,
             config,
             git,
             image_service,
@@ -123,6 +127,37 @@ impl LocalContainerService {
         container.spawn_workspace_cleanup().await;
 
         container
+    }
+
+    /// Broadcast an updated task state to the frontend via WebSocket
+    async fn broadcast_task_update(&self, task_id: Uuid) {
+        let task = match Task::find_by_id(&self.db.pool, task_id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                tracing::warn!("Cannot broadcast task update: task {} not found", task_id);
+                return;
+            }
+            Err(e) => {
+                tracing::error!("Failed to fetch task {} for broadcast: {}", task_id, e);
+                return;
+            }
+        };
+        let has_running = ExecutionProcess::has_running_processes_for_task(&self.db.pool, task_id)
+            .await
+            .unwrap_or(false);
+        let active_workspace = Workspace::find_active_for_task(&self.db.pool, task_id)
+            .await
+            .ok()
+            .flatten();
+        let task_status = TaskWithAttemptStatus {
+            task,
+            has_in_progress_attempt: has_running,
+            last_attempt_failed: false,
+            executor: String::new(),
+            latest_attempt_id: active_workspace.map(|w| w.id),
+        };
+        self.events_msg_store
+            .push_patch(task_patch::replace(&task_status));
     }
 
     pub async fn get_child_from_store(&self, id: &Uuid) -> Option<Arc<RwLock<AsyncGroupChild>>> {
@@ -540,17 +575,20 @@ impl LocalContainerService {
                     ExecutionProcessStatus::Running
                 );
 
+                // Step 1: Commit changes and maybe start cleanup script.
+                // If cleanup starts, it will trigger its own completion event
+                // and finalize_task will be called when the cleanup finishes.
+                let mut next_action_started = false;
                 if success || cleanup_done {
-                    // Commit changes (if any) and get feedback about whether changes were made
                     let changes_committed = match container.try_commit_changes(&ctx).await {
                         Ok(committed) => committed,
                         Err(e) => {
                             tracing::error!("Failed to commit changes after execution: {}", e);
-                            // Treat commit failures as if changes were made to be safe
-                            true
+                            true // Treat commit failures as if changes were made to be safe
                         }
                     };
 
+                    // For coding agents, only run cleanup if there were actual changes
                     let should_start_next = if matches!(
                         ctx.execution_process.run_reason,
                         ExecutionProcessRunReason::CodingAgent
@@ -560,25 +598,32 @@ impl LocalContainerService {
                         true
                     };
 
-                    if should_start_next {
-                        // If the process exited successfully, start the next action
+                    // Check if there's actually a next action to start
+                    let has_next_action = ctx.execution_process
+                        .executor_action()
+                        .map(|a| a.next_action().is_some())
+                        .unwrap_or(false);
+
+                    if should_start_next && has_next_action {
                         if let Err(e) = container.try_start_next_action(&ctx).await {
                             tracing::error!("Failed to start next action after completion: {}", e);
+                        } else {
+                            next_action_started = true;
                         }
-                    } else {
+                    } else if !should_start_next {
                         tracing::info!(
                             "Skipping cleanup script for workspace {} - no changes made by coding agent",
                             ctx.workspace.id
                         );
-
-                        // Manually finalize task since we're bypassing normal execution flow
-                        container.finalize_task(publisher.as_ref().ok(), &ctx).await;
                     }
                 }
 
-                if container.should_finalize(&ctx) {
-                    // Only execute queued messages if the execution succeeded
-                    // If it failed or was killed, just clear the queue and finalize
+                // Step 2: Finalize if no next action was started.
+                // When next_action_started=true, the next action (cleanup script)
+                // will call finalize_task when IT completes.
+                let needs_finalize = !next_action_started;
+                if needs_finalize {
+                    // Check for queued follow-up messages before finalizing
                     let should_execute_queued = !matches!(
                         ctx.execution_process.status,
                         ExecutionProcessStatus::Failed | ExecutionProcessStatus::Killed
@@ -593,7 +638,6 @@ impl LocalContainerService {
                                 ctx.session.id
                             );
 
-                            // Delete the scratch since we're consuming the queued message
                             if let Err(e) = Scratch::delete(
                                 &db.pool,
                                 ctx.session.id,
@@ -607,26 +651,26 @@ impl LocalContainerService {
                                 );
                             }
 
-                            // Execute the queued follow-up
                             if let Err(e) = container
                                 .start_queued_follow_up(&ctx, &queued_msg.data)
                                 .await
                             {
                                 tracing::error!("Failed to start queued follow-up: {}", e);
-                                // Fall back to finalization if follow-up fails
                                 container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                                container.broadcast_task_update(ctx.task.id).await;
                             }
                         } else {
-                            // Execution failed or was killed - discard the queued message and finalize
                             tracing::info!(
                                 "Discarding queued message for session {} due to execution status {:?}",
                                 ctx.session.id,
                                 ctx.execution_process.status
                             );
                             container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                            container.broadcast_task_update(ctx.task.id).await;
                         }
                     } else {
                         container.finalize_task(publisher.as_ref().ok(), &ctx).await;
+                        container.broadcast_task_update(ctx.task.id).await;
                     }
                 }
 

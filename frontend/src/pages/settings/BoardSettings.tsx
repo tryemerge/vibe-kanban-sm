@@ -131,8 +131,8 @@ export function BoardSettings() {
     status: null,
     agent_id: null,
     deliverable: null,
-    deliverable_variable: null,
-    deliverable_options: null,
+    question: null,
+    answer_options: null,
   });
   const [deleteColumnConfirmOpen, setDeleteColumnConfirmOpen] = useState(false);
   const [columnToDelete, setColumnToDelete] = useState<{
@@ -163,7 +163,6 @@ export function BoardSettings() {
     escalation_column_id: null,
     name: null,
     requires_confirmation: false,
-    condition_key: null,
     condition_value: null,
     max_failures: null,
   });
@@ -376,14 +375,14 @@ export function BoardSettings() {
       slug: '',
       position: existingColumns.length,
       color: null,
-      is_initial: existingColumns.length === 0,
-      is_terminal: false,
-      starts_workflow: false,
+      is_initial: false, // Managed via Board Configuration
+      is_terminal: false, // Managed via Board Configuration
+      starts_workflow: false, // Managed via Board Configuration
       status: 'todo',
       agent_id: null,
       deliverable: null,
-      deliverable_variable: null,
-      deliverable_options: null,
+      question: null,
+      answer_options: null,
     });
     setColumnDialogOpen(true);
   };
@@ -403,8 +402,8 @@ export function BoardSettings() {
       status: column.status,
       agent_id: column.agent_id ?? null,
       deliverable: column.deliverable ?? null,
-      deliverable_variable: column.deliverable_variable ?? null,
-      deliverable_options: column.deliverable_options ?? null,
+      question: column.question ?? null,
+      answer_options: column.answer_options ?? null,
     });
     setColumnDialogOpen(true);
   };
@@ -422,14 +421,14 @@ export function BoardSettings() {
           slug: columnForm.slug || null,
           position: columnForm.position,
           color: columnForm.color,
-          is_initial: columnForm.is_initial,
-          is_terminal: columnForm.is_terminal,
-          starts_workflow: columnForm.starts_workflow,
+          is_initial: null, // Managed via Board Configuration
+          is_terminal: null, // Managed via Board Configuration
+          starts_workflow: null, // Managed via Board Configuration
           status: columnForm.status,
           agent_id: columnForm.agent_id,
           deliverable: columnForm.deliverable,
-          deliverable_variable: columnForm.deliverable_variable,
-          deliverable_options: columnForm.deliverable_options,
+          question: columnForm.question,
+          answer_options: columnForm.answer_options,
         };
         await boardsApi.updateColumn(columnBoardId, editingColumn.id, updateData);
         setSuccessMessage(t('settings.boards.columns.save.updateSuccess'));
@@ -488,7 +487,6 @@ export function BoardSettings() {
       escalation_column_id: null,
       name: null,
       requires_confirmation: false,
-      condition_key: null,
       condition_value: null,
       max_failures: null,
     });
@@ -506,7 +504,6 @@ export function BoardSettings() {
       escalation_column_id: transition.escalation_column_id || null,
       name: transition.name || null,
       requires_confirmation: transition.requires_confirmation,
-      condition_key: transition.condition_key || null,
       condition_value: transition.condition_value || null,
       max_failures: transition.max_failures ?? null,
     });
@@ -796,9 +793,9 @@ export function BoardSettings() {
                   "{transition.name}"
                 </span>
               )}
-              {transition.condition_key && (
+              {transition.condition_value && (
                 <span className="ml-2 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 px-1.5 py-0.5 rounded">
-                  if {transition.condition_key}={transition.condition_value}
+                  answer={transition.condition_value}
                 </span>
               )}
               {transition.else_column_name && (
@@ -951,6 +948,135 @@ export function BoardSettings() {
                   </div>
                   {expandedBoards.has(board.id) && (
                     <div className="px-4 pb-4 pt-0 border-t">
+                      {/* Board Configuration Section */}
+                      {(() => {
+                        const columns = columnsMap.get(board.id) || [];
+                        if (columns.length === 0) return null;
+                        return (
+                          <div className="py-3 space-y-3">
+                            <h5 className="text-sm font-medium">
+                              {t('settings.boards.config.title')}
+                            </h5>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              {/* Initial Column - single select */}
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">
+                                  {t('settings.boards.config.initialColumn')}
+                                </Label>
+                                <Select
+                                  value={columns.find((c) => c.is_initial)?.id || '__none__'}
+                                  onValueChange={async (value) => {
+                                    try {
+                                      const updated = await boardsApi.updateConfig(board.id, {
+                                        initial_column_id: value === '__none__' ? '' : value,
+                                      });
+                                      setColumnsMap((prev) => new Map(prev).set(board.id, updated));
+                                    } catch {
+                                      console.error('Failed to update board config');
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder={t('settings.boards.config.none')} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">{t('settings.boards.config.none')}</SelectItem>
+                                    {columns.map((col) => (
+                                      <SelectItem key={col.id} value={col.id}>
+                                        {col.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                  {t('settings.boards.config.initialHelp')}
+                                </p>
+                              </div>
+
+                              {/* Starts Workflow - single select */}
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">
+                                  {t('settings.boards.config.workflowColumn')}
+                                </Label>
+                                <Select
+                                  value={columns.find((c) => c.starts_workflow)?.id || '__none__'}
+                                  onValueChange={async (value) => {
+                                    try {
+                                      const updated = await boardsApi.updateConfig(board.id, {
+                                        workflow_column_id: value === '__none__' ? '' : value,
+                                      });
+                                      setColumnsMap((prev) => new Map(prev).set(board.id, updated));
+                                    } catch {
+                                      console.error('Failed to update board config');
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder={t('settings.boards.config.none')} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">{t('settings.boards.config.none')}</SelectItem>
+                                    {columns.map((col) => (
+                                      <SelectItem key={col.id} value={col.id}>
+                                        {col.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                  {t('settings.boards.config.workflowHelp')}
+                                </p>
+                              </div>
+
+                              {/* Terminal Columns - multi-select via checkboxes */}
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">
+                                  {t('settings.boards.config.terminalColumns')}
+                                </Label>
+                                <div className="space-y-1 border rounded-md p-2 max-h-32 overflow-y-auto">
+                                  {columns.map((col) => (
+                                    <div key={col.id} className="flex items-center space-x-2">
+                                      <Checkbox
+                                        id={`terminal-${col.id}`}
+                                        checked={col.is_terminal}
+                                        onCheckedChange={async (checked) => {
+                                          try {
+                                            const currentTerminals = columns
+                                              .filter((c) => c.is_terminal)
+                                              .map((c) => c.id);
+                                            const newTerminals = checked
+                                              ? [...currentTerminals, col.id]
+                                              : currentTerminals.filter((id) => id !== col.id);
+                                            const updated = await boardsApi.updateConfig(board.id, {
+                                              terminal_column_ids: newTerminals,
+                                            });
+                                            setColumnsMap((prev) =>
+                                              new Map(prev).set(board.id, updated)
+                                            );
+                                          } catch {
+                                            console.error('Failed to update board config');
+                                          }
+                                        }}
+                                      />
+                                      <Label
+                                        htmlFor={`terminal-${col.id}`}
+                                        className="text-xs font-normal cursor-pointer"
+                                      >
+                                        {col.name}
+                                      </Label>
+                                    </div>
+                                  ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {t('settings.boards.config.terminalHelp')}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      <div className="border-t" />
+
                       {/* Columns Section */}
                       <div className="flex items-center justify-between py-3">
                         <h5 className="text-sm font-medium">
@@ -1253,64 +1379,6 @@ export function BoardSettings() {
               </div>
             </div>
 
-            <div className="flex items-center gap-6">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="column-initial"
-                  checked={columnForm.is_initial || false}
-                  onCheckedChange={(checked) =>
-                    setColumnForm({
-                      ...columnForm,
-                      is_initial: checked === true,
-                    })
-                  }
-                />
-                <Label
-                  htmlFor="column-initial"
-                  className="text-sm font-normal cursor-pointer"
-                >
-                  {t('settings.boards.columns.form.isInitial')}
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="column-terminal"
-                  checked={columnForm.is_terminal || false}
-                  onCheckedChange={(checked) =>
-                    setColumnForm({
-                      ...columnForm,
-                      is_terminal: checked === true,
-                    })
-                  }
-                />
-                <Label
-                  htmlFor="column-terminal"
-                  className="text-sm font-normal cursor-pointer"
-                >
-                  {t('settings.boards.columns.form.isTerminal')}
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="column-starts-workflow"
-                  checked={columnForm.starts_workflow || false}
-                  onCheckedChange={(checked) =>
-                    setColumnForm({
-                      ...columnForm,
-                      starts_workflow: checked === true,
-                    })
-                  }
-                />
-                <Label
-                  htmlFor="column-starts-workflow"
-                  className="text-sm font-normal cursor-pointer"
-                >
-                  {t('settings.boards.columns.form.startsWorkflow', 'Starts Workflow (creates attempt)')}
-                </Label>
-              </div>
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="column-status">
                 {t('settings.boards.columns.form.status')} *
@@ -1404,29 +1472,29 @@ export function BoardSettings() {
               </p>
             </div>
 
-            {/* Structured Deliverable Options */}
+            {/* Question & Answer Options */}
             <div className="space-y-4 border-t pt-4 mt-4">
               <div className="space-y-1">
                 <h4 className="text-sm font-medium">
-                  {t('settings.boards.columns.form.structuredDeliverable', 'Structured Decision Output')}
+                  {t('settings.boards.columns.form.structuredDeliverable', 'Question & Answer Options')}
                 </h4>
                 <p className="text-xs text-muted-foreground">
-                  {t('settings.boards.columns.form.structuredDeliverableHelper', 'Define a variable and allowed values for the agent to set in .vibe/decision.json. Used for conditional transitions.')}
+                  {t('settings.boards.columns.form.structuredDeliverableHelper', 'Define a question and allowed answers for the agent to set in .vibe/decision.json. Used for conditional transitions.')}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="column-deliverable-variable">
-                  {t('settings.boards.columns.form.deliverableVariable', 'Variable Name')}
+                <Label htmlFor="column-question">
+                  {t('settings.boards.columns.form.deliverableVariable', 'Question')}
                 </Label>
-                <Input
-                  id="column-deliverable-variable"
-                  placeholder={t('settings.boards.columns.form.deliverableVariablePlaceholder', 'e.g., decision, review_outcome')}
-                  value={columnForm.deliverable_variable || ''}
+                <Textarea
+                  id="column-question"
+                  placeholder={t('settings.boards.columns.form.deliverableVariablePlaceholder', 'e.g., Does this task need development?')}
+                  value={columnForm.question || ''}
                   onChange={(e) =>
                     setColumnForm({
                       ...columnForm,
-                      deliverable_variable: e.target.value || null,
+                      question: e.target.value || null,
                     })
                   }
                 />
@@ -1434,13 +1502,13 @@ export function BoardSettings() {
 
               <div className="space-y-2">
                 <Label>
-                  {t('settings.boards.columns.form.deliverableOptions', 'Allowed Values')}
+                  {t('settings.boards.columns.form.deliverableOptions', 'Answer Options')}
                 </Label>
                 <div className="space-y-2">
                   {/* List of current options */}
                   {(() => {
-                    const options: string[] = columnForm.deliverable_options
-                      ? JSON.parse(columnForm.deliverable_options)
+                    const options: string[] = columnForm.answer_options
+                      ? JSON.parse(columnForm.answer_options)
                       : [];
                     return options.length > 0 ? (
                       <div className="border rounded-md divide-y">
@@ -1459,7 +1527,7 @@ export function BoardSettings() {
                                 const newOptions = options.filter((_, i) => i !== index);
                                 setColumnForm({
                                   ...columnForm,
-                                  deliverable_options: newOptions.length > 0 ? JSON.stringify(newOptions) : null,
+                                  answer_options: newOptions.length > 0 ? JSON.stringify(newOptions) : null,
                                 });
                               }}
                             >
@@ -1486,13 +1554,13 @@ export function BoardSettings() {
                           const input = e.currentTarget;
                           const value = input.value.trim();
                           if (value) {
-                            const currentOptions: string[] = columnForm.deliverable_options
-                              ? JSON.parse(columnForm.deliverable_options)
+                            const currentOptions: string[] = columnForm.answer_options
+                              ? JSON.parse(columnForm.answer_options)
                               : [];
                             if (!currentOptions.includes(value)) {
                               setColumnForm({
                                 ...columnForm,
-                                deliverable_options: JSON.stringify([...currentOptions, value]),
+                                answer_options: JSON.stringify([...currentOptions, value]),
                               });
                             }
                             input.value = '';
@@ -1508,13 +1576,13 @@ export function BoardSettings() {
                         const input = document.getElementById('new-deliverable-option') as HTMLInputElement;
                         const value = input?.value.trim();
                         if (value) {
-                          const currentOptions: string[] = columnForm.deliverable_options
-                            ? JSON.parse(columnForm.deliverable_options)
+                          const currentOptions: string[] = columnForm.answer_options
+                            ? JSON.parse(columnForm.answer_options)
                             : [];
                           if (!currentOptions.includes(value)) {
                             setColumnForm({
                               ...columnForm,
-                              deliverable_options: JSON.stringify([...currentOptions, value]),
+                              answer_options: JSON.stringify([...currentOptions, value]),
                             });
                           }
                           input.value = '';
@@ -1681,18 +1749,18 @@ export function BoardSettings() {
             {(() => {
               const fromColumn = (columnsMap.get(transitionBoardId || '') || [])
                 .find((col) => col.id === transitionForm.from_column_id);
-              const deliverableVariable = fromColumn?.deliverable_variable;
-              const deliverableOptions: string[] = fromColumn?.deliverable_options
-                ? JSON.parse(fromColumn.deliverable_options)
+              const columnQuestion = fromColumn?.question;
+              const answerOptions: string[] = fromColumn?.answer_options
+                ? JSON.parse(fromColumn.answer_options)
                 : [];
 
-              if (!deliverableVariable) {
+              if (!columnQuestion) {
                 return (
                   <div className="space-y-2">
                     <Label className="text-muted-foreground">Condition</Label>
                     <p className="text-xs text-muted-foreground">
-                      No structured decision variable defined on the source column.
-                      Edit the column to add a deliverable variable and options to enable conditional routing.
+                      No question defined on the source column.
+                      Edit the column to add a question and answer options to enable conditional routing.
                     </p>
                   </div>
                 );
@@ -1702,24 +1770,23 @@ export function BoardSettings() {
                 <div className="space-y-2">
                   <Label>Condition</Label>
                   <p className="text-xs text-muted-foreground mb-2">
-                    Route when <code className="bg-muted px-1 rounded">{deliverableVariable}</code> equals:
+                    Route when answer to &ldquo;{columnQuestion}&rdquo; is:
                   </p>
                   <Select
                     value={transitionForm.condition_value || 'none'}
                     onValueChange={(value) =>
                       setTransitionForm({
                         ...transitionForm,
-                        condition_key: value === 'none' ? null : deliverableVariable,
                         condition_value: value === 'none' ? null : value,
                       })
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a value..." />
+                      <SelectValue placeholder="Select an answer..." />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">(unconditional)</SelectItem>
-                      {deliverableOptions.map((option) => (
+                      {answerOptions.map((option) => (
                         <SelectItem key={option} value={option}>
                           {option}
                         </SelectItem>

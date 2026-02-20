@@ -211,8 +211,8 @@ impl ProjectService {
                     status: Some(tmpl_col.status.clone()),
                     agent_id: new_agent_id,
                     deliverable: tmpl_col.deliverable.clone(),
-                    deliverable_variable: tmpl_col.deliverable_variable.clone(),
-                    deliverable_options: tmpl_col.deliverable_options.clone(),
+                    question: tmpl_col.question.clone(),
+                    answer_options: tmpl_col.answer_options.clone(),
                 },
             )
             .await?;
@@ -244,7 +244,6 @@ impl ProjectService {
                     escalation_column_id: new_escalation,
                     name: tmpl_trans.name.clone(),
                     requires_confirmation: Some(tmpl_trans.requires_confirmation),
-                    condition_key: tmpl_trans.condition_key.clone(),
                     condition_value: tmpl_trans.condition_value.clone(),
                     max_failures: tmpl_trans.max_failures,
                 },

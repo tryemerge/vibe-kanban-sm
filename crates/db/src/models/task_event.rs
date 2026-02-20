@@ -37,6 +37,8 @@ pub enum TaskEventType {
     DecisionValidationFailed,
     /// Context artifact created - knowledge compounded
     ArtifactCreated,
+    /// Task state changed (queued, in_progress, transitioning, awaiting_response)
+    TaskStateChange,
 }
 
 /// What triggered this event
@@ -725,6 +727,60 @@ impl CreateTaskEvent {
             executor: None,
             automation_rule_id: None,
             trigger_type: Some(EventTriggerType::Automation),
+            commit_hash: None,
+            commit_message: None,
+            metadata: Some(metadata),
+            actor_type: Some(ActorType::System),
+            actor_id: None,
+        }
+    }
+
+    /// Create a task state change event (queued, in_progress, transitioning, awaiting_response)
+    pub fn task_state_change(
+        task_id: Uuid,
+        new_state: &str,
+        trigger: EventTriggerType,
+    ) -> Self {
+        let metadata = serde_json::json!({
+            "new_state": new_state,
+        });
+        Self {
+            task_id,
+            event_type: TaskEventType::TaskStateChange,
+            from_column_id: None,
+            to_column_id: None,
+            workspace_id: None,
+            session_id: None,
+            executor: None,
+            automation_rule_id: None,
+            trigger_type: Some(trigger),
+            commit_hash: None,
+            commit_message: None,
+            metadata: Some(metadata),
+            actor_type: Some(ActorType::System),
+            actor_id: None,
+        }
+    }
+
+    /// Create a status change event (todo, inprogress, inreview, done, cancelled)
+    pub fn status_change(
+        task_id: Uuid,
+        new_status: &str,
+        trigger: EventTriggerType,
+    ) -> Self {
+        let metadata = serde_json::json!({
+            "new_status": new_status,
+        });
+        Self {
+            task_id,
+            event_type: TaskEventType::StatusChange,
+            from_column_id: None,
+            to_column_id: None,
+            workspace_id: None,
+            session_id: None,
+            executor: None,
+            automation_rule_id: None,
+            trigger_type: Some(trigger),
             commit_hash: None,
             commit_message: None,
             metadata: Some(metadata),

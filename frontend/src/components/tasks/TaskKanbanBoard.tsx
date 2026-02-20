@@ -15,6 +15,8 @@ import { SharedTaskCard } from './SharedTaskCard';
 import { SwimLane } from './SwimLane';
 import type { SwimLaneConfig } from '@/hooks/useSwimLaneConfig';
 import { useTaskLabelsContextSafe } from '@/contexts/TaskLabelsContext';
+import { useTaskGroupsContextSafe } from '@/contexts/TaskGroupsContext';
+import type { TaskGroup } from 'shared/types';
 
 export type KanbanColumnItem =
   | {
@@ -124,6 +126,64 @@ function groupItemsByLabel(
   return result;
 }
 
+/**
+ * Group column items by task group for swim lane display
+ */
+function groupItemsByTaskGroup(
+  items: KanbanColumnItem[],
+  groups: TaskGroup[],
+  showUngrouped: boolean
+): SwimLaneGroup[] {
+  const groupMap = new Map<string, KanbanColumnItem[]>();
+  const ungroupedItems: KanbanColumnItem[] = [];
+
+  // Initialize groups in position order
+  for (const group of groups) {
+    groupMap.set(group.id, []);
+  }
+
+  for (const item of items) {
+    const taskGroupId =
+      item.type === 'task' ? item.task.task_group_id : null;
+
+    if (!taskGroupId) {
+      ungroupedItems.push(item);
+    } else {
+      const group = groupMap.get(taskGroupId);
+      if (group) {
+        group.push(item);
+      } else {
+        ungroupedItems.push(item);
+      }
+    }
+  }
+
+  const result: SwimLaneGroup[] = [];
+
+  for (const group of groups) {
+    const groupItems = groupMap.get(group.id);
+    if (groupItems && groupItems.length > 0) {
+      result.push({
+        id: group.id,
+        title: group.name,
+        color: group.color,
+        items: groupItems,
+      });
+    }
+  }
+
+  if (showUngrouped && ungroupedItems.length > 0) {
+    result.push({
+      id: '__ungrouped__',
+      title: 'Ungrouped',
+      color: null,
+      items: ungroupedItems,
+    });
+  }
+
+  return result;
+}
+
 function TaskKanbanBoard({
   columnDefs,
   columnItems,
@@ -139,8 +199,11 @@ function TaskKanbanBoard({
 }: TaskKanbanBoardProps) {
   const { userId } = useAuth();
   const { labels, getLabelsForTask } = useTaskLabelsContextSafe();
+  const { groups } = useTaskGroupsContextSafe();
 
-  const isSwimLanesEnabled = swimLaneConfig?.groupBy.type === 'label';
+  const groupByType = swimLaneConfig?.groupBy.type;
+  const isSwimLanesEnabled =
+    groupByType === 'label' || groupByType === 'task_group';
   const showUnlabeled = swimLaneConfig?.showUnlabeled ?? true;
 
   // Pre-compute swim lane groups for all columns
@@ -152,15 +215,23 @@ function TaskKanbanBoard({
     const result: Record<string, SwimLaneGroup[]> = {};
     for (const column of columnDefs) {
       const items = columnItems[column.id] ?? [];
-      result[column.id] = groupItemsByLabel(
-        items,
-        labels,
-        getLabelsForTask,
-        showUnlabeled
-      );
+      if (groupByType === 'task_group') {
+        result[column.id] = groupItemsByTaskGroup(
+          items,
+          groups,
+          showUnlabeled
+        );
+      } else {
+        result[column.id] = groupItemsByLabel(
+          items,
+          labels,
+          getLabelsForTask,
+          showUnlabeled
+        );
+      }
     }
     return result;
-  }, [columnDefs, columnItems, labels, getLabelsForTask, isSwimLanesEnabled, showUnlabeled]);
+  }, [columnDefs, columnItems, labels, getLabelsForTask, groups, groupByType, isSwimLanesEnabled, showUnlabeled]);
 
   // Render a single item (task or shared task)
   const renderItem = (

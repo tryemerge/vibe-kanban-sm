@@ -1,11 +1,16 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use sqlx::{Executor, FromRow, Postgres, PgPool, Type};
 use strum_macros::{Display, EnumString};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use super::{project::Project, workspace::Workspace};
+use super::{
+    project::Project,
+    task_event::{CreateTaskEvent, EventTriggerType, TaskEvent},
+    workspace::Workspace,
+};
 
 #[derive(
     Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS, EnumString, Display, Default,
@@ -33,20 +38,12 @@ pub enum TaskState {
     /// Task is in a column, waiting for an agent to start or for manual action
     #[default]
     Queued,
+    /// Agent is actively working on this task
+    InProgress,
+    /// Agent exited without a decision - waiting for user input
+    AwaitingResponse,
     /// Task is between columns, transition logic is evaluating
     Transitioning,
-}
-
-/// Agent status - what the agent is doing with the task (null means no agent engaged)
-#[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS, EnumString, Display)]
-#[sqlx(type_name = "agent_status", rename_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
-#[strum(serialize_all = "lowercase")]
-pub enum AgentStatus {
-    /// Agent is actively executing
-    Running,
-    /// Agent is waiting for user input
-    AwaitingResponse,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
@@ -59,8 +56,11 @@ pub struct Task {
     pub column_id: Option<Uuid>, // Foreign key to KanbanColumn
     pub parent_workspace_id: Option<Uuid>, // Foreign key to parent Workspace
     pub shared_task_id: Option<Uuid>,
+    pub task_group_id: Option<Uuid>,
     pub task_state: TaskState,
-    pub agent_status: Option<AgentStatus>,
+    #[sqlx(json)]
+    #[ts(type = "Record<string, unknown> | null")]
+    pub workflow_decisions: Option<JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -106,6 +106,7 @@ pub struct CreateTask {
     pub parent_workspace_id: Option<Uuid>,
     pub image_ids: Option<Vec<Uuid>>,
     pub shared_task_id: Option<Uuid>,
+    pub task_group_id: Option<Uuid>,
 }
 
 impl CreateTask {
@@ -123,6 +124,7 @@ impl CreateTask {
             parent_workspace_id: None,
             image_ids: None,
             shared_task_id: None,
+            task_group_id: None,
         }
     }
 
@@ -142,6 +144,7 @@ impl CreateTask {
             parent_workspace_id: None,
             image_ids: None,
             shared_task_id: Some(shared_task_id),
+            task_group_id: None,
         }
     }
 }
@@ -154,6 +157,7 @@ pub struct UpdateTask {
     pub column_id: Option<Uuid>,
     pub parent_workspace_id: Option<Uuid>,
     pub image_ids: Option<Vec<Uuid>>,
+    pub task_group_id: Option<Uuid>,
 }
 
 impl Task {
@@ -183,8 +187,9 @@ impl Task {
   t.column_id                     AS "column_id: Uuid",
   t.parent_workspace_id           AS "parent_workspace_id: Uuid",
   t.shared_task_id                AS "shared_task_id: Uuid",
+  t.task_group_id                 AS "task_group_id: Uuid",
   t.task_state                    AS "task_state!: TaskState",
-  t.agent_status                  AS "agent_status: AgentStatus",
+  t.workflow_decisions             AS "workflow_decisions: JsonValue",
   t.created_at                    AS "created_at!: DateTime<Utc>",
   t.updated_at                    AS "updated_at!: DateTime<Utc>",
 
@@ -222,6 +227,7 @@ impl Task {
   ( SELECT w.id
       FROM workspaces w
       WHERE w.task_id = t.id
+        AND w.cancelled_at IS NULL
      ORDER BY w.created_at DESC
       LIMIT 1
     )                               AS "latest_attempt_id: Uuid"
@@ -246,8 +252,9 @@ ORDER BY t.created_at DESC"#,
                     column_id: rec.column_id,
                     parent_workspace_id: rec.parent_workspace_id,
                     shared_task_id: rec.shared_task_id,
+                    task_group_id: rec.task_group_id,
                     task_state: rec.task_state,
-                    agent_status: rec.agent_status,
+                    workflow_decisions: rec.workflow_decisions,
                     created_at: rec.created_at,
                     updated_at: rec.updated_at,
                 },
@@ -261,15 +268,59 @@ ORDER BY t.created_at DESC"#,
         Ok(tasks)
     }
 
+    /// Find all ungrouped tasks (task_group_id IS NULL) for a project
+    pub async fn find_ungrouped_by_project(
+        pool: &PgPool,
+        project_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Task,
+            r#"SELECT
+                id as "id!: Uuid",
+                project_id as "project_id!: Uuid",
+                title,
+                description,
+                status as "status!: TaskStatus",
+                column_id as "column_id: Uuid",
+                parent_workspace_id as "parent_workspace_id: Uuid",
+                shared_task_id as "shared_task_id: Uuid",
+                task_group_id as "task_group_id: Uuid",
+                task_state as "task_state!: TaskState",
+                workflow_decisions as "workflow_decisions: JsonValue",
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>"
+               FROM tasks
+               WHERE project_id = $1 AND task_group_id IS NULL
+               ORDER BY created_at ASC"#,
+            project_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_group_id as "task_group_id: Uuid", task_state as "task_state!: TaskState", workflow_decisions as "workflow_decisions: JsonValue", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
                WHERE id = $1"#,
             id
         )
         .fetch_optional(pool)
+        .await
+    }
+
+    /// Find all tasks belonging to a task group, ordered by creation time
+    pub async fn find_by_group(pool: &PgPool, group_id: Uuid) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Task,
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_group_id as "task_group_id: Uuid", task_state as "task_state!: TaskState", workflow_decisions as "workflow_decisions: JsonValue", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+               FROM tasks
+               WHERE task_group_id = $1
+               ORDER BY created_at ASC"#,
+            group_id
+        )
+        .fetch_all(pool)
         .await
     }
 
@@ -298,7 +349,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn find_by_rowid(pool: &PgPool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_group_id as "task_group_id: Uuid", task_state as "task_state!: TaskState", workflow_decisions as "workflow_decisions: JsonValue", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM (
                    SELECT *, ROW_NUMBER() OVER (ORDER BY created_at) as rn
                    FROM tasks
@@ -319,7 +370,7 @@ ORDER BY t.created_at DESC"#,
     {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_group_id as "task_group_id: Uuid", task_state as "task_state!: TaskState", workflow_decisions as "workflow_decisions: JsonValue", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
                WHERE shared_task_id = $1
                LIMIT 1"#,
@@ -332,7 +383,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn find_all_shared(pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_group_id as "task_group_id: Uuid", task_state as "task_state!: TaskState", workflow_decisions as "workflow_decisions: JsonValue", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
                WHERE shared_task_id IS NOT NULL"#
         )
@@ -349,9 +400,9 @@ ORDER BY t.created_at DESC"#,
         let status_str = status.to_string();
         sqlx::query_as!(
             Task,
-            r#"INSERT INTO tasks (id, project_id, title, description, status, column_id, parent_workspace_id, shared_task_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+            r#"INSERT INTO tasks (id, project_id, title, description, status, column_id, parent_workspace_id, shared_task_id, task_group_id, workflow_decisions)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_group_id as "task_group_id: Uuid", task_state as "task_state!: TaskState", workflow_decisions as "workflow_decisions: JsonValue", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             task_id,
             data.project_id,
             data.title,
@@ -359,7 +410,9 @@ ORDER BY t.created_at DESC"#,
             status_str,
             data.column_id,
             data.parent_workspace_id,
-            data.shared_task_id
+            data.shared_task_id,
+            data.task_group_id,
+            None::<JsonValue>
         )
         .fetch_one(pool)
         .await
@@ -381,7 +434,7 @@ ORDER BY t.created_at DESC"#,
             r#"UPDATE tasks
                SET title = $3, description = $4, status = $5, column_id = $6, parent_workspace_id = $7
                WHERE id = $1 AND project_id = $2
-               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_group_id as "task_group_id: Uuid", task_state as "task_state!: TaskState", workflow_decisions as "workflow_decisions: JsonValue", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             project_id,
             title,
@@ -407,6 +460,15 @@ ORDER BY t.created_at DESC"#,
         )
         .execute(pool)
         .await?;
+
+        // Record status change event (fire-and-forget)
+        let event = CreateTaskEvent::status_change(
+            id,
+            &status_str,
+            EventTriggerType::System,
+        );
+        let _ = TaskEvent::create(pool, &event).await;
+
         Ok(())
     }
 
@@ -420,6 +482,22 @@ ORDER BY t.created_at DESC"#,
             "UPDATE tasks SET column_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             task_id,
             column_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Update the task_group_id field for a task
+    pub async fn update_task_group(
+        pool: &PgPool,
+        task_id: Uuid,
+        task_group_id: Option<Uuid>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "UPDATE tasks SET task_group_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+            task_id,
+            task_group_id
         )
         .execute(pool)
         .await?;
@@ -448,6 +526,7 @@ ORDER BY t.created_at DESC"#,
         task_id: Uuid,
         task_state: TaskState,
     ) -> Result<(), sqlx::Error> {
+        let state_str = task_state.to_string();
         sqlx::query!(
             r#"UPDATE tasks SET task_state = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1"#,
             task_id,
@@ -455,37 +534,29 @@ ORDER BY t.created_at DESC"#,
         )
         .execute(pool)
         .await?;
+
+        // Record task state change event (fire-and-forget)
+        let event = CreateTaskEvent::task_state_change(
+            task_id,
+            &state_str,
+            EventTriggerType::System,
+        );
+        let _ = TaskEvent::create(pool, &event).await;
+
         Ok(())
     }
 
-    /// Update the agent_status field for a task (null means no agent engaged)
-    pub async fn update_agent_status(
-        pool: &PgPool,
-        task_id: Uuid,
-        agent_status: Option<AgentStatus>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            r#"UPDATE tasks SET agent_status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1"#,
-            task_id,
-            agent_status as Option<AgentStatus>
-        )
-        .execute(pool)
-        .await?;
-        Ok(())
-    }
 
-    /// Update both task_state and agent_status atomically
-    pub async fn update_task_and_agent_state(
+    /// Update the workflow_decisions JSONB field for a task
+    pub async fn update_workflow_decisions(
         pool: &PgPool,
-        task_id: Uuid,
-        task_state: TaskState,
-        agent_status: Option<AgentStatus>,
+        id: Uuid,
+        decisions: serde_json::Value,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            r#"UPDATE tasks SET task_state = $2, agent_status = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1"#,
-            task_id,
-            task_state as TaskState,
-            agent_status as Option<AgentStatus>
+            "UPDATE tasks SET workflow_decisions = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+            id,
+            decisions
         )
         .execute(pool)
         .await?;
@@ -592,7 +663,7 @@ ORDER BY t.created_at DESC"#,
         // Find only child tasks that have this workspace as their parent
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_state as "task_state!: TaskState", agent_status as "agent_status: AgentStatus", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", column_id as "column_id: Uuid", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", task_group_id as "task_group_id: Uuid", task_state as "task_state!: TaskState", workflow_decisions as "workflow_decisions: JsonValue", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
                WHERE parent_workspace_id = $1
                ORDER BY created_at DESC"#,

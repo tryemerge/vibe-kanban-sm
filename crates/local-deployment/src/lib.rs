@@ -175,6 +175,7 @@ impl Deployment for LocalDeployment {
         let container = LocalContainerService::new(
             db.clone(),
             msg_stores.clone(),
+            events_msg_store.clone(),
             config.clone(),
             git.clone(),
             image.clone(),

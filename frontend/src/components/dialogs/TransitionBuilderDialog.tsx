@@ -60,9 +60,9 @@ export function TransitionBuilderDialog({
   );
 
   const deliverableOptions = useMemo(() => {
-    if (!fromColumn?.deliverable_options) return [];
+    if (!fromColumn?.answer_options) return [];
     try {
-      const parsed = JSON.parse(fromColumn.deliverable_options);
+      const parsed = JSON.parse(fromColumn.answer_options);
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
@@ -120,7 +120,7 @@ export function TransitionBuilderDialog({
     setError(null);
 
     try {
-      if (showConditionalUI && fromColumn?.deliverable_variable) {
+      if (showConditionalUI && fromColumn?.question) {
         // Create transitions for each option mapping
         for (const [optionValue, config] of optionMappings) {
           if (config.toColumnId) {
@@ -131,7 +131,6 @@ export function TransitionBuilderDialog({
               escalation_column_id: escalationColumnId || null,
               name: optionValue,
               requires_confirmation: requiresConfirmation,
-              condition_key: fromColumn.deliverable_variable,
               condition_value: optionValue,
               max_failures: config.maxFailures,
             };
@@ -147,7 +146,6 @@ export function TransitionBuilderDialog({
           escalation_column_id: null,
           name: null,
           requires_confirmation: requiresConfirmation,
-          condition_key: null,
           condition_value: null,
           max_failures: null,
         };
@@ -194,7 +192,7 @@ export function TransitionBuilderDialog({
           <DialogDescription>
             {t(
               'settings:boards.transitions.builder.description',
-              'Create routing rules based on column deliverable options.'
+              'Create routing rules based on column question answers.'
             )}
           </DialogDescription>
         </DialogHeader>
@@ -229,12 +227,9 @@ export function TransitionBuilderDialog({
                         />
                       )}
                       <span>{col.name}</span>
-                      {col.deliverable_variable && (
+                      {col.question && (
                         <span className="text-xs text-muted-foreground ml-1">
-                          <span className="opacity-60">var:</span>
-                          <code className="bg-muted px-1 rounded ml-0.5">
-                            {col.deliverable_variable}
-                          </code>
+                          (has question)
                         </span>
                       )}
                     </div>
@@ -245,21 +240,21 @@ export function TransitionBuilderDialog({
           </div>
 
           {/* Step 2: Show variable info and conditional toggle */}
-          {fromColumnId && hasDeliverableOptions && fromColumn?.deliverable_variable && (
+          {fromColumnId && hasDeliverableOptions && fromColumn?.question && (
             <div className="space-y-4">
-              {/* Variable name display */}
+              {/* Question display */}
               <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/50">
                 <Variable className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                 <div className="flex-1">
                   <div className="text-sm font-medium">
-                    {t('settings:boards.transitions.builder.variableName', 'Variable Name')}
+                    {t('settings:boards.transitions.builder.variableName', 'Question')}
                   </div>
-                  <code className="text-sm font-mono text-primary">
-                    {fromColumn.deliverable_variable}
-                  </code>
+                  <span className="text-sm text-primary">
+                    {fromColumn.question}
+                  </span>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {deliverableOptions.length} {t('settings:boards.transitions.builder.optionsCount', 'options')}
+                  {deliverableOptions.length} {t('settings:boards.transitions.builder.optionsCount', 'answers')}
                 </div>
               </div>
 
@@ -288,7 +283,7 @@ export function TransitionBuilderDialog({
           {/* Step 3: Map deliverable options or simple to column */}
           {fromColumnId && (
             <>
-              {showConditionalUI && fromColumn?.deliverable_variable ? (
+              {showConditionalUI && fromColumn?.question ? (
                 <div className="space-y-4">
                   <div className="text-sm text-muted-foreground">
                     {t('settings:boards.transitions.builder.mapOptionsTo', 'Map options to destination columns:')}
@@ -432,7 +427,7 @@ export function TransitionBuilderDialog({
                     <p className="text-sm text-muted-foreground">
                       {t(
                         'settings:boards.transitions.builder.noOptions',
-                        'This column has no deliverable options defined. Creating a simple transition.'
+                        'This column has no question defined. Creating a simple transition.'
                       )}
                     </p>
                   )}
@@ -469,7 +464,7 @@ export function TransitionBuilderDialog({
                     <p className="text-xs text-muted-foreground">
                       {t(
                         'settings:boards.transitions.builder.addOptionsHint',
-                        'Tip: Add deliverable options to a column to enable conditional routing.'
+                        'Tip: Add a question and answer options to a column to enable conditional routing.'
                       )}
                     </p>
                   )}

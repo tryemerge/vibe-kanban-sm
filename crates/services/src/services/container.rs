@@ -27,7 +27,8 @@ use db::{
         session::{CreateSession, Session, SessionError},
         state_transition::StateTransition,
         tag::Tag,
-        task::{AgentStatus, Task, TaskState, TaskStatus},
+        task::{Task, TaskState, TaskStatus},
+        task_dependency::TaskDependency,
         task_event::{ActorType, CreateTaskEvent, EventTriggerType, TaskEvent},
         workspace::{Workspace, WorkspaceError},
         workspace_repo::WorkspaceRepo,
@@ -56,6 +57,7 @@ use uuid::Uuid;
 
 use crate::services::{
     git::{GitService, GitServiceError},
+    group_analyzer::GroupAnalyzer,
     notification::NotificationService,
     share::SharePublisher,
     workspace_manager::WorkspaceError as WorkspaceManagerError,
@@ -100,27 +102,79 @@ pub struct AgentContext {
     pub project_context: Option<String>,
 }
 
-/// Read the decision file (.vibe/decision.json) from a workspace
-/// Returns the parsed JSON value if the file exists and is valid JSON
+/// Read the decision file (.vibe/decision.json) from a workspace.
+/// Checks both the workspace root and repo subdirectories, since
+/// the agent may run inside a repo subdirectory in multi-repo workspaces.
 pub async fn read_decision_file(workspace: &Workspace) -> Option<serde_json::Value> {
     let worktree_path = workspace.container_ref.as_ref()?;
-    let decision_path = PathBuf::from(worktree_path).join(".vibe/decision.json");
+    let base = PathBuf::from(worktree_path);
 
-    if !decision_path.exists() {
-        return None;
+    // 1. Check workspace root
+    let root_path = base.join(".vibe/decision.json");
+    if root_path.exists() {
+        return parse_decision_file(&root_path).await;
     }
 
-    match tokio::fs::read_to_string(&decision_path).await {
+    // 2. Check repo subdirectories (multi-repo workspaces)
+    if let Ok(mut entries) = tokio::fs::read_dir(&base).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if entry.path().is_dir() {
+                let sub_path = entry.path().join(".vibe/decision.json");
+                if sub_path.exists() {
+                    return parse_decision_file(&sub_path).await;
+                }
+            }
+        }
+    }
+
+    None
+}
+
+async fn parse_decision_file(path: &PathBuf) -> Option<serde_json::Value> {
+    match tokio::fs::read_to_string(path).await {
         Ok(content) => match serde_json::from_str(&content) {
             Ok(value) => Some(value),
             Err(e) => {
-                tracing::warn!("Failed to parse decision file: {}", e);
+                tracing::warn!("Failed to parse decision file at {:?}: {}", path, e);
                 None
             }
         },
         Err(e) => {
-            tracing::warn!("Failed to read decision file: {}", e);
+            tracing::warn!("Failed to read decision file at {:?}: {}", path, e);
             None
+        }
+    }
+}
+
+/// Delete the decision file (.vibe/decision.json) from a workspace.
+/// Called after a transition so the next column starts with a clean slate.
+async fn delete_decision_file(workspace: &Workspace) {
+    let Some(worktree_path) = workspace.container_ref.as_ref() else {
+        return;
+    };
+    let base = PathBuf::from(worktree_path);
+
+    // 1. Check workspace root
+    let root_path = base.join(".vibe/decision.json");
+    if root_path.exists() {
+        if let Err(e) = tokio::fs::remove_file(&root_path).await {
+            tracing::warn!("Failed to delete decision file at {:?}: {}", root_path, e);
+        }
+        return;
+    }
+
+    // 2. Check repo subdirectories (multi-repo workspaces)
+    if let Ok(mut entries) = tokio::fs::read_dir(&base).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if entry.path().is_dir() {
+                let sub_path = entry.path().join(".vibe/decision.json");
+                if sub_path.exists() {
+                    if let Err(e) = tokio::fs::remove_file(&sub_path).await {
+                        tracing::warn!("Failed to delete decision file at {:?}: {}", sub_path, e);
+                    }
+                    return;
+                }
+            }
         }
     }
 }
@@ -232,19 +286,19 @@ pub async fn try_create_artifact_from_decision(
     }
 }
 
-/// Result of validating the decision variable
+/// Result of validating the decision answer
 #[derive(Debug)]
 pub enum DecisionValidationResult {
-    /// No variable required for this column
+    /// No question defined for this column - no answer required
     NotRequired,
-    /// Variable is set and valid
+    /// Answer is set and valid
     Valid,
     /// Decision file is missing entirely
-    MissingFile { variable_name: String, valid_options: Vec<String> },
-    /// Variable is missing from the decision file
-    MissingVariable { variable_name: String, valid_options: Vec<String> },
-    /// Variable has an invalid value
-    InvalidValue { variable_name: String, actual_value: String, valid_options: Vec<String> },
+    MissingFile { question: String, valid_options: Vec<String> },
+    /// Answer key is missing from the decision file
+    MissingAnswer { question: String, valid_options: Vec<String> },
+    /// Answer has an invalid value
+    InvalidAnswer { question: String, actual_value: String, valid_options: Vec<String> },
 }
 
 impl DecisionValidationResult {
@@ -257,40 +311,36 @@ impl DecisionValidationResult {
     pub fn error_message(&self) -> Option<String> {
         match self {
             DecisionValidationResult::NotRequired | DecisionValidationResult::Valid => None,
-            DecisionValidationResult::MissingFile { variable_name, valid_options } => {
+            DecisionValidationResult::MissingFile { question, valid_options } => {
                 Some(format!(
-                    "The required variable '{}' was not set.\n\n\
-                    Please create `.vibe/decision.json` and set '{}' to one of: {}\n\n\
-                    Example:\n```json\n{{\"{}\": \"{}\"}}\n```",
-                    variable_name,
-                    variable_name,
+                    "You must answer the question: {}\n\n\
+                    Please create `.vibe/decision.json` with your answer.\n\
+                    Valid answers: {}\n\n\
+                    Example:\n```json\n{{\"answer\": \"{}\"}}\n```",
+                    question,
                     valid_options.join(", "),
-                    variable_name,
                     valid_options.first().unwrap_or(&"value".to_string())
                 ))
             }
-            DecisionValidationResult::MissingVariable { variable_name, valid_options } => {
+            DecisionValidationResult::MissingAnswer { question, valid_options } => {
                 Some(format!(
-                    "The required variable '{}' was not set in `.vibe/decision.json`.\n\n\
-                    Please set '{}' to one of: {}\n\n\
-                    Example:\n```json\n{{\"{}\": \"{}\"}}\n```",
-                    variable_name,
-                    variable_name,
+                    "You must answer the question: {}\n\n\
+                    Please set the \"answer\" key in `.vibe/decision.json`.\n\
+                    Valid answers: {}\n\n\
+                    Example:\n```json\n{{\"answer\": \"{}\"}}\n```",
+                    question,
                     valid_options.join(", "),
-                    variable_name,
                     valid_options.first().unwrap_or(&"value".to_string())
                 ))
             }
-            DecisionValidationResult::InvalidValue { variable_name, actual_value, valid_options } => {
+            DecisionValidationResult::InvalidAnswer { question, actual_value, valid_options } => {
                 Some(format!(
-                    "The variable '{}' has an invalid value: '{}'\n\n\
-                    Please set '{}' to one of: {}\n\n\
-                    Example:\n```json\n{{\"{}\": \"{}\"}}\n```",
-                    variable_name,
+                    "Invalid answer '{}' for: {}\n\n\
+                    Valid answers: {}\n\n\
+                    Example:\n```json\n{{\"answer\": \"{}\"}}\n```",
                     actual_value,
-                    variable_name,
+                    question,
                     valid_options.join(", "),
-                    variable_name,
                     valid_options.first().unwrap_or(&"value".to_string())
                 ))
             }
@@ -298,19 +348,19 @@ impl DecisionValidationResult {
     }
 }
 
-/// Validate that the decision file contains the required variable with a valid value.
+/// Validate that the decision file contains the required answer for the column's question.
 /// Returns a validation result that can be used to generate error messages.
-pub fn validate_decision_variable(
+pub fn validate_answer(
     column: &KanbanColumn,
     decision: &Option<serde_json::Value>,
 ) -> DecisionValidationResult {
-    // Check if column has a required deliverable variable
-    let Some(variable_name) = &column.deliverable_variable else {
+    // Check if column has a question that needs an answer
+    let Some(question) = &column.question else {
         return DecisionValidationResult::NotRequired;
     };
 
-    // Parse the valid options from the column's deliverable_options JSON
-    let valid_options: Vec<String> = column.deliverable_options
+    // Parse the valid answer options from the column's answer_options JSON
+    let valid_options: Vec<String> = column.answer_options
         .as_ref()
         .and_then(|opts| serde_json::from_str(opts).ok())
         .unwrap_or_default();
@@ -318,15 +368,15 @@ pub fn validate_decision_variable(
     // Check if decision file exists
     let Some(decision_value) = decision else {
         return DecisionValidationResult::MissingFile {
-            variable_name: variable_name.clone(),
+            question: question.clone(),
             valid_options,
         };
     };
 
-    // Check if the variable is present in the decision
-    let Some(actual_value) = decision_value.get(variable_name) else {
-        return DecisionValidationResult::MissingVariable {
-            variable_name: variable_name.clone(),
+    // Check the "answer" key in the decision
+    let Some(actual_value) = decision_value.get("answer") else {
+        return DecisionValidationResult::MissingAnswer {
+            question: question.clone(),
             valid_options,
         };
     };
@@ -336,8 +386,8 @@ pub fn validate_decision_variable(
 
     // If we have valid options defined, validate against them
     if !valid_options.is_empty() && !valid_options.contains(&actual_str) {
-        return DecisionValidationResult::InvalidValue {
-            variable_name: variable_name.clone(),
+        return DecisionValidationResult::InvalidAnswer {
+            question: question.clone(),
             actual_value: actual_str,
             valid_options,
         };
@@ -359,26 +409,28 @@ pub enum TransitionResult {
 }
 
 /// Evaluate a transition against the decision file and failure count.
-/// Returns which destination column to use based on the new semantics:
-/// - to_column_id: condition matched (success)
-/// - else_column_id: condition didn't match, under failure limit (retry)
-/// - escalation_column_id: condition didn't match, at/over failure limit (emergency)
+/// Returns which destination column to use based on the semantics:
+/// - to_column_id: answer matched (success)
+/// - else_column_id: answer didn't match, under failure limit (retry)
+/// - escalation_column_id: answer didn't match, at/over failure limit (emergency)
 fn evaluate_transition(
     transition: &StateTransition,
     decision: &Option<serde_json::Value>,
     failure_count: i64,
 ) -> TransitionResult {
-    // Check if condition matches
-    let condition_matches = match (&transition.condition_key, &transition.condition_value, decision) {
-        (Some(key), Some(value), Some(dec)) => {
-            dec.get(key)
+    // Check if answer matches this transition's expected condition_value
+    let condition_matches = match (&transition.condition_value, decision) {
+        (Some(expected_value), Some(dec)) => {
+            // Look up the "answer" key in decision.json
+            dec.get("answer")
                 .and_then(|v| v.as_str())
-                .map(|v| v == value)
+                .map(|v| v == expected_value)
                 .unwrap_or(false)
         }
-        // No condition defined - treat as unconditional success (unless requires confirmation)
-        (None, None, _) => !transition.requires_confirmation,
-        _ => false,
+        // No condition_value defined - unconditional transition (unless requires confirmation)
+        (None, _) => !transition.requires_confirmation,
+        // condition_value set but no decision file - no match
+        (Some(_), None) => false,
     };
 
     if condition_matches {
@@ -407,83 +459,38 @@ fn evaluate_transition(
     TransitionResult::NoMatch
 }
 
-/// Build decision instructions for an agent based on conditional transitions from a column.
-/// This tells the agent what values to write to .vibe/decision.json to route the task.
+/// Build decision instructions for an agent based on the column's question and answer options.
+/// This tells the agent what to write to .vibe/decision.json to route the task.
 /// Also includes feedback from a prior rejection if present in the existing decision file.
 /// Uses hierarchical resolution: task-level > project-level > board-level transitions.
 pub async fn build_decision_instructions(
-    pool: &sqlx::PgPool,
-    column_id: Uuid,
-    task_id: Uuid,
-    project_id: Uuid,
-    board_id: Option<Uuid>,
+    _pool: &sqlx::PgPool,
+    column: &KanbanColumn,
+    _task_id: Uuid,
+    _project_id: Uuid,
+    _board_id: Option<Uuid>,
     existing_decision: &Option<serde_json::Value>,
 ) -> Option<String> {
-    // Get transitions from this column with hierarchical resolution
-    let transitions = StateTransition::find_from_column_for_task(
-        pool, column_id, task_id, project_id, board_id
-    ).await.ok()?;
+    // Only generate instructions if the column has a question
+    let question = column.question.as_ref()?;
 
-    // Filter to only conditional transitions (those with condition_key set)
-    let conditional: Vec<_> = transitions
-        .iter()
-        .filter(|t| t.condition_key.is_some())
-        .collect();
+    // Parse answer_options from the column (e.g. '["yes", "no"]')
+    let options: Vec<String> = column.answer_options.as_ref()
+        .and_then(|opts| serde_json::from_str(opts).ok())
+        .unwrap_or_default();
 
-    if conditional.is_empty() {
+    if options.is_empty() {
         return None;
     }
 
     let mut instructions = String::new();
-    instructions.push_str("\n\n---\n\n## Decision Required\n\n");
-    instructions.push_str(
-        "Before committing your changes, write your decision to `.vibe/decision.json`:\n\n",
-    );
+    instructions.push_str("\n\n---\n\n## Question\n\n");
+    instructions.push_str(question);
+    instructions.push_str("\n\nAfter completing your work, answer this question by writing to `.vibe/decision.json`.\n");
+    instructions.push_str("Include the question text for readability.\n\n");
+    instructions.push_str(&format!("Valid answers: {}\n", options.iter().map(|o| format!("\"{}\"", o)).collect::<Vec<_>>().join(", ")));
 
-    for t in &conditional {
-        if let (Some(key), Some(value)) = (&t.condition_key, &t.condition_value) {
-            // Get target column name for clearer instructions
-            let target_name = match KanbanColumn::find_by_id(pool, t.to_column_id).await {
-                Ok(Some(col)) => col.name,
-                _ => format!("column {}", t.to_column_id),
-            };
-
-            let transition_desc = t.name.as_deref().unwrap_or(&target_name);
-
-            // Note if this is a loop prevention path
-            // Note about failure handling
-            let failure_note = if let Some(max_fails) = t.max_failures {
-                if t.escalation_column_id.is_some() {
-                    format!(" (escalates after {} failures)", max_fails)
-                } else {
-                    format!(" (max {} failures)", max_fails)
-                }
-            } else {
-                String::new()
-            };
-
-            // Note about else path
-            let else_note = if t.else_column_id.is_some() {
-                " (has retry path)"
-            } else {
-                ""
-            };
-
-            instructions.push_str(&format!(
-                "- `{{\"{}\": \"{}\"}}` → **{}**{}{}\n",
-                key, value, transition_desc, failure_note, else_note
-            ));
-        }
-    }
-
-    instructions.push_str("\nExample:\n```json\n");
-    // Use first conditional as example
-    if let Some(first) = conditional.first() {
-        if let (Some(key), Some(value)) = (&first.condition_key, &first.condition_value) {
-            instructions.push_str(&format!("{{\"{}\": \"{}\"}}\n", key, value));
-        }
-    }
-    instructions.push_str("```\n");
+    instructions.push_str(&format!("\nExample:\n```json\n{{\"question\": \"{}\", \"answer\": \"{}\"}}\n```\n", question, options[0]));
 
     // Include feedback from prior rejection if present
     if let Some(decision) = existing_decision {
@@ -582,7 +589,7 @@ pub trait ContainerService {
     ///
     /// Key behavior with nested state machines:
     /// - If decision.json exists: agent finished work → set task_state=Transitioning, run auto-transition
-    /// - If no decision.json: agent is waiting for user input → set agent_status=AwaitingResponse, DON'T transition
+    /// - If no decision.json: agent is waiting for user input → set task_state=AwaitingResponse, DON'T transition
     async fn finalize_task(
         &self,
         share_publisher: Option<&SharePublisher>,
@@ -599,20 +606,18 @@ pub trait ContainerService {
         // 2. Agent wrote a decision.json (indicating it's done, not just waiting for user input)
         let transitioned = if matches!(ctx.execution_process.status, ExecutionProcessStatus::Completed) && has_decision {
             // Agent truly finished - set transitioning state and run auto-transition
-            if let Err(e) = Task::update_task_and_agent_state(
-                pool,
-                ctx.task.id,
-                TaskState::Transitioning,
-                None, // No agent owns the task during transition
-            ).await {
+            if let Err(e) = Task::update_task_state(pool, ctx.task.id, TaskState::Transitioning).await {
                 tracing::error!("Failed to set task to transitioning state: {}", e);
             }
 
             let transitioned = self.try_auto_transition(ctx).await;
 
-            // After transition (or if no transition matched), set back to queued
-            if let Err(e) = Task::update_task_and_agent_state(pool, ctx.task.id, TaskState::Queued, None).await {
-                tracing::error!("Failed to set task back to queued state: {}", e);
+            // Only reset to queued if no transition happened
+            // (if transition succeeded, initiate_column_handoff already set InProgress)
+            if !transitioned {
+                if let Err(e) = Task::update_task_state(pool, ctx.task.id, TaskState::Queued).await {
+                    tracing::error!("Failed to set task back to queued state: {}", e);
+                }
             }
 
             transitioned
@@ -623,18 +628,14 @@ pub trait ContainerService {
                 "Agent for task {} exited without decision.json - setting status to awaiting response",
                 ctx.task.id
             );
-            if let Err(e) = Task::update_agent_status(
-                pool,
-                ctx.task.id,
-                Some(AgentStatus::AwaitingResponse),
-            ).await {
-                tracing::error!("Failed to set agent status to awaiting response: {}", e);
+            if let Err(e) = Task::update_task_state(pool, ctx.task.id, TaskState::AwaitingResponse).await {
+                tracing::error!("Failed to set task state to awaiting response: {}", e);
             }
             false
         } else {
-            // Failed or killed execution - clear agent status
-            if let Err(e) = Task::update_agent_status(pool, ctx.task.id, None).await {
-                tracing::error!("Failed to clear agent status: {}", e);
+            // Failed or killed execution - reset to queued
+            if let Err(e) = Task::update_task_state(pool, ctx.task.id, TaskState::Queued).await {
+                tracing::error!("Failed to reset task state to queued: {}", e);
             }
             false
         };
@@ -660,8 +661,10 @@ pub trait ContainerService {
             }
         }
 
-        // Skip notification if process was intentionally killed by user
-        if matches!(ctx.execution_process.status, ExecutionProcessStatus::Killed) {
+        // Skip notification if:
+        // - process was intentionally killed by user
+        // - task auto-transitioned to next column (it's not done, just moving on)
+        if matches!(ctx.execution_process.status, ExecutionProcessStatus::Killed) || transitioned {
             return;
         }
 
@@ -788,10 +791,55 @@ pub trait ContainerService {
             }
         }
 
-        // Check for self-complete decision (planning columns that should end without transitioning further)
+        // Check if this is a group analysis task completion
+        if task.title.starts_with("Analyze: ") {
+            if let Some(group_id) = task.task_group_id {
+                tracing::info!(
+                    target: "vibe_kanban::transition",
+                    "  ├─ 📊 Detected group analysis task completion for group {}",
+                    group_id
+                );
+
+                // Call the group analyzer to handle analysis completion
+                let analyzer = GroupAnalyzer::new(self.db().clone());
+                match analyzer.handle_analysis_completion(group_id, task.id).await {
+                    Ok(_) => {
+                        tracing::info!(
+                            target: "vibe_kanban::transition",
+                            "  └─ ✅ Group analysis completed successfully"
+                        );
+
+                        // Mark the analysis task as done
+                        if let Err(e) = Task::update_status(pool, task.id, TaskStatus::Done).await {
+                            tracing::error!("Failed to update analysis task status: {}", e);
+                        }
+                        if let Err(e) = Task::update_task_state(pool, task.id, TaskState::Queued).await {
+                            tracing::error!("Failed to reset analysis task state: {}", e);
+                        }
+
+                        // Delete decision file to clean up
+                        delete_decision_file(&ctx.workspace).await;
+
+                        return true;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            target: "vibe_kanban::transition",
+                            "  └─ ❌ Failed to handle group analysis completion: {}",
+                            e
+                        );
+                        // Fall through to normal routing (will likely fail, but at least we tried)
+                    }
+                }
+            }
+        }
+
+        // Check for self-complete decision (only for columns WITHOUT a question defined)
+        // If the column has a question, use the normal transition routing instead
+        if current_column.question.is_none() {
         if let Some(ref dec) = decision {
-            if let Some(decision_val) = dec.get("decision").and_then(|v| v.as_str()) {
-                if decision_val == "complete" {
+            if let Some(answer_val) = dec.get("answer").and_then(|v| v.as_str()) {
+                if answer_val == "complete" {
                     tracing::info!(
                         target: "vibe_kanban::transition",
                         "  ├─ 🏁 Self-complete decision detected - marking task done"
@@ -818,6 +866,18 @@ pub trait ContainerService {
                         if let Err(e) = Task::update_status(pool, task.id, done_col.status.clone()).await {
                             tracing::error!("Failed to update status for self-complete: {}", e);
                             return false;
+                        }
+
+                        // Terminal column: reset task_state to idle
+                        if let Err(e) = Task::update_task_state(pool, task.id, TaskState::Queued).await {
+                            tracing::error!("Failed to reset task_state for self-complete: {}", e);
+                        }
+
+                        // Satisfy dependencies waiting on this task
+                        if done_col.is_terminal && done_col.status == TaskStatus::Done {
+                            if let Err(e) = TaskDependency::satisfy_by_prerequisite(pool, task.id).await {
+                                tracing::error!("Failed to satisfy dependencies for task {}: {}", task.id, e);
+                            }
                         }
 
                         // Record column transition event
@@ -850,6 +910,9 @@ pub trait ContainerService {
                             tracing::error!("Failed to update task status for self-complete: {}", e);
                             return false;
                         }
+                        if let Err(e) = Task::update_task_state(pool, task.id, TaskState::Queued).await {
+                            tracing::error!("Failed to reset task_state for self-complete: {}", e);
+                        }
 
                         tracing::info!(
                             target: "vibe_kanban::transition",
@@ -861,9 +924,10 @@ pub trait ContainerService {
                 }
             }
         }
+        } // end if current_column.question.is_none()
 
-        // Validate decision variable if column requires one
-        let validation_result = validate_decision_variable(&current_column, &decision);
+        // Validate answer if column has a question defined
+        let validation_result = validate_answer(&current_column, &decision);
         if !validation_result.is_ok() {
             if let Some(error_msg) = validation_result.error_message() {
                 tracing::warn!(
@@ -884,10 +948,10 @@ pub trait ContainerService {
                     tracing::error!("Failed to create decision validation event: {}", e);
                 }
             }
-        } else if current_column.deliverable_variable.is_some() {
+        } else if current_column.question.is_some() {
             tracing::info!(
                 target: "vibe_kanban::transition",
-                "  ├─ ✅ Decision validation passed"
+                "  ├─ ✅ Answer validation passed"
             );
         }
 
@@ -1062,6 +1126,58 @@ pub trait ContainerService {
             return false;
         }
 
+        // Merge this column's answer into the task's workflow_decisions history
+        if let Some(ref question) = current_column.question {
+            if let Some(ref dec) = decision {
+                if let Some(answer) = dec.get("answer").and_then(|v| v.as_str()) {
+                    // Read existing workflow_decisions or start fresh
+                    let mut decisions = task.workflow_decisions
+                        .clone()
+                        .and_then(|v| v.as_object().cloned())
+                        .unwrap_or_default();
+
+                    // Add this column's decision keyed by slug
+                    decisions.insert(
+                        current_column.slug.clone(),
+                        serde_json::json!({
+                            "question": question,
+                            "answer": answer
+                        }),
+                    );
+
+                    if let Err(e) = Task::update_workflow_decisions(
+                        pool,
+                        task.id,
+                        serde_json::Value::Object(decisions),
+                    ).await {
+                        tracing::error!("Failed to update workflow_decisions for task {}: {}", task.id, e);
+                    } else {
+                        tracing::info!(
+                            target: "vibe_kanban::transition",
+                            "  ├─ Recorded decision: {} → {} = {}",
+                            current_column.slug,
+                            question,
+                            answer
+                        );
+                    }
+                }
+            }
+        }
+
+        // Terminal columns: task is done, reset task_state to idle
+        if target_column.is_terminal {
+            if let Err(e) = Task::update_task_state(pool, task.id, TaskState::Queued).await {
+                tracing::error!("Failed to reset task_state for terminal column: {}", e);
+            }
+        }
+
+        // Satisfy dependencies if task moved to a terminal done column
+        if target_column.is_terminal && target_column.status == TaskStatus::Done {
+            if let Err(e) = TaskDependency::satisfy_by_prerequisite(pool, task.id).await {
+                tracing::error!("Failed to satisfy dependencies for task {}: {}", task.id, e);
+            }
+        }
+
         // Record column transition event
         let event = CreateTaskEvent::column_transition(
             task.id,
@@ -1083,6 +1199,9 @@ pub trait ContainerService {
             target_column.name
         );
 
+        // Delete the decision file so the next column starts clean
+        delete_decision_file(&ctx.workspace).await;
+
         // If target column has an agent, start execution
         if let Some(agent_id) = target_column.agent_id {
             tracing::info!(
@@ -1100,7 +1219,7 @@ pub trait ContainerService {
                         agent.name,
                         agent.role
                     );
-                    if let Err(e) = self.start_agent_execution_for_task(&task, &agent, &target_column).await {
+                    if let Err(e) = self.initiate_column_handoff(&task, &agent, &target_column).await {
                         tracing::error!(
                             target: "vibe_kanban::agent",
                             "  └─ ❌ Failed to start agent: {}",
@@ -1136,15 +1255,14 @@ pub trait ContainerService {
         true
     }
 
-    /// Start agent execution for a task (used by auto-transition)
-    async fn start_agent_execution_for_task(
+    /// Hand off a task to the next column's agent (used by auto-transition)
+    async fn initiate_column_handoff(
         &self,
         task: &Task,
         agent: &Agent,
         column: &KanbanColumn,
     ) -> Result<(), ContainerError> {
         let pool = &self.db().pool;
-        let column_id = column.id;
         let board_id = column.board_id;
         let column_name = &column.name;
 
@@ -1155,9 +1273,9 @@ pub trait ContainerService {
             column_name
         );
 
-        // Set agent status to Running - agent is now actively working on this task
-        if let Err(e) = Task::update_agent_status(pool, task.id, Some(AgentStatus::Running)).await {
-            tracing::error!("Failed to set agent status to running: {}", e);
+        // Set task to queued - it just entered the column, agent will set InProgress when it starts
+        if let Err(e) = Task::update_task_state(pool, task.id, TaskState::Queued).await {
+            tracing::error!("Failed to set task to queued: {}", e);
         }
 
         // Expand @tagname references in agent start_command and column deliverable
@@ -1192,11 +1310,11 @@ pub trait ContainerService {
                 );
             }
 
-            // Build decision instructions if this column has conditional transitions
+            // Build decision instructions if this column has a question to answer
             // Uses hierarchical resolution: task -> project -> board
             let decision_instructions = build_decision_instructions(
                 pool,
-                column_id,
+                column,
                 task.id,
                 task.project_id,
                 Some(board_id),
@@ -1310,7 +1428,7 @@ pub trait ContainerService {
                 agent.name
             );
 
-            self.start_workspace_with_agent_context(
+            self.launch_agent_in_workspace(
                 &workspace,
                 executor_profile_id.clone(),
                 agent_context,
@@ -2132,14 +2250,19 @@ pub trait ContainerService {
 
     /// Start workspace execution with agent context (system prompt and start command)
     /// This is used when a task enters a column with an assigned agent
-    async fn start_workspace_with_agent_context(
+    async fn launch_agent_in_workspace(
         &self,
         workspace: &Workspace,
         executor_profile_id: ExecutorProfileId,
         agent_context: AgentContext,
     ) -> Result<ExecutionProcess, ContainerError> {
-        // Create container
-        self.create(workspace).await?;
+        // If container already exists (auto-transition), reuse it.
+        // If this is the first launch (starts_workflow column), create it.
+        if workspace.container_ref.is_some() {
+            self.ensure_container_exists(workspace).await?;
+        } else {
+            self.create(workspace).await?;
+        }
 
         // Get parent task
         let task = workspace
@@ -2147,9 +2270,9 @@ pub trait ContainerService {
             .await?
             .ok_or(SqlxError::RowNotFound)?;
 
-        // Set agent status to Running - agent is now actively working on this task
-        if let Err(e) = Task::update_agent_status(&self.db().pool, task.id, Some(AgentStatus::Running)).await {
-            tracing::error!("Failed to set agent status to running: {}", e);
+        // Set task to in-progress - agent is now actively working
+        if let Err(e) = Task::update_task_state(&self.db().pool, task.id, TaskState::InProgress).await {
+            tracing::error!("Failed to set task to in-progress: {}", e);
         }
 
         // Get parent project

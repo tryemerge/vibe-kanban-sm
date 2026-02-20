@@ -70,6 +70,7 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
         column_id: workflowColumn.id,
         parent_workspace_id: task.parent_workspace_id,
         image_ids: null,
+        task_group_id: null,
       });
       // Invalidate tasks query to refresh the kanban board
       await queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -95,6 +96,7 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
         column_id: cancelledColumn.id,
         parent_workspace_id: task.parent_workspace_id,
         image_ids: null,
+        task_group_id: null,
       });
       // Invalidate tasks query to refresh the kanban board
       await queryClient.invalidateQueries({ queryKey: ['tasks'] });

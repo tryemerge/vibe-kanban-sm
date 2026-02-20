@@ -34,6 +34,8 @@ pub mod tags;
 pub mod task_attempts;
 pub mod task_dependencies;
 pub mod task_events;
+pub mod task_groups;
+pub mod group_events;
 pub mod task_labels;
 pub mod task_triggers;
 pub mod tasks;
@@ -51,6 +53,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(task_labels::router(&deployment))
         .merge(task_triggers::router(&deployment))
         .merge(task_dependencies::router(&deployment))
+        .merge(task_groups::router(&deployment))
+        .merge(group_events::router(&deployment))
         .merge(shared_tasks::router())
         .merge(task_attempts::router(&deployment))
         .merge(execution_processes::router(&deployment))

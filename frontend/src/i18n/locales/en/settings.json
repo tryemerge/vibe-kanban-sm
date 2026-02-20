@@ -17,6 +17,8 @@
         "templatesDesc": "Pre-built board templates",
         "knowledge": "Knowledge Base",
         "knowledgeDesc": "Context artifacts for agent prompts",
+        "task-groups": "Task Groups",
+        "task-groupsDesc": "Group related tasks for sequential execution",
         "evaluate": "Test & Evaluate",
         "evaluateDesc": "Test scenarios and context evaluation",
         "mcp": "MCP Servers",
@@ -351,6 +353,17 @@
         "saveFailed": "Failed to save board.",
         "deleteFailed": "Failed to delete board."
       },
+      "config": {
+        "title": "Board Configuration",
+        "initialColumn": "Initial Column",
+        "initialHelp": "New tasks start in this column",
+        "workflowColumn": "Starts Workflow",
+        "workflowHelp": "Creates a workspace and agent attempt when a task enters",
+        "terminalColumns": "Terminal Columns",
+        "terminalHelp": "Tasks in these columns are considered complete or cancelled",
+        "none": "(none)",
+        "updateFailed": "Failed to update board configuration."
+      },
       "columns": {
         "title": "Columns",
         "add": "Add Column",
@@ -582,7 +595,7 @@
       "testProject": {
         "title": "Test Project",
         "description": "Create or destroy a test project to observe how agents receive and produce context.",
-        "createButton": "Create Pi Calculator Test",
+        "createButton": "Create Test",
         "destroyButton": "Destroy Test Project",
         "creating": "Creating...",
         "active": "Test Project Active",

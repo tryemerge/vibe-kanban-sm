@@ -5,6 +5,7 @@ import { useState, useCallback, useEffect } from 'react';
  */
 export type SwimLaneGroupBy =
   | { type: 'label'; labelId?: string }  // Group by label, optionally filter to one
+  | { type: 'task_group' }               // Group by task group (ADR-012)
   | { type: 'assignee' }                  // Future: group by assignee
   | { type: 'priority' }                  // Future: group by priority
   | { type: 'none' };                     // No grouping (current behavior)

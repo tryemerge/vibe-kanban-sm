@@ -1,0 +1,26 @@
+---
+title: "Amp"
+description: "Set up Amp code completion agent"
+---
+
+<Steps>
+<Step title="Run Amp">
+  ```bash
+  npx -y @sourcegraph/amp
+  ```
+</Step>
+
+<Step title="Follow the login instructions">
+  Complete the authentication flow as prompted. For more details, see the [Amp Owner's Manual](https://ampcode.com/manual#install).
+</Step>
+
+<Step title="Start Vibe Kanban">
+  Once authenticated, launch Vibe Kanban:
+
+  ```bash
+  npx vibe-kanban
+  ```
+
+  You can now select Amp when creating task attempts.
+</Step>
+</Steps>

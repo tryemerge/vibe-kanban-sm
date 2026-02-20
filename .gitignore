@@ -85,3 +85,7 @@ dev_assets
 vibe-kanban-cloud/
 
 .jj
+
+# VitePress docs
+docs/.vitepress/dist
+docs/.vitepress/.cache

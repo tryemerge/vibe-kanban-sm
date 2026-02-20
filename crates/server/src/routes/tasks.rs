@@ -679,6 +679,17 @@ pub async fn update_task(
         }
     }
 
+    // Re-fetch task to pick up any state changes from spawn_agent_execution
+    // (e.g., task_state set to InProgress by container.launch_agent_in_workspace)
+    let task = Task::find_by_id(pool, task.id)
+        .await?
+        .ok_or(ApiError::Database(SqlxError::RowNotFound))?;
+
+    // Get latest active workspace for accurate broadcast
+    // (spawn_agent_execution may have created a new workspace)
+    let active_workspace = Workspace::find_active_for_task(pool, task.id).await?;
+    let has_active = active_workspace.is_some();
+
     // If task has been shared, broadcast update
     if task.shared_task_id.is_some() {
         let Ok(publisher) = deployment.share_publisher() else {
@@ -687,11 +698,18 @@ pub async fn update_task(
         publisher.update_shared_task(&task).await?;
     }
 
-    // Broadcast task update via WebSocket
+    // Broadcast task update via WebSocket with accurate attempt info
+    let task_status = TaskWithAttemptStatus {
+        task: task.clone(),
+        has_in_progress_attempt: has_active,
+        last_attempt_failed: false,
+        executor: String::new(),
+        latest_attempt_id: active_workspace.map(|w| w.id),
+    };
     deployment
         .events()
         .msg_store()
-        .push_patch(task_patch::replace(&task_to_status(&task)));
+        .push_patch(task_patch::replace(&task_status));
 
     Ok(ResponseJson(ApiResponse::success(task)))
 }
@@ -876,7 +894,6 @@ async fn spawn_agent_execution(
     agent: Agent,
     column: &KanbanColumn,
 ) -> Result<(), anyhow::Error> {
-    let column_id = column.id;
     let board_id = column.board_id;
     let column_name = column.name.clone();
     tracing::info!(
@@ -987,11 +1004,11 @@ async fn spawn_agent_execution(
         });
     }
 
-    // Build decision instructions if this column has conditional transitions
+    // Build decision instructions if this column has a question to answer
     // Uses hierarchical resolution: task -> project -> board
     let decision_instructions = build_decision_instructions(
         pool,
-        column_id,
+        column,
         task.id,
         task.project_id,
         Some(board_id),
@@ -1075,7 +1092,7 @@ async fn spawn_agent_execution(
     };
     deployment
         .container()
-        .start_workspace_with_agent_context(
+        .launch_agent_in_workspace(
             &workspace,
             executor_profile_id.clone(),
             agent_context,
@@ -1100,7 +1117,7 @@ async fn spawn_agent_execution(
         from_column_id: None,
         to_column_id: None,
         workspace_id: Some(workspace.id),
-        session_id: None, // Session created inside start_workspace_with_agent_context
+        session_id: None, // Session created inside launch_agent_in_workspace
         executor: Some(executor_profile_id.to_string()),
         automation_rule_id: None,
         trigger_type: Some(EventTriggerType::Automation),

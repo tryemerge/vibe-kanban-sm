@@ -338,6 +338,27 @@ impl ExecutionProcess {
         Ok(count > 0)
     }
 
+    /// Check if a task has any running execution processes (coding agent, setup, or cleanup).
+    /// Matches the same logic as the has_in_progress_attempt subquery in Task::find_all_for_project.
+    pub async fn has_running_processes_for_task(
+        pool: &PgPool,
+        task_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let count: i64 = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!: i64"
+               FROM execution_processes ep
+               JOIN sessions s ON ep.session_id = s.id
+               JOIN workspaces w ON s.workspace_id = w.id
+               WHERE w.task_id = $1
+                 AND ep.status = 'running'
+                 AND ep.run_reason IN ('setupscript', 'cleanupscript', 'codingagent')"#,
+            task_id
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(count > 0)
+    }
+
     /// Find running dev servers for a specific workspace (across all sessions)
     pub async fn find_running_dev_servers_by_workspace(
         pool: &PgPool,

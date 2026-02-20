@@ -9,7 +9,7 @@ use tokio::{
 
 use super::types::{CLIMessage, ControlRequestType, ControlResponseMessage, ControlResponseType};
 use crate::executors::{
-    ExecutorError,
+    ExecutorError, ExecutorExitResult,
     claude::{
         client::ClaudeAgentClient,
         types::{Message, PermissionMode, SDKControlRequest, SDKControlRequestType},
@@ -28,6 +28,7 @@ impl ProtocolPeer {
         stdout: ChildStdout,
         client: Arc<ClaudeAgentClient>,
         interrupt_rx: oneshot::Receiver<()>,
+        exit_signal_tx: Option<oneshot::Sender<ExecutorExitResult>>,
     ) -> Self {
         let peer = Self {
             stdin: Arc::new(Mutex::new(stdin)),
@@ -35,8 +36,19 @@ impl ProtocolPeer {
 
         let reader_peer = peer.clone();
         tokio::spawn(async move {
-            if let Err(e) = reader_peer.read_loop(stdout, client, interrupt_rx).await {
+            let result = reader_peer.read_loop(stdout, client, interrupt_rx).await;
+            if let Err(ref e) = result {
                 tracing::error!("Protocol reader loop error: {}", e);
+            }
+            // Signal exit so the exit monitor can finalize the task
+            // without waiting for the OS process to exit
+            if let Some(tx) = exit_signal_tx {
+                let exit_result = if result.is_ok() {
+                    ExecutorExitResult::Success
+                } else {
+                    ExecutorExitResult::Failure
+                };
+                let _ = tx.send(exit_result);
             }
         });
 

@@ -23,10 +23,10 @@ pub struct KanbanColumn {
     pub agent_id: Option<Uuid>, // Agent assigned to handle tasks in this column
     /// What the agent should produce before moving to the next column
     pub deliverable: Option<String>,
-    /// Variable name for structured deliverable (e.g., "decision")
-    pub deliverable_variable: Option<String>,
-    /// JSON array of allowed values for the deliverable variable
-    pub deliverable_options: Option<String>,
+    /// Question the agent must answer before moving to the next column
+    pub question: Option<String>,
+    /// JSON array of valid answer options for the question
+    pub answer_options: Option<String>,
     pub is_template: bool,
     pub template_group_id: Option<String>,
     #[ts(type = "Date")]
@@ -47,8 +47,8 @@ pub struct CreateKanbanColumn {
     pub status: Option<TaskStatus>, // Defaults to 'todo' if not specified
     pub agent_id: Option<Uuid>,
     pub deliverable: Option<String>,
-    pub deliverable_variable: Option<String>,
-    pub deliverable_options: Option<String>,
+    pub question: Option<String>,
+    pub answer_options: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -69,8 +69,8 @@ pub struct UpdateKanbanColumn {
     #[ts(optional, type = "string | null")]
     pub agent_id: Option<Option<Uuid>>,
     pub deliverable: Option<String>,
-    pub deliverable_variable: Option<String>,
-    pub deliverable_options: Option<String>,
+    pub question: Option<String>,
+    pub answer_options: Option<String>,
 }
 
 impl KanbanColumn {
@@ -93,8 +93,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
-                      deliverable_variable,
-                      deliverable_options,
+                      question,
+                      answer_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -124,8 +124,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
-                      deliverable_variable,
-                      deliverable_options,
+                      question,
+                      answer_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -158,8 +158,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
-                      deliverable_variable,
-                      deliverable_options,
+                      question,
+                      answer_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -192,8 +192,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
-                      deliverable_variable,
-                      deliverable_options,
+                      question,
+                      answer_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -226,8 +226,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
-                      deliverable_variable,
-                      deliverable_options,
+                      question,
+                      answer_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",
@@ -261,7 +261,7 @@ impl KanbanColumn {
 
         sqlx::query_as!(
             KanbanColumn,
-            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable, deliverable_variable, deliverable_options, is_template, template_group_id)
+            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable, question, answer_options, is_template, template_group_id)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id!: Uuid",
@@ -275,8 +275,8 @@ impl KanbanColumn {
                          status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
                          deliverable,
-                         deliverable_variable,
-                         deliverable_options,
+                         question,
+                         answer_options,
                          is_template as "is_template!: bool",
                          template_group_id,
                          created_at as "created_at!: DateTime<Utc>",
@@ -293,8 +293,8 @@ impl KanbanColumn {
             status_str,
             data.agent_id,
             data.deliverable,
-            data.deliverable_variable,
-            data.deliverable_options,
+            data.question,
+            data.answer_options,
             is_template,
             template_group_id
         )
@@ -316,7 +316,7 @@ impl KanbanColumn {
 
         sqlx::query_as!(
             KanbanColumn,
-            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable, deliverable_variable, deliverable_options, is_template, template_group_id)
+            r#"INSERT INTO kanban_columns (id, board_id, name, slug, position, color, is_initial, is_terminal, starts_workflow, status, agent_id, deliverable, question, answer_options, is_template, template_group_id)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id!: Uuid",
@@ -330,8 +330,8 @@ impl KanbanColumn {
                          status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
                          deliverable,
-                         deliverable_variable,
-                         deliverable_options,
+                         question,
+                         answer_options,
                          is_template as "is_template!: bool",
                          template_group_id,
                          created_at as "created_at!: DateTime<Utc>",
@@ -348,8 +348,8 @@ impl KanbanColumn {
             status_str,
             new_agent_id,
             source.deliverable,
-            source.deliverable_variable,
-            source.deliverable_options,
+            source.question,
+            source.answer_options,
             is_template,
             template_group_id
         )
@@ -385,13 +385,13 @@ impl KanbanColumn {
             Some(inner) => inner.clone(),
         };
         let deliverable = data.deliverable.clone().or(existing.deliverable);
-        let deliverable_variable = data.deliverable_variable.clone().or(existing.deliverable_variable);
-        let deliverable_options = data.deliverable_options.clone().or(existing.deliverable_options);
+        let question = data.question.clone().or(existing.question);
+        let answer_options = data.answer_options.clone().or(existing.answer_options);
 
         sqlx::query_as!(
             KanbanColumn,
             r#"UPDATE kanban_columns
-               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, starts_workflow = $8, status = $9, agent_id = $10, deliverable = $11, deliverable_variable = $12, deliverable_options = $13,
+               SET name = $2, slug = $3, position = $4, color = $5, is_initial = $6, is_terminal = $7, starts_workflow = $8, status = $9, agent_id = $10, deliverable = $11, question = $12, answer_options = $13,
                    updated_at = NOW()
                WHERE id = $1
                RETURNING id as "id!: Uuid",
@@ -406,8 +406,8 @@ impl KanbanColumn {
                          status as "status!: TaskStatus",
                          agent_id as "agent_id: Uuid",
                          deliverable,
-                         deliverable_variable,
-                         deliverable_options,
+                         question,
+                         answer_options,
                          is_template as "is_template!: bool",
                          template_group_id,
                          created_at as "created_at!: DateTime<Utc>",
@@ -423,8 +423,8 @@ impl KanbanColumn {
             status_str,
             agent_id,
             deliverable,
-            deliverable_variable,
-            deliverable_options
+            question,
+            answer_options
         )
         .fetch_one(pool)
         .await
@@ -472,6 +472,123 @@ impl KanbanColumn {
         Ok(result.rows_affected())
     }
 
+    /// Atomically set a column as the initial column for its board.
+    /// Clears is_initial from all other non-template columns on the same board first.
+    pub async fn set_as_initial(
+        pool: &PgPool,
+        board_id: Uuid,
+        column_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = pool.begin().await?;
+        sqlx::query!(
+            "UPDATE kanban_columns SET is_initial = FALSE, updated_at = NOW() WHERE board_id = $1 AND is_initial = TRUE AND is_template = FALSE",
+            board_id
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query!(
+            "UPDATE kanban_columns SET is_initial = TRUE, updated_at = NOW() WHERE id = $1 AND board_id = $2",
+            column_id,
+            board_id
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Clear the initial column flag for a board (set none as initial).
+    pub async fn clear_initial(pool: &PgPool, board_id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "UPDATE kanban_columns SET is_initial = FALSE, updated_at = NOW() WHERE board_id = $1 AND is_initial = TRUE AND is_template = FALSE",
+            board_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Atomically set a column as the workflow start column for its board.
+    /// Clears starts_workflow from all other non-template columns on the same board first.
+    pub async fn set_as_workflow_start(
+        pool: &PgPool,
+        board_id: Uuid,
+        column_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = pool.begin().await?;
+        sqlx::query!(
+            "UPDATE kanban_columns SET starts_workflow = FALSE, updated_at = NOW() WHERE board_id = $1 AND starts_workflow = TRUE AND is_template = FALSE",
+            board_id
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query!(
+            "UPDATE kanban_columns SET starts_workflow = TRUE, updated_at = NOW() WHERE id = $1 AND board_id = $2",
+            column_id,
+            board_id
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Clear the workflow start column flag for a board (set none as workflow start).
+    pub async fn clear_workflow_start(pool: &PgPool, board_id: Uuid) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "UPDATE kanban_columns SET starts_workflow = FALSE, updated_at = NOW() WHERE board_id = $1 AND starts_workflow = TRUE AND is_template = FALSE",
+            board_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set or clear the terminal flag for a single column.
+    pub async fn set_terminal(
+        pool: &PgPool,
+        column_id: Uuid,
+        is_terminal: bool,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "UPDATE kanban_columns SET is_terminal = $2, updated_at = NOW() WHERE id = $1",
+            column_id,
+            is_terminal
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Batch-update terminal columns for a board: set specified columns as terminal,
+    /// clear all others.
+    pub async fn set_terminal_columns(
+        pool: &PgPool,
+        board_id: Uuid,
+        terminal_column_ids: &[Uuid],
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = pool.begin().await?;
+        // Clear all terminal flags for this board
+        sqlx::query!(
+            "UPDATE kanban_columns SET is_terminal = FALSE, updated_at = NOW() WHERE board_id = $1 AND is_template = FALSE",
+            board_id
+        )
+        .execute(&mut *tx)
+        .await?;
+        // Set terminal on specified columns
+        for col_id in terminal_column_ids {
+            sqlx::query!(
+                "UPDATE kanban_columns SET is_terminal = TRUE, updated_at = NOW() WHERE id = $1 AND board_id = $2",
+                col_id,
+                board_id
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Find all template columns by template group ID
     pub async fn find_by_template_group(
         pool: &PgPool,
@@ -491,8 +608,8 @@ impl KanbanColumn {
                       status as "status!: TaskStatus",
                       agent_id as "agent_id: Uuid",
                       deliverable,
-                      deliverable_variable,
-                      deliverable_options,
+                      question,
+                      answer_options,
                       is_template as "is_template!: bool",
                       template_group_id,
                       created_at as "created_at!: DateTime<Utc>",

@@ -185,6 +185,7 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
             column_id: null,
             parent_workspace_id: null,
             image_ids: images.length > 0 ? images.map((img) => img.id) : null,
+            task_group_id: null,
           },
         },
         { onSuccess: () => modal.remove() }
@@ -202,6 +203,7 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
           mode === 'subtask' ? props.parentTaskAttemptId : null,
         image_ids: imageIds,
         shared_task_id: null,
+        task_group_id: null,
       };
       const shouldAutoStart = value.autoStart && !forceCreateOnlyRef.current;
       if (shouldAutoStart) {

@@ -18,6 +18,8 @@ pub struct TaskDependency {
     /// When this dependency was satisfied (null if still blocking)
     #[ts(type = "Date | null")]
     pub satisfied_at: Option<DateTime<Utc>>,
+    /// Whether this dependency was auto-created by task group ordering
+    pub is_auto_group: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -35,7 +37,8 @@ impl TaskDependency {
                       task_id as "task_id!: Uuid",
                       depends_on_task_id as "depends_on_task_id!: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
-                      satisfied_at as "satisfied_at: DateTime<Utc>"
+                      satisfied_at as "satisfied_at: DateTime<Utc>",
+                      is_auto_group as "is_auto_group!: bool"
                FROM task_dependencies
                WHERE task_id = $1"#,
             task_id
@@ -56,7 +59,8 @@ impl TaskDependency {
                       task_id as "task_id!: Uuid",
                       depends_on_task_id as "depends_on_task_id!: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
-                      satisfied_at as "satisfied_at: DateTime<Utc>"
+                      satisfied_at as "satisfied_at: DateTime<Utc>",
+                      is_auto_group as "is_auto_group!: bool"
                FROM task_dependencies
                WHERE depends_on_task_id = $1"#,
             depends_on_task_id
@@ -73,7 +77,8 @@ impl TaskDependency {
                       task_id as "task_id!: Uuid",
                       depends_on_task_id as "depends_on_task_id!: Uuid",
                       created_at as "created_at!: DateTime<Utc>",
-                      satisfied_at as "satisfied_at: DateTime<Utc>"
+                      satisfied_at as "satisfied_at: DateTime<Utc>",
+                      is_auto_group as "is_auto_group!: bool"
                FROM task_dependencies
                WHERE id = $1"#,
             id
@@ -84,22 +89,40 @@ impl TaskDependency {
 
     /// Create a new dependency
     pub async fn create(pool: &PgPool, data: &CreateTaskDependency) -> Result<Self, sqlx::Error> {
+        Self::create_with_auto_group(pool, data, false).await
+    }
+
+    /// Create a new dependency, optionally marking it as auto-created by task group ordering
+    pub async fn create_with_auto_group(pool: &PgPool, data: &CreateTaskDependency, is_auto_group: bool) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         sqlx::query_as!(
             TaskDependency,
-            r#"INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
-               VALUES ($1, $2, $3)
+            r#"INSERT INTO task_dependencies (id, task_id, depends_on_task_id, is_auto_group)
+               VALUES ($1, $2, $3, $4)
                RETURNING id as "id!: Uuid",
                          task_id as "task_id!: Uuid",
                          depends_on_task_id as "depends_on_task_id!: Uuid",
                          created_at as "created_at!: DateTime<Utc>",
-                         satisfied_at as "satisfied_at: DateTime<Utc>""#,
+                         satisfied_at as "satisfied_at: DateTime<Utc>",
+                         is_auto_group as "is_auto_group!: bool""#,
             id,
             data.task_id,
             data.depends_on_task_id,
+            is_auto_group,
         )
         .fetch_one(pool)
         .await
+    }
+
+    /// Delete all auto-group dependencies for a task (both directions)
+    pub async fn delete_auto_group_by_task(pool: &PgPool, task_id: Uuid) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query!(
+            "DELETE FROM task_dependencies WHERE (task_id = $1 OR depends_on_task_id = $1) AND is_auto_group = TRUE",
+            task_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     /// Check if a task has any unsatisfied dependencies (the blocking guard)

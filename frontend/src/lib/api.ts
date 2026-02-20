@@ -112,6 +112,10 @@ import {
   CreateTaskTrigger,
   TaskDependency,
   CreateTaskDependency,
+  TaskGroup,
+  CreateTaskGroup,
+  UpdateTaskGroup,
+  TaskGroupDependency,
   TaskLabel,
   CreateTaskLabel,
   UpdateTaskLabel,
@@ -1520,6 +1524,21 @@ export const boardsApi = {
     );
     return handleApiResponse<KanbanColumn[]>(response);
   },
+
+  updateConfig: async (
+    boardId: string,
+    config: {
+      initial_column_id?: string;
+      workflow_column_id?: string;
+      terminal_column_ids?: string[];
+    }
+  ): Promise<KanbanColumn[]> => {
+    const response = await makeRequest(`/api/boards/${boardId}/config`, {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+    return handleApiResponse<KanbanColumn[]>(response);
+  },
 };
 
 // State Transitions API (workflow routing rules)
@@ -1908,6 +1927,128 @@ export const labelsApi = {
       {
         method: 'POST',
         body: JSON.stringify({ label_ids: labelIds }),
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+};
+
+// ─── Task Groups API ──────────────────────────────────────────────
+
+export const taskGroupsApi = {
+  list: async (projectId: string): Promise<TaskGroup[]> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/task-groups`
+    );
+    return handleApiResponse<TaskGroup[]>(response);
+  },
+
+  create: async (
+    projectId: string,
+    data: Omit<CreateTaskGroup, 'project_id'>
+  ): Promise<TaskGroup> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/task-groups`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...data, project_id: projectId }),
+      }
+    );
+    return handleApiResponse<TaskGroup>(response);
+  },
+
+  update: async (
+    projectId: string,
+    groupId: string,
+    data: UpdateTaskGroup
+  ): Promise<TaskGroup> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/task-groups/${groupId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
+    return handleApiResponse<TaskGroup>(response);
+  },
+
+  delete: async (projectId: string, groupId: string): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/task-groups/${groupId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  reorder: async (projectId: string, groupIds: string[]): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/task-groups/reorder`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ group_ids: groupIds }),
+      }
+    );
+    return handleApiResponse<void>(response);
+  },
+
+  addTask: async (taskId: string, groupId: string): Promise<Task> => {
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/task-group/${groupId}`,
+      {
+        method: 'POST',
+      }
+    );
+    return handleApiResponse<Task>(response);
+  },
+
+  removeTask: async (taskId: string): Promise<Task> => {
+    const response = await makeRequest(
+      `/api/tasks/${taskId}/task-group`,
+      {
+        method: 'DELETE',
+      }
+    );
+    return handleApiResponse<Task>(response);
+  },
+
+  // Inter-group dependencies
+  listDependencies: async (
+    projectId: string
+  ): Promise<TaskGroupDependency[]> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/task-group-dependencies`
+    );
+    return handleApiResponse<TaskGroupDependency[]>(response);
+  },
+
+  addDependency: async (
+    projectId: string,
+    groupId: string,
+    dependsOnGroupId: string
+  ): Promise<TaskGroupDependency> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/task-group-dependencies`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          task_group_id: groupId,
+          depends_on_group_id: dependsOnGroupId,
+        }),
+      }
+    );
+    return handleApiResponse<TaskGroupDependency>(response);
+  },
+
+  removeDependency: async (
+    projectId: string,
+    depId: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/task-group-dependencies/${depId}`,
+      {
+        method: 'DELETE',
       }
     );
     return handleApiResponse<void>(response);

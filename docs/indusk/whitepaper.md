@@ -36,7 +36,33 @@ Individual developers using AI assistants see productivity gains. But those gain
 
 InDusk treats AI-assisted software development as a structured engineering process rather than a collection of isolated prompting sessions.
 
-Three core systems make this work:
+At its core, InDusk is a **hierarchical orchestration system** for AI agents:
+
+```
+                    PROJECT
+                       |
+        ┌──────────────┼──────────────┐
+        |              |              |
+   Task Group      Task Group     Task Group
+     (Auth)        (Billing)      (Admin)
+        |              |              |
+    ┌───┼───┐      ┌───┼───┐      ┌───┼───┐
+    |   |   |      |   |   |      |   |   |
+  Task Task Task  Task Task Task  Task Task Task
+    |   |   |      |   |   |      |   |   |
+    ↓   ↓   ↓      ↓   ↓   ↓      ↓   ↓   ↓
+  Pipeline       Pipeline       Pipeline
+  (workflow)     (workflow)     (workflow)
+```
+
+**Three layers:**
+1. **Task Pipeline** — Each task flows through workflow states (Research → Dev → Test → Review)
+2. **Task Group DAG** — Groups of related tasks with internal dependencies (sequential/parallel)
+3. **Inter-Group DAG** — Groups depend on other groups (Auth before Billing before Admin)
+
+Each layer has its own orchestration logic, its own agent behaviors, and its own observability surface.
+
+Five core systems make this work:
 
 ### 1. Workflow Pipelines — Not Just Kanban
 
@@ -96,7 +122,111 @@ Task 1 builds Stripe billing and produces an ADR explaining the approach, a patt
 
 By the tenth task on a project, agents have a richer understanding of the codebase than most new team members would after a week of onboarding.
 
-### 3. Isolated Workspaces — Safe Parallelism
+### 3. Hierarchical Task Orchestration — Not Just Sequential Execution
+
+This is where InDusk diverges from every other AI coding tool. Most systems treat tasks as a flat list: task 1, task 2, task 3, all independent or manually ordered. InDusk organizes work as a **three-layer hierarchical DAG** (Directed Acyclic Graph) that mirrors how real engineering teams structure projects:
+
+```
+Layer 1: Task Pipeline        (each task flows through workflow states)
+              ↓
+Layer 2: Task Group DAG        (groups of related tasks, internal dependencies)
+              ↓
+Layer 3: Inter-Group DAG       (groups depend on other groups)
+```
+
+#### Layer 1: Individual Task Pipelines
+
+Each task flows through your configured workflow pipeline (Research → Development → Testing → Review). This is the single-task execution model described in section 1.
+
+#### Layer 2: Task Groups with Internal Dependencies
+
+Related tasks are organized into **task groups** — project-scoped collections that execute as coordinated units:
+
+**Example: "Authentication Feature" group**
+```
+├─ Add auth types
+├─ Add auth API (depends on types)
+├─ Add auth middleware (depends on API)
+└─ Add auth integration tests (depends on middleware)
+```
+
+When you add tasks to a group, InDusk automatically creates dependencies between them. But here's where it gets powerful: **groups have an analysis phase**.
+
+Before execution begins, an orchestrator agent reviews the group's tasks and:
+1. **Identifies gaps** — "You have API and UI tasks, but you're missing the types definition"
+2. **Finds parallelization opportunities** — "Types and config can run concurrently since they don't overlap"
+3. **Moves out-of-scope work** — "The CI pipeline task doesn't belong in auth — moved to infrastructure backlog"
+4. **Builds an internal execution DAG** — Determines optimal execution order
+
+The result is a DAG within the group:
+```
+Parallel Set 1: [Auth types task, Auth config task]
+        ↓
+Sequential Set 2: [Auth API task]
+        ↓
+Parallel Set 3: [Auth middleware task, Auth UI task]
+        ↓
+Sequential Set 4: [Integration tests task]
+```
+
+Tasks that can safely run in parallel (no file conflicts, no dependency relationships) do so. Tasks with dependencies run in order. **This is automatic.** You don't draw the graph. The analysis agent does.
+
+#### Layer 3: Inter-Group Dependencies
+
+Task groups themselves form a higher-level dependency graph:
+
+```
+[Auth Feature Group]
+       ↓
+[User Profile Group] ──→ [Billing Integration Group]
+       ↓                          ↓
+    [Admin Dashboard Group]
+```
+
+The inter-group DAG determines **execution priority** across the entire project. Billing can't start until Auth completes. User Profiles and Billing can run in parallel once Auth is done. Admin Dashboard waits for both.
+
+This is the missing abstraction for large AI-driven projects. Without it, you're manually sequencing dozens or hundreds of tasks, trying to remember which features depend on which foundations. With it, the system handles orchestration while you focus on defining the work.
+
+#### Backlog Groups and Auto-Promotion
+
+During execution, agents discover work that wasn't in the original plan. When a developer agent realizes "we need a migration script" or "this needs a webhook handler," it doesn't silently add inline comments or wait for you to notice. It creates a **backlog task group**.
+
+Backlog groups are tagged and tracked. When their dependencies clear (e.g., the Auth group completes), they **automatically promote** into the analysis phase and enter the pipeline.
+
+This creates a continuous, self-organizing workflow:
+1. Active groups execute
+2. Agents discover gaps and create backlog groups
+3. Backlog groups auto-promote when unblocked
+4. New groups enter analysis, get organized, and execute
+5. Cycle continues
+
+The system manages the queue. You manage the priorities.
+
+#### Shared Workspaces Within Groups (Planned)
+
+Currently, each task runs in its own git worktree (layer 1 isolation). The next evolution: **task groups share a single worktree and branch**. All tasks within "Auth Feature" work on the same checkout, with the parallel sets executing concurrently and sequential sets building on each other's changes. One branch, one PR for the entire feature.
+
+This is the hardest unsolved problem in AI coding tools — coordinated multi-agent work on shared state. InDusk's hierarchical orchestration makes it tractable: the analysis phase determines safe parallelism, the internal DAG prevents race conditions, and the group lifecycle ensures no mid-execution modifications.
+
+### 4. Observability at the Orchestration Level
+
+Here's the insight that makes this whole system trustworthy: **you don't need to watch every agent's terminal output**. You need to see orchestration decisions.
+
+InDusk maintains an **orchestration event log** separate from task-level execution logs:
+
+- When a group enters analysis: what the planner decided, what tasks were added/removed, what the execution plan is
+- When tasks move between parallel sets: why this task started now, what's next
+- When agents discover out-of-scope work: what backlog group was created, why
+- When backlog groups auto-promote: which dependencies cleared, what triggered it
+- When inter-group dependencies satisfy: which groups are now unblocked
+
+Every event has a human-readable summary: *"Planner identified missing auth types task and added it to the group."* *"Billing group promoted from backlog because Auth group completed."* *"Developer agent moved CI task to infrastructure backlog."*
+
+This is the **decision layer**. You can step away from the terminal and come back to see *what happened* and *what's happening next* without reading thousands of lines of agent stream-of-consciousness.
+
+The orchestration feed answers the question that makes AI-assisted development feel safe: "Is the system making sensible decisions?"
+
+### 5. Isolated Workspaces — Safe Parallelism
 
 Every task runs in its own git worktree on its own branch. Agents can't interfere with each other. When a task moves between workflow stages, the same branch follows — Research and Development operate on the same checkout.
 
@@ -192,11 +322,28 @@ InDusk is our answer: give AI agents the same structure that makes human enginee
 
 ## Current Status
 
-InDusk is an active, open-source project (MIT licensed), forked from Vibe Kanban in December 2025. The core systems — workflow engine, context compounding, structured deliverables, task triggers, file locking, board templates — are built and functional.
+InDusk is an active, open-source project (MIT licensed), forked from Vibe Kanban in December 2025.
 
-The project is under active development with a focus on validating the context compounding thesis through real-world usage.
+**Implemented and working:**
+- Workflow engine with configurable pipelines, conditional routing, and escalation paths
+- Context artifacts with scoped injection (global/task/path), token budgets, and type priorities
+- Structured deliverables via `.vibe/decision.json` convention
+- Task triggers (soft dependencies between tasks)
+- File locking for parallel execution safety
+- Board templates for reusable workflow configurations
+- **Task groups (ADR-012)** — project-scoped grouping with auto-dependencies and immutability
+- Inter-group dependency DAG for coordinating multiple groups
+- Swim lane visualization by task group
 
-**Get involved:** [GitHub Repository](https://github.com/example/indusk)
+**Designed and planned (implementation in progress):**
+- **Group lifecycle orchestration (ADR-014)** — analysis phase, internal execution DAGs, backlog auto-promotion
+- **Orchestration event system (ADR-014)** — decision-level logging and observability feed
+- **Group-scoped context (ADR-013)** — knowledge inheritance along the inter-group DAG
+- Shared workspaces per group (multiple agents, one branch)
+
+The project is under active development with a focus on validating the hierarchical orchestration and context compounding theses through real-world usage.
+
+**Get involved:** [GitHub Repository](https://github.com/anthropics/vibe-kanban) (upstream), InDusk fork coming soon
 
 ---
 

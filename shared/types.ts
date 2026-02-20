@@ -32,15 +32,15 @@ starts_workflow: boolean, status: TaskStatus, agent_id: string | null,
  */
 deliverable: string | null, 
 /**
- * Variable name for structured deliverable (e.g., "decision")
+ * Question the agent must answer before moving to the next column
  */
-deliverable_variable: string | null, 
+question: string | null, 
 /**
- * JSON array of allowed values for the deliverable variable
+ * JSON array of valid answer options for the question
  */
-deliverable_options: string | null, is_template: boolean, template_group_id: string | null, created_at: Date, updated_at: Date, };
+answer_options: string | null, is_template: boolean, template_group_id: string | null, created_at: Date, updated_at: Date, };
 
-export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, agent_id: string | null, deliverable: string | null, deliverable_variable: string | null, deliverable_options: string | null, };
+export type CreateKanbanColumn = { name: string, slug: string, position: number, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, agent_id: string | null, deliverable: string | null, question: string | null, answer_options: string | null, };
 
 export type UpdateKanbanColumn = { name: string | null, slug: string | null, position: number | null, color: string | null, is_initial: boolean | null, is_terminal: boolean | null, starts_workflow: boolean | null, status: TaskStatus | null, 
 /**
@@ -49,7 +49,7 @@ export type UpdateKanbanColumn = { name: string | null, slug: string | null, pos
  * - Some(None): Clear the agent (field is null in request)
  * - Some(Some(uuid)): Set to new agent
  */
-agent_id?: string | null, deliverable: string | null, deliverable_variable: string | null, deliverable_options: string | null, };
+agent_id?: string | null, deliverable: string | null, question: string | null, answer_options: string | null, };
 
 export type StateTransition = { id: string, 
 /**
@@ -77,10 +77,6 @@ else_column_id: string | null,
  */
 escalation_column_id: string | null, name: string | null, requires_confirmation: boolean, 
 /**
- * JSON key to check in .vibe/decision.json (e.g., "decision")
- */
-condition_key: string | null, 
-/**
  * Value to match for this transition (e.g., "approve" or "reject")
  */
 condition_value: string | null, 
@@ -101,7 +97,7 @@ else_column_id: string | null, else_column_name: string | null,
 /**
  * Where to go when max_failures is reached (escalation path)
  */
-escalation_column_id: string | null, escalation_column_name: string | null, name: string | null, requires_confirmation: boolean, condition_key: string | null, condition_value: string | null, 
+escalation_column_id: string | null, escalation_column_name: string | null, name: string | null, requires_confirmation: boolean, condition_value: string | null, 
 /**
  * Number of times the else path can be taken before escalation
  */
@@ -123,7 +119,7 @@ else_column_id: string | null,
 /**
  * Where to go when max_failures is reached (escalation path)
  */
-escalation_column_id: string | null, name: string | null, requires_confirmation: boolean | null, condition_key: string | null, condition_value: string | null, 
+escalation_column_id: string | null, name: string | null, requires_confirmation: boolean | null, condition_value: string | null, 
 /**
  * Number of times the else path can be taken before escalation
  */
@@ -133,7 +129,7 @@ export type UpdateStateTransition = { from_column_id: string | null, to_column_i
 /**
  * Double Option: None = keep existing, Some(None) = set null, Some(Some(id)) = set value
  */
-else_column_id?: string | null, escalation_column_id?: string | null, name: string | null, requires_confirmation: boolean | null, condition_key: string | null, condition_value: string | null, max_failures: number | null, };
+else_column_id?: string | null, escalation_column_id?: string | null, name: string | null, requires_confirmation: boolean | null, condition_value: string | null, max_failures: number | null, };
 
 export type TransitionScope = "board" | "project" | "task";
 
@@ -159,19 +155,17 @@ export type UpdateTag = { tag_name: string | null, content: string | null, };
 
 export type TaskStatus = "todo" | "inprogress" | "inreview" | "done" | "cancelled";
 
-export type TaskState = "queued" | "transitioning";
+export type TaskState = "queued" | "inprogress" | "awaitingresponse" | "transitioning";
 
-export type AgentStatus = "running" | "awaitingresponse";
+export type Task = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, task_group_id: string | null, task_state: TaskState, workflow_decisions: Record<string, unknown> | null, created_at: string, updated_at: string, };
 
-export type Task = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, task_state: TaskState, agent_status: AgentStatus | null, created_at: string, updated_at: string, };
-
-export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, latest_attempt_id: string | null, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, task_state: TaskState, agent_status: AgentStatus | null, created_at: string, updated_at: string, };
+export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, latest_attempt_id: string | null, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, column_id: string | null, parent_workspace_id: string | null, shared_task_id: string | null, task_group_id: string | null, task_state: TaskState, workflow_decisions: Record<string, unknown> | null, created_at: string, updated_at: string, };
 
 export type TaskRelationships = { parent_task: Task | null, current_workspace: Workspace, children: Array<Task>, };
 
-export type CreateTask = { project_id: string, title: string, description: string | null, status: TaskStatus | null, column_id: string | null, parent_workspace_id: string | null, image_ids: Array<string> | null, shared_task_id: string | null, };
+export type CreateTask = { project_id: string, title: string, description: string | null, status: TaskStatus | null, column_id: string | null, parent_workspace_id: string | null, image_ids: Array<string> | null, shared_task_id: string | null, task_group_id: string | null, };
 
-export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, column_id: string | null, parent_workspace_id: string | null, image_ids: Array<string> | null, };
+export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, column_id: string | null, parent_workspace_id: string | null, image_ids: Array<string> | null, task_group_id: string | null, };
 
 export type TaskTrigger = { id: string, 
 /**
@@ -211,9 +205,33 @@ depends_on_task_id: string, created_at: Date,
 /**
  * When this dependency was satisfied (null if still blocking)
  */
-satisfied_at: Date | null, };
+satisfied_at: Date | null, 
+/**
+ * Whether this dependency was auto-created by task group ordering
+ */
+is_auto_group: boolean, };
 
 export type CreateTaskDependency = { task_id: string, depends_on_task_id: string, };
+
+export type TaskGroup = { id: string, project_id: string, name: string, color: string | null, position: number, started_at: Date | null, created_at: Date, };
+
+export type CreateTaskGroup = { project_id: string, name: string, color: string | null, };
+
+export type UpdateTaskGroup = { name: string | null, color: string | null, };
+
+export type TaskGroupDependency = { id: string, 
+/**
+ * The blocked group
+ */
+task_group_id: string, 
+/**
+ * The prerequisite group that must complete first
+ */
+depends_on_group_id: string, created_at: Date, 
+/**
+ * When this dependency was satisfied (null if still blocking)
+ */
+satisfied_at: Date | null, };
 
 export type TaskLabel = { id: string, project_id: string, name: string, color: string | null, position: number, created_at: Date, };
 
@@ -764,7 +782,7 @@ export type WebhookConfig = { url: string, method: string | null, headers: JsonV
 
 export type NotifyConfig = { channel: string, webhook_url: string, message_template: string, };
 
-export type TaskEventType = "column_enter" | "column_exit" | "agent_start" | "agent_complete" | "agent_failed" | "commit" | "manual_action" | "task_created" | "status_change" | "else_transition" | "decision_validation_failed" | "artifact_created";
+export type TaskEventType = "column_enter" | "column_exit" | "agent_start" | "agent_complete" | "agent_failed" | "commit" | "manual_action" | "task_created" | "status_change" | "else_transition" | "decision_validation_failed" | "artifact_created" | "task_state_change";
 
 export type EventTriggerType = "manual" | "automation" | "drag_drop" | "system";
 
@@ -836,7 +854,7 @@ summary: EvaluateRunSummary, notes: string | null, created_at: string, };
 
 export type EvaluateRunSummary = { tasks: Array<EvaluateRunTask>, artifacts: Array<EvaluateRunArtifact>, events: Array<EvaluateRunEvent>, stats: EvaluateRunStats, };
 
-export type EvaluateRunTask = { title: string, status: string, agent_status: string | null, attempts: Array<EvaluateRunAttempt>, };
+export type EvaluateRunTask = { title: string, status: string, task_state: string, attempts: Array<EvaluateRunAttempt>, };
 
 export type EvaluateRunAttempt = { branch: string, completion_summary: string | null, final_context: string | null, };
 

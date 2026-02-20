@@ -21,6 +21,7 @@ import {
   OrganizationSettings,
   ProjectSettings,
   SettingsLayout,
+  TaskGroupsSettings,
   TemplatesSettings,
 } from '@/pages/settings/';
 import { UserSystemProvider, useUserSystem } from '@/components/ConfigProvider';
@@ -157,6 +158,7 @@ function AppContent() {
                   <Route path="agent-definitions" element={<AgentDefinitionsSettings />} />
                   <Route path="templates" element={<TemplatesSettings />} />
                   <Route path="knowledge" element={<KnowledgeBaseSettings />} />
+                  <Route path="task-groups" element={<TaskGroupsSettings />} />
                   <Route path="evaluate" element={<EvaluateSettings />} />
                   <Route path="mcp" element={<McpSettings />} />
                 </Route>

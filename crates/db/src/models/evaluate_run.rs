@@ -36,7 +36,7 @@ pub struct EvaluateRunSummary {
 pub struct EvaluateRunTask {
     pub title: String,
     pub status: String,
-    pub agent_status: Option<String>,
+    pub task_state: String,
     pub attempts: Vec<EvaluateRunAttempt>,
 }
 

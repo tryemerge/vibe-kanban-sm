@@ -12,6 +12,7 @@ import {
   RefreshCw,
   AlertCircle,
   FileText,
+  Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useTaskEvents } from '@/hooks';
@@ -88,6 +89,11 @@ const EVENT_CONFIG: Record<
     label: 'Artifact created',
     color: 'bg-violet-500/10 text-violet-500 border-violet-500/20',
   },
+  task_state_change: {
+    icon: Zap,
+    label: 'State changed',
+    color: 'bg-teal-500/10 text-teal-500 border-teal-500/20',
+  },
 };
 
 const ACTOR_ICONS: Record<ActorType, typeof User> = {
@@ -143,6 +149,35 @@ function EventItem({ event }: { event: TaskEventWithNames }) {
           return `${shortHash}: ${event.commit_message}`;
         }
         return config.label;
+      case 'task_state_change': {
+        const meta = event.metadata as Record<string, string> | null;
+        const newState = meta?.new_state;
+        if (newState) {
+          const labels: Record<string, string> = {
+            queued: 'Queued',
+            inprogress: 'In Progress',
+            awaiting_response: 'Awaiting Response',
+            transitioning: 'Transitioning',
+          };
+          return `State → ${labels[newState] || newState}`;
+        }
+        return config.label;
+      }
+      case 'status_change': {
+        const meta = event.metadata as Record<string, string> | null;
+        const newStatus = meta?.new_status;
+        if (newStatus) {
+          const labels: Record<string, string> = {
+            todo: 'To Do',
+            inprogress: 'In Progress',
+            inreview: 'In Review',
+            done: 'Done',
+            cancelled: 'Cancelled',
+          };
+          return `Status → ${labels[newStatus] || newStatus}`;
+        }
+        return config.label;
+      }
       default:
         return config.label;
     }

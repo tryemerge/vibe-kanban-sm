@@ -30,7 +30,7 @@ use db::models::{
     project_repo::ProjectRepo,
     repo::{Repo, RepoError},
     session::{CreateSession, Session},
-    task::{Task, TaskRelationships, TaskStatus, TaskWithAttemptStatus},
+    task::{Task, TaskRelationships, TaskState, TaskStatus, TaskWithAttemptStatus},
     task_dependency::TaskDependency,
     task_trigger::{TaskTrigger, TriggerCondition},
     workspace::{CreateWorkspace, Workspace, WorkspaceError},
@@ -1309,6 +1309,7 @@ pub async fn cancel_task_attempt(
         if let Some(initial_col) = KanbanColumn::find_initial(pool, board.id).await? {
             Task::update_column_id(pool, task.id, Some(initial_col.id)).await?;
             Task::update_status(pool, task.id, TaskStatus::Todo).await?;
+            Task::update_task_state(pool, task.id, TaskState::Queued).await?;
         }
     }
 

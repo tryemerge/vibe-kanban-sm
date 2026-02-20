@@ -36,8 +36,6 @@ pub struct StateTransition {
     pub escalation_column_id: Option<Uuid>,
     pub name: Option<String>,
     pub requires_confirmation: bool,
-    /// JSON key to check in .vibe/decision.json (e.g., "decision")
-    pub condition_key: Option<String>,
     /// Value to match for this transition (e.g., "approve" or "reject")
     pub condition_value: Option<String>,
     /// Number of times the else path can be taken before escalation
@@ -81,7 +79,6 @@ pub struct StateTransitionWithColumns {
     pub escalation_column_name: Option<String>,
     pub name: Option<String>,
     pub requires_confirmation: bool,
-    pub condition_key: Option<String>,
     pub condition_value: Option<String>,
     /// Number of times the else path can be taken before escalation
     pub max_failures: Option<i32>,
@@ -102,7 +99,6 @@ pub struct CreateStateTransition {
     pub escalation_column_id: Option<Uuid>,
     pub name: Option<String>,
     pub requires_confirmation: Option<bool>,
-    pub condition_key: Option<String>,
     pub condition_value: Option<String>,
     /// Number of times the else path can be taken before escalation
     pub max_failures: Option<i32>,
@@ -121,7 +117,6 @@ pub struct UpdateStateTransition {
     pub escalation_column_id: Option<Option<Uuid>>,
     pub name: Option<String>,
     pub requires_confirmation: Option<bool>,
-    pub condition_key: Option<String>,
     pub condition_value: Option<String>,
     pub max_failures: Option<i32>,
 }
@@ -141,7 +136,6 @@ impl StateTransition {
                       escalation_column_id as "escalation_column_id: Uuid",
                       name,
                       requires_confirmation as "requires_confirmation!: bool",
-                      condition_key,
                       condition_value,
                       max_failures,
                       is_template as "is_template!: bool",
@@ -172,7 +166,6 @@ impl StateTransition {
                       escalation_column_id as "escalation_column_id: Uuid",
                       name,
                       requires_confirmation as "requires_confirmation!: bool",
-                      condition_key,
                       condition_value,
                       max_failures,
                       is_template as "is_template!: bool",
@@ -203,7 +196,6 @@ impl StateTransition {
                       escalation_column_id as "escalation_column_id: Uuid",
                       name,
                       requires_confirmation as "requires_confirmation!: bool",
-                      condition_key,
                       condition_value,
                       max_failures,
                       is_template as "is_template!: bool",
@@ -234,7 +226,6 @@ impl StateTransition {
                       escalation_column_id as "escalation_column_id: Uuid",
                       name,
                       requires_confirmation as "requires_confirmation!: bool",
-                      condition_key,
                       condition_value,
                       max_failures,
                       is_template as "is_template!: bool",
@@ -277,7 +268,7 @@ impl StateTransition {
             ranked AS (
                 SELECT *,
                     ROW_NUMBER() OVER (
-                        PARTITION BY from_column_id, to_column_id, condition_key, condition_value
+                        PARTITION BY from_column_id, to_column_id, condition_value
                         ORDER BY priority ASC
                     ) as rn
                 FROM prioritized
@@ -292,7 +283,6 @@ impl StateTransition {
                    escalation_column_id as "escalation_column_id: Uuid",
                    name,
                    requires_confirmation as "requires_confirmation!: bool",
-                   condition_key,
                    condition_value,
                    max_failures,
                    is_template as "is_template!: bool",
@@ -335,7 +325,7 @@ impl StateTransition {
             ranked AS (
                 SELECT *,
                     ROW_NUMBER() OVER (
-                        PARTITION BY to_column_id, condition_key, condition_value
+                        PARTITION BY to_column_id, condition_value
                         ORDER BY priority ASC
                     ) as rn
                 FROM prioritized
@@ -350,7 +340,6 @@ impl StateTransition {
                    escalation_column_id as "escalation_column_id: Uuid",
                    name,
                    requires_confirmation as "requires_confirmation!: bool",
-                   condition_key,
                    condition_value,
                    max_failures,
                    is_template as "is_template!: bool",
@@ -387,7 +376,6 @@ impl StateTransition {
                       esc.name as "escalation_column_name: Option<String>",
                       st.name,
                       st.requires_confirmation as "requires_confirmation!: bool",
-                      st.condition_key,
                       st.condition_value,
                       st.max_failures,
                       st.created_at as "created_at!: DateTime<Utc>"
@@ -419,7 +407,6 @@ impl StateTransition {
                 escalation_column_name: r.escalation_column_name,
                 name: r.name,
                 requires_confirmation: r.requires_confirmation,
-                condition_key: r.condition_key,
                 condition_value: r.condition_value,
                 max_failures: r.max_failures,
                 scope: TransitionScope::Board,
@@ -448,7 +435,6 @@ impl StateTransition {
                       esc.name as "escalation_column_name: Option<String>",
                       st.name,
                       st.requires_confirmation as "requires_confirmation!: bool",
-                      st.condition_key,
                       st.condition_value,
                       st.max_failures,
                       st.created_at as "created_at!: DateTime<Utc>"
@@ -480,7 +466,6 @@ impl StateTransition {
                 escalation_column_name: r.escalation_column_name,
                 name: r.name,
                 requires_confirmation: r.requires_confirmation,
-                condition_key: r.condition_key,
                 condition_value: r.condition_value,
                 max_failures: r.max_failures,
                 scope: TransitionScope::Project,
@@ -553,8 +538,8 @@ impl StateTransition {
 
         sqlx::query_as!(
             StateTransition,
-            r#"INSERT INTO state_transitions (id, board_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures, is_template, template_group_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            r#"INSERT INTO state_transitions (id, board_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_value, max_failures, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id: Uuid",
                          project_id as "project_id: Uuid",
@@ -565,7 +550,6 @@ impl StateTransition {
                          escalation_column_id as "escalation_column_id: Uuid",
                          name,
                          requires_confirmation as "requires_confirmation!: bool",
-                         condition_key,
                          condition_value,
                          max_failures,
                          is_template as "is_template!: bool",
@@ -579,7 +563,6 @@ impl StateTransition {
             data.escalation_column_id,
             data.name,
             requires_confirmation,
-            data.condition_key,
             data.condition_value,
             data.max_failures,
             is_template,
@@ -606,8 +589,8 @@ impl StateTransition {
 
         sqlx::query_as!(
             StateTransition,
-            r#"INSERT INTO state_transitions (id, board_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures, is_template, template_group_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            r#"INSERT INTO state_transitions (id, board_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_value, max_failures, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id: Uuid",
                          project_id as "project_id: Uuid",
@@ -618,7 +601,6 @@ impl StateTransition {
                          escalation_column_id as "escalation_column_id: Uuid",
                          name,
                          requires_confirmation as "requires_confirmation!: bool",
-                         condition_key,
                          condition_value,
                          max_failures,
                          is_template as "is_template!: bool",
@@ -632,7 +614,6 @@ impl StateTransition {
             new_escalation_column_id,
             source.name,
             requires_confirmation,
-            source.condition_key,
             source.condition_value,
             source.max_failures,
             is_template,
@@ -658,8 +639,8 @@ impl StateTransition {
 
         sqlx::query_as!(
             StateTransition,
-            r#"INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures, is_template, template_group_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            r#"INSERT INTO state_transitions (id, project_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_value, max_failures, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id: Uuid",
                          project_id as "project_id: Uuid",
@@ -670,7 +651,6 @@ impl StateTransition {
                          escalation_column_id as "escalation_column_id: Uuid",
                          name,
                          requires_confirmation as "requires_confirmation!: bool",
-                         condition_key,
                          condition_value,
                          max_failures,
                          is_template as "is_template!: bool",
@@ -684,7 +664,6 @@ impl StateTransition {
             data.escalation_column_id,
             data.name,
             requires_confirmation,
-            data.condition_key,
             data.condition_value,
             data.max_failures,
             is_template,
@@ -710,8 +689,8 @@ impl StateTransition {
 
         sqlx::query_as!(
             StateTransition,
-            r#"INSERT INTO state_transitions (id, task_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_key, condition_value, max_failures, is_template, template_group_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            r#"INSERT INTO state_transitions (id, task_id, from_column_id, to_column_id, else_column_id, escalation_column_id, name, requires_confirmation, condition_value, max_failures, is_template, template_group_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                RETURNING id as "id!: Uuid",
                          board_id as "board_id: Uuid",
                          project_id as "project_id: Uuid",
@@ -722,7 +701,6 @@ impl StateTransition {
                          escalation_column_id as "escalation_column_id: Uuid",
                          name,
                          requires_confirmation as "requires_confirmation!: bool",
-                         condition_key,
                          condition_value,
                          max_failures,
                          is_template as "is_template!: bool",
@@ -736,7 +714,6 @@ impl StateTransition {
             data.escalation_column_id,
             data.name,
             requires_confirmation,
-            data.condition_key,
             data.condition_value,
             data.max_failures,
             is_template,
@@ -769,7 +746,6 @@ impl StateTransition {
         let name = data.name.clone().or(existing.name);
         let requires_confirmation: bool = data.requires_confirmation.unwrap_or(existing.requires_confirmation);
         let requires_confirmation_i32: i32 = if requires_confirmation { 1 } else { 0 };
-        let condition_key = data.condition_key.clone().or(existing.condition_key);
         let condition_value = data.condition_value.clone().or(existing.condition_value);
         let max_failures = data.max_failures.or(existing.max_failures);
 
@@ -778,7 +754,7 @@ impl StateTransition {
             r#"UPDATE state_transitions
                SET from_column_id = $2, to_column_id = $3, else_column_id = $4,
                    escalation_column_id = $5, name = $6, requires_confirmation = $7,
-                   condition_key = $8, condition_value = $9, max_failures = $10
+                   condition_value = $8, max_failures = $9
                WHERE id = $1
                RETURNING id as "id!: Uuid",
                          board_id as "board_id: Uuid",
@@ -790,7 +766,6 @@ impl StateTransition {
                          escalation_column_id as "escalation_column_id: Uuid",
                          name,
                          requires_confirmation as "requires_confirmation!: bool",
-                         condition_key,
                          condition_value,
                          max_failures,
                          is_template as "is_template!: bool",
@@ -803,7 +778,6 @@ impl StateTransition {
             escalation_column_id,
             name,
             requires_confirmation_i32,
-            condition_key,
             condition_value,
             max_failures
         )
@@ -869,7 +843,6 @@ impl StateTransition {
                       escalation_column_id as "escalation_column_id: Uuid",
                       name,
                       requires_confirmation as "requires_confirmation!: bool",
-                      condition_key,
                       condition_value,
                       max_failures,
                       is_template as "is_template!: bool",

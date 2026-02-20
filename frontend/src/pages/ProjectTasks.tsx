@@ -53,6 +53,7 @@ import TaskKanbanBoard, {
   type KanbanColumnItems,
 } from '@/components/tasks/TaskKanbanBoard';
 import { TaskLabelsProvider } from '@/contexts/TaskLabelsContext';
+import { TaskGroupsProvider } from '@/contexts/TaskGroupsContext';
 import { useSwimLaneConfig } from '@/hooks/useSwimLaneConfig';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import {
@@ -891,6 +892,7 @@ export function ProjectTasks() {
           column_id: newColumnId,
           parent_workspace_id: task.parent_workspace_id,
           image_ids: null,
+          task_group_id: null,
         });
 
         // If the target column has an agent assigned, trigger execution
@@ -1005,6 +1007,7 @@ export function ProjectTasks() {
         </Card>
       </div>
     ) : (
+      <TaskGroupsProvider projectId={projectId}>
       <TaskLabelsProvider projectId={projectId}>
         <div className="w-full h-full flex flex-col min-h-0">
           {/* Kanban Toolbar */}
@@ -1061,6 +1064,7 @@ export function ProjectTasks() {
           </div>
         </div>
       </TaskLabelsProvider>
+      </TaskGroupsProvider>
     );
 
   const rightHeader = selectedTask ? (

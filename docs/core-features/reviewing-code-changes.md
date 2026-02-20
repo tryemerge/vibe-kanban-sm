@@ -1,0 +1,70 @@
+---
+title: "Reviewing Code Changes"
+description: "Learn how to review and provide feedback on code changes made by coding agents"
+---
+
+When a coding agent completes a task, it automatically moves to the **In Review** column. This is where you can examine the changes, provide feedback, and ensure the implementation meets your requirements.
+
+<video controls class="w-full aspect-video rounded-xl" src="https://vkcdn.britannio.dev/showcase/flat-task-panel/vk-onb-code-review-3.mp4"></video>
+
+## Opening the Code Review Interface
+
+<Steps>
+<Step title="Access the task">
+  Click on any task in the **In Review** column to open it.
+</Step>
+
+<Step title="View the diffs">
+  Click the **Diff icon** to view all the code changes made by the agent.
+</Step>
+</Steps>
+
+## Adding Review Comments
+
+### Line-Specific Comments
+
+To provide feedback on specific lines of code:
+
+<Steps>
+<Step title="Locate the line">
+  Find the line you want to comment on in the diffs view.
+</Step>
+
+<Step title="Add a comment">
+  Click the **plus icon** (+) at the beginning of the line to create a review comment.
+
+  ![Plus icon for adding line comments](/images/add-line-comment.png)
+</Step>
+
+<Step title="Write your feedback">
+  Enter your comment in the text field that appears. You can provide suggestions, ask questions, or request changes.
+</Step>
+</Steps>
+
+### Multiple Comments Across Files
+
+You can create several review comments across different files in the same review:
+
+- Add comments to multiple lines within a single file
+- Switch between different changed files and add comments to each
+- All comments will be collected and submitted together as part of your review
+
+::: info
+Review comments are not submitted individually. They are collected and sent as a complete review when you submit your feedback.
+:::
+
+## Submitting Your Review
+
+<Steps>
+<Step title="Submit the review">
+  Click the **Send** button to send all your feedback to the coding agent.
+
+  ::: info
+  All comments are combined into a single message for the coding agent to address.
+  :::
+</Step>
+
+<Step title="Task moves back to In Progress">
+  Once submitted, the task returns to the **In Progress** column where the agent will address your feedback and implement the requested changes.
+</Step>
+</Steps>

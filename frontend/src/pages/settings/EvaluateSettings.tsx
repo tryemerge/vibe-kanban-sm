@@ -2,13 +2,12 @@ import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
-  agentsApi,
   boardsApi,
   contextArtifactsApi,
   attemptsApi,
   evaluateRunsApi,
   projectsApi,
-  stateTransitionsApi,
+  repoApi,
   taskEventsApi,
   taskDependenciesApi,
   taskTriggersApi,
@@ -48,7 +47,7 @@ import type {
   TaskWithAttemptStatus,
   ContextArtifact,
   TaskEventWithNames,
-  Agent,
+  Board,
   EvaluateRun,
   EvaluateRunSummary,
   JsonValue,
@@ -56,10 +55,35 @@ import type {
 
 const STORAGE_KEY = 'evaluate-test-project';
 
+interface TestCase {
+  id: string;
+  name: string;
+  description: string;
+  projectName: string;
+}
+
+const TEST_CASES: TestCase[] = [
+  {
+    id: 'counter',
+    name: 'Counter App',
+    description:
+      'Single task: build a page with a button that increments a number.',
+    projectName: 'Counter App Test',
+  },
+  {
+    id: 'pi-calculator',
+    name: 'Pi Calculator',
+    description:
+      '3 chained tasks: calculation engine, UI, integration with state persistence.',
+    projectName: 'Pi Calculator Test',
+  },
+];
+
 interface StoredTestProject {
   projectId: string;
-  boardId: string | null;
+  boardId?: string | null; // deprecated — boards are global
   createdAt: string;
+  testCaseName: string;
 }
 
 function loadStoredProject(): StoredTestProject | null {
@@ -72,6 +96,7 @@ function loadStoredProject(): StoredTestProject | null {
         projectId: legacyId,
         boardId: null,
         createdAt: new Date().toISOString(),
+        testCaseName: 'Pi Calculator Test',
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
       localStorage.removeItem('evaluate-test-project-id');
@@ -123,9 +148,9 @@ function TaskStatusRow({ task }: { task: TaskWithAttemptStatus }) {
       <Badge variant="outline" className="text-[10px]">
         {task.status}
       </Badge>
-      {task.agent_status && (
+      {task.task_state && task.task_state !== 'queued' && (
         <Badge variant="secondary" className="text-[10px]">
-          {task.agent_status}
+          {task.task_state}
         </Badge>
       )}
     </div>
@@ -274,6 +299,15 @@ function RunHistoryRow({
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                       {task.status}
                     </Badge>
+                    {/* Show task_state, falling back to agent_status for old runs */}
+                    {(() => {
+                      const state = task.task_state || (task as Record<string, unknown>).agent_status as string | undefined;
+                      return state && state !== 'queued' ? (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                          {state}
+                        </Badge>
+                      ) : null;
+                    })()}
                     <span className="truncate">{task.title}</span>
                   </div>
                   {task.attempts?.map((attempt, j) =>
@@ -354,6 +388,19 @@ export function EvaluateSettings() {
   const [error, setError] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>();
   const [notes, setNotes] = useState('');
+  const [selectedTestCase, setSelectedTestCase] = useState('counter');
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+
+  // Fetch available boards
+  const { data: boards = [] } = useQuery({
+    queryKey: ['boards'],
+    queryFn: () => boardsApi.list(),
+  });
+
+  // Auto-select first board
+  if (boards.length > 0 && !selectedBoardId) {
+    setSelectedBoardId(boards[0].id);
+  }
 
   // Fetch run history (always, not gated by active project)
   const { data: runs = [] } = useQuery({
@@ -413,228 +460,131 @@ export function EvaluateSettings() {
   );
 
   const handleCreate = useCallback(async () => {
+    if (!selectedBoardId) {
+      setError('Please select a board first');
+      return;
+    }
     setCreating(true);
     setError(null);
 
     try {
-      // 1. Fetch agents to find a planner and a developer
-      const agents: Agent[] = await agentsApi.list();
-      const planner = agents.find(
-        (a) =>
-          a.role === 'Task Planner' ||
-          a.role === 'Implementation Architect' ||
-          a.name.toLowerCase().includes('planner')
-      );
-      const developer = agents.find(
-        (a) =>
-          a.role === 'Implementation Engineer' ||
-          a.role === 'Software Developer' ||
-          a.name.toLowerCase().includes('developer')
-      );
+      const testCase = TEST_CASES.find((t) => t.id === selectedTestCase)!;
 
-      if (!planner || !developer) {
-        throw new Error(
-          'Could not find planner and developer agents. Available roles: ' +
-            [...new Set(agents.map((a) => a.role))].join(', ')
-        );
+      // 1. Initialize git repo (creates directory + git init if not already present)
+      const repoSlug = testCase.id;
+      try {
+        await repoApi.init({
+          parent_path: '/tmp',
+          folder_name: repoSlug,
+        });
+      } catch {
+        // Repo may already exist from a prior run — that's fine
       }
 
       // 2. Create project
       const project = await projectsApi.create({
-        name: 'Pi Calculator Test',
+        name: testCase.projectName,
         repositories: [
           {
-            display_name: 'pi-calculator',
-            git_repo_path: '/tmp/pi-calculator',
+            display_name: repoSlug,
+            git_repo_path: `/tmp/${repoSlug}`,
           },
         ],
       });
 
-      // 3. Delete auto-created board (project creation applies a template board)
-      //    and create our custom one
-      if (project.board_id) {
-        await boardsApi.delete(project.board_id);
+      // 3. Assign the selected board (replace auto-created one)
+      if (project.board_id && project.board_id !== selectedBoardId) {
+        await boardsApi.delete(project.board_id).catch(() => {});
       }
-
-      const board = await boardsApi.create({
-        name: 'Plan-Develop Pipeline',
-        description:
-          'Backlog -> Plan -> Develop -> Complete. Plan agent designs, Develop agent builds.',
-      });
-
-      // Assign board to project
       await projectsApi.update(project.id, {
         name: null,
-        board_id: board.id,
+        board_id: selectedBoardId,
         dev_script: null,
         dev_script_working_dir: null,
         default_agent_working_dir: null,
       });
 
-      // 4. Create columns
-      const backlog = await boardsApi.createColumn(board.id, {
-        name: 'Backlog',
-        slug: 'backlog',
-        status: 'todo',
-        position: 0,
-        is_initial: true,
-        is_terminal: null,
-        starts_workflow: null,
-        color: null,
-        agent_id: null,
-        deliverable: null,
-        deliverable_variable: null,
-        deliverable_options: null,
-      });
+      // 4. Create tasks based on selected test case
+      if (selectedTestCase === 'counter') {
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build a counter page',
+          description:
+            'Create a simple HTML page with a button. Every time the button is clicked, add 1 to a counter and display the updated number on the page.\n\nRequirements:\n- A single HTML file with embedded CSS and JS\n- A button labeled "Click me" or "Increment"\n- A visible counter that starts at 0\n- Each button click adds 1 to the counter\n- The updated number is displayed immediately\n- Use vanilla HTML/CSS/JS, no frameworks',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+      } else {
+        // Pi Calculator: 3 chained tasks with dependencies and triggers
+        const task1 = await tasksApi.create({
+          project_id: project.id,
+          title: 'Build the Pi calculation engine',
+          description:
+            'Create a Pi digit calculation engine that can compute Pi digits incrementally.\n\nRequirements:\n- Use a suitable algorithm (e.g., Bailey-Borwein-Plouffe or a spigot algorithm)\n- The engine should pause and resume calculation\n- Export a clean API: start(), stop(), getDigits(), getState(), resume(state)\n- Write this as a standalone module',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
 
-      const plan = await boardsApi.createColumn(board.id, {
-        name: 'Plan',
-        slug: 'plan',
-        status: 'inprogress',
-        position: 1,
-        is_initial: null,
-        is_terminal: null,
-        starts_workflow: true,
-        color: null,
-        agent_id: planner.id,
-        deliverable:
-          'Create an implementation plan for this task ONLY. Do not plan for other tasks or the overall project. Describe the approach, the files that will need to be created or modified, and any key decisions.',
-        deliverable_variable: 'decision',
-        deliverable_options: '["done"]',
-      });
+        const task2 = await tasksApi.create({
+          project_id: project.id,
+          title: 'Build the UI with start/stop controls',
+          description:
+            'Create a simple web UI for the Pi calculator.\n\nRequirements:\n- Display computed Pi digits\n- Start and Stop buttons\n- Resume computation when restarted\n- Show running indicator\n- Use vanilla HTML/CSS/JS',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
 
-      const develop = await boardsApi.createColumn(board.id, {
-        name: 'Develop',
-        slug: 'develop',
-        status: 'inprogress',
-        position: 2,
-        is_initial: null,
-        is_terminal: null,
-        starts_workflow: true,
-        color: null,
-        agent_id: developer.id,
-        deliverable:
-          'Implement the task according to the plan from the previous stage. Write working code, create necessary files, and ensure the implementation is complete.',
-        deliverable_variable: 'decision',
-        deliverable_options: '["done"]',
-      });
+        const task3 = await tasksApi.create({
+          project_id: project.id,
+          title: 'Integrate engine and UI with state persistence',
+          description:
+            'Wire the Pi calculation engine to the UI and add state persistence via localStorage.\n\nRequirements:\n- Connect engine to UI controls\n- Save/restore state on stop/reload\n- Add Reset button\n- Smooth display updates',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
 
-      const complete = await boardsApi.createColumn(board.id, {
-        name: 'Complete',
-        slug: 'complete',
-        status: 'done',
-        position: 3,
-        is_initial: null,
-        is_terminal: true,
-        starts_workflow: null,
-        color: null,
-        agent_id: null,
-        deliverable: null,
-        deliverable_variable: null,
-        deliverable_options: null,
-      });
+        // Wire dependencies
+        await taskDependenciesApi.create(task2.id, {
+          depends_on_task_id: task1.id,
+        });
+        await taskDependenciesApi.create(task3.id, {
+          depends_on_task_id: task2.id,
+        });
 
-      // 5. Create transitions
-      await stateTransitionsApi.createForBoard(board.id, {
-        from_column_id: backlog.id,
-        to_column_id: plan.id,
-        name: 'Start Planning',
-        condition_key: null,
-        condition_value: null,
-        else_column_id: null,
-        escalation_column_id: null,
-        max_failures: null,
-        requires_confirmation: null,
-      });
+        // Wire triggers
+        await taskTriggersApi.create(task2.id, {
+          trigger_task_id: task1.id,
+          trigger_on: 'completed',
+          is_persistent: false,
+        });
+        await taskTriggersApi.create(task3.id, {
+          trigger_task_id: task2.id,
+          trigger_on: 'completed',
+          is_persistent: false,
+        });
+      }
 
-      await stateTransitionsApi.createForBoard(board.id, {
-        from_column_id: plan.id,
-        to_column_id: develop.id,
-        name: 'Start Development',
-        condition_key: 'decision',
-        condition_value: 'done',
-        else_column_id: null,
-        escalation_column_id: null,
-        max_failures: null,
-        requires_confirmation: null,
-      });
-
-      await stateTransitionsApi.createForBoard(board.id, {
-        from_column_id: develop.id,
-        to_column_id: complete.id,
-        name: 'Mark Complete',
-        condition_key: 'decision',
-        condition_value: 'done',
-        else_column_id: null,
-        escalation_column_id: null,
-        max_failures: null,
-        requires_confirmation: null,
-      });
-
-      // 6. Create tasks
-      const task1 = await tasksApi.create({
-        project_id: project.id,
-        title: 'Build the Pi calculation engine',
-        description:
-          'Create a Pi digit calculation engine that can compute Pi digits incrementally.\n\nRequirements:\n- Use a suitable algorithm (e.g., Bailey-Borwein-Plouffe or a spigot algorithm)\n- The engine should pause and resume calculation\n- Export a clean API: start(), stop(), getDigits(), getState(), resume(state)\n- Write this as a standalone module',
-        status: null,
-        column_id: null,
-        parent_workspace_id: null,
-        image_ids: null,
-        shared_task_id: null,
-      });
-
-      const task2 = await tasksApi.create({
-        project_id: project.id,
-        title: 'Build the UI with start/stop controls',
-        description:
-          'Create a simple web UI for the Pi calculator.\n\nRequirements:\n- Display computed Pi digits\n- Start and Stop buttons\n- Resume computation when restarted\n- Show running indicator\n- Use vanilla HTML/CSS/JS',
-        status: null,
-        column_id: null,
-        parent_workspace_id: null,
-        image_ids: null,
-        shared_task_id: null,
-      });
-
-      const task3 = await tasksApi.create({
-        project_id: project.id,
-        title: 'Integrate engine and UI with state persistence',
-        description:
-          'Wire the Pi calculation engine to the UI and add state persistence via localStorage.\n\nRequirements:\n- Connect engine to UI controls\n- Save/restore state on stop/reload\n- Add Reset button\n- Smooth display updates',
-        status: null,
-        column_id: null,
-        parent_workspace_id: null,
-        image_ids: null,
-        shared_task_id: null,
-      });
-
-      // 7. Wire dependencies (blocking: task can't start until prereqs done)
-      await taskDependenciesApi.create(task2.id, {
-        depends_on_task_id: task1.id,
-      });
-
-      await taskDependenciesApi.create(task3.id, {
-        depends_on_task_id: task2.id,
-      });
-
-      // 8. Wire triggers (auto-start: task auto-starts when prereq completes)
-      await taskTriggersApi.create(task2.id, {
-        trigger_task_id: task1.id,
-        trigger_on: 'completed',
-        is_persistent: false,
-      });
-
-      await taskTriggersApi.create(task3.id, {
-        trigger_task_id: task2.id,
-        trigger_on: 'completed',
-        is_persistent: false,
-      });
-
-      // Save project with board ID and timestamp
+      // Save project reference
       const stored: StoredTestProject = {
         projectId: project.id,
-        boardId: board.id,
         createdAt: new Date().toISOString(),
+        testCaseName: testCase.projectName,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
       setStoredProject(stored);
@@ -643,7 +593,7 @@ export function EvaluateSettings() {
     } finally {
       setCreating(false);
     }
-  }, []);
+  }, [selectedTestCase, selectedBoardId]);
 
   const handleDestroy = useCallback(async () => {
     if (!testProjectId || !storedProject) return;
@@ -689,7 +639,7 @@ export function EvaluateSettings() {
         tasks: snapTasks.map((t, i) => ({
           title: t.title,
           status: t.status,
-          agent_status: t.agent_status || null,
+          task_state: t.task_state,
           attempts: (snapAttemptArrays[i] || []).map((a) => ({
             branch: a.branch,
             completion_summary: a.completion_summary || null,
@@ -728,17 +678,14 @@ export function EvaluateSettings() {
       await evaluateRunsApi.create({
         commit_hash: commitHash,
         commit_message: commitMessage,
-        project_name: 'Pi Calculator Test',
+        project_name: storedProject.testCaseName || 'Test Run',
         started_at: storedProject.createdAt,
         summary: summary as unknown as JsonValue,
         notes: notes.trim() || null,
       });
 
-      // Now destroy the project and its board
+      // Destroy the project (board is global, don't delete it)
       await projectsApi.delete(testProjectId);
-      if (storedProject.boardId) {
-        await boardsApi.delete(storedProject.boardId).catch(() => {});
-      }
       localStorage.removeItem(STORAGE_KEY);
       setStoredProject(null);
       setSelectedTaskId(undefined);
@@ -791,6 +738,9 @@ export function EvaluateSettings() {
                 <Badge variant="default" className="bg-green-600">
                   {t('integrations.evaluate.testProject.active')}
                 </Badge>
+                <span className="text-sm font-medium">
+                  {storedProject?.testCaseName || 'Test'}
+                </span>
                 <code className="text-xs text-muted-foreground">
                   {testProjectId}
                 </code>
@@ -823,16 +773,66 @@ export function EvaluateSettings() {
               </Button>
             </div>
           ) : (
-            <Button onClick={handleCreate} disabled={creating}>
-              {creating ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4 mr-2" />
-              )}
-              {creating
-                ? t('integrations.evaluate.testProject.creating')
-                : t('integrations.evaluate.testProject.createButton')}
-            </Button>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Board</label>
+                <Select
+                  value={selectedBoardId}
+                  onValueChange={setSelectedBoardId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a board..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {boards.map((b: Board) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {boards.length === 0 && (
+                  <p className="text-xs text-destructive">
+                    No boards found. Create a board in Board Settings first.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Test Case</label>
+                <Select
+                  value={selectedTestCase}
+                  onValueChange={setSelectedTestCase}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEST_CASES.map((tc) => (
+                      <SelectItem key={tc.id} value={tc.id}>
+                        {tc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {TEST_CASES.find((t) => t.id === selectedTestCase)
+                    ?.description}
+                </p>
+              </div>
+              <Button
+                onClick={handleCreate}
+                disabled={creating || !selectedBoardId}
+              >
+                {creating ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 mr-2" />
+                )}
+                {creating
+                  ? t('integrations.evaluate.testProject.creating')
+                  : t('integrations.evaluate.testProject.createButton')}
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -1002,36 +1002,43 @@ export function EvaluateSettings() {
         </>
       )}
 
-      {/* Run History - always visible */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" />
-            Run History
-          </CardTitle>
-          <CardDescription>
-            Previous test runs with snapshots of tasks, artifacts, and events.
-            Compare results across commits.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {runs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No previous runs. Destroy a test project to save a snapshot.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {runs.map((run) => (
-                <RunHistoryRow
-                  key={run.id}
-                  run={run}
-                  onDelete={handleDeleteRun}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Run History - filtered by selected test case */}
+      {(() => {
+        const activeTestCase = TEST_CASES.find(
+          (tc) => tc.id === selectedTestCase
+        )!;
+        const filteredRuns = runs.filter(
+          (r) => r.project_name === activeTestCase.projectName
+        );
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                {activeTestCase.name} Runs
+              </CardTitle>
+              <CardDescription>{activeTestCase.description}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {filteredRuns.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No previous runs. Destroy a test project to save a snapshot.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {filteredRuns.map((run) => (
+                    <RunHistoryRow
+                      key={run.id}
+                      run={run}
+                      onDelete={handleDeleteRun}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }

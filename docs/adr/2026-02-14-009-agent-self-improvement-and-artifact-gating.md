@@ -1,7 +1,7 @@
 # ADR 009: Agent Self-Improvement Protocol & Conditional Artifact Gating
 
 **Date:** 2026-02-14
-**Status:** Proposed
+**Status:** Superseded by ADR-013 (Group-Scoped Context & Knowledge Inheritance)
 **Author:** User + Claude
 **Inspired by:** OpenClaw/Pi agent self-extension model
 
