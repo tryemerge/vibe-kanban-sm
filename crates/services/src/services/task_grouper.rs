@@ -6,7 +6,7 @@ use db::{
         agent::Agent,
         group_event::{CreateGroupEvent, GroupEvent},
         project::Project,
-        task::Task,
+        task::{CreateTask, Task},
         task_group::{CreateTaskGroup, TaskGroup},
     },
 };
@@ -15,7 +15,7 @@ use serde_json::json;
 use sqlx::error::Error as SqlxError;
 use thiserror::Error;
 use tokio::time::interval;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::services::analytics::AnalyticsContext;
@@ -151,99 +151,112 @@ impl TaskGrouperService {
         }
 
         info!(
-            "Found {} ungrouped tasks in project {}, analyzing...",
+            "Found {} ungrouped tasks in project {}, creating grouping task...",
             ungrouped_tasks.len(),
             project.name
         );
 
-        // Get the Task Grouper agent for its system prompt (will be used when Claude API is integrated)
-        let _agent = Agent::find_by_id(&self.db.pool, TASK_GROUPER_AGENT_ID)
+        // Verify Task Grouper agent exists
+        let agent = Agent::find_by_id(&self.db.pool, TASK_GROUPER_AGENT_ID)
             .await?
             .ok_or(TaskGrouperError::AgentNotFound)?;
 
-        // Build the analysis prompt
-        let tasks_json: Vec<_> = ungrouped_tasks
+        // Build the task description with all ungrouped tasks
+        let tasks_summary: Vec<String> = ungrouped_tasks
             .iter()
             .map(|t| {
-                json!({
-                    "id": t.id.to_string(),
-                    "title": t.title,
-                    "description": t.description,
-                    "status": format!("{:?}", t.status),
-                })
+                format!(
+                    "- **{}** ({})\n  {}",
+                    t.title,
+                    t.id,
+                    t.description.as_deref().unwrap_or("No description")
+                )
             })
             .collect();
 
-        let user_prompt = format!(
-            "Analyze the following ungrouped tasks from project \"{}\" and recommend how to group them.
+        let description = format!(
+            r#"**Task Grouper Assignment**
 
-IMPORTANT: Your job is to CLUSTER related tasks together. Use simple, generic names like \"Auth-related tasks\" or \"Payment work\".
-The group will be analyzed and given a final descriptive name later by the evaluator agent.
+Analyze the following {} ungrouped tasks in project "{}" and organize them into task groups.
 
-Tasks:
+## Ungrouped Tasks
+
 {}
 
-Return your recommendations as JSON in this exact format:
-{{
-  \"groups\": [
-    {{
-      \"name\": \"Simple descriptive label (e.g., 'Auth work', 'Database tasks')\",
-      \"description\": \"Brief note on what these tasks have in common\",
-      \"color\": \"#hex-color\",
-      \"task_ids\": [\"uuid1\", \"uuid2\"],
-      \"rationale\": \"Why these tasks belong together\"
-    }}
-  ]
-}}
+## Your Mission
 
-Guidelines:
-- Create groups of 3-8 related tasks
+Use the available MCP tools to:
+1. Identify patterns and relationships between tasks
+2. Create new task groups for related tasks (use simple names like "Auth System", "Payment Flow")
+3. Assign tasks to the appropriate groups using `add_task_to_group`
+4. Set inter-group dependencies when needed using `add_group_dependency`
+5. Document your grouping rationale using `create_artifact`
+
+## Guidelines
+
+- Groups should have 3-8 related tasks
 - Group by feature/domain, dependency, or purpose commonality
-- Use SIMPLE names - they're just tracking labels
-- Focus on identifying tasks that should be worked on together
-- If tasks don't relate, leave them ungrouped (don't force it)
-- The evaluator agent will refine the group later
-",
-            project.name,
-            serde_json::to_string_pretty(&tasks_json)?
-        );
+- Use SIMPLE, descriptive group names
+- Don't force unrelated tasks into groups - leave them ungrouped if they don't fit
+- The Group Evaluator will refine groups later, so focus on clustering similar work
 
-        info!("Calling Claude API for grouping analysis...");
+## MCP Tools Available
 
-        // TODO: Integrate Claude API client
-        // Options:
-        // 1. Use anthropic-sdk-rust crate (if it exists)
-        // 2. Direct HTTP calls with reqwest
-        // 3. Spawn claude CLI as subprocess (like executors do)
-        //
-        // For now, grouping analysis is logged but not executed.
-        // Once API integration is complete, call Claude with:
-        // - System prompt from agent.system_prompt
-        // - User prompt built above
-        // - Parse JSON response into GroupingRecommendation
-        // - Call self.apply_grouping() to create groups and assign tasks
+- `list_tasks` - Query tasks in the project
+- `get_task` - Get detailed task information
+- `create_task_group` - Create a new group (name, color, project_id)
+- `add_task_to_group` - Assign a task to a group
+- `add_group_dependency` - Set prerequisite between groups
+- `create_artifact` - Log your grouping decisions
 
-        warn!(
-            "Claude API integration pending. Would analyze {} tasks for grouping.",
+See your system prompt for complete instructions.
+"#,
             ungrouped_tasks.len(),
+            project.name,
+            tasks_summary.join("\n\n")
         );
 
-        debug!("Grouping prompt:\n{}", user_prompt);
+        // Create the grouping task assigned to Task Grouper agent
+        let task_data = CreateTask {
+            project_id: project.id,
+            title: format!("Group {} ungrouped tasks", ungrouped_tasks.len()),
+            description: Some(description),
+            status: None, // Defaults to Todo
+            column_id: None, // Not in workflow columns
+            parent_workspace_id: None,
+            image_ids: None,
+            shared_task_id: None,
+            task_group_id: None, // System task, not in a group
+        };
+
+        let task_id = Uuid::new_v4();
+        let grouping_task = Task::create(&self.db.pool, &task_data, task_id).await?;
+
+        info!(
+            "Created grouping task {} for project {} ({}) - assigned to agent '{}'",
+            grouping_task.id,
+            project.name,
+            project.id,
+            agent.name
+        );
 
         // Track analytics event if available
         if let Some(analytics) = &self.analytics {
             analytics.analytics_service.track_event(
                 &analytics.user_id,
-                "grouping_analysis_requested",
+                "grouping_task_created",
                 Some(json!({
                     "project_id": project.id.to_string(),
                     "ungrouped_count": ungrouped_tasks.len(),
+                    "grouping_task_id": grouping_task.id.to_string(),
+                    "agent_id": TASK_GROUPER_AGENT_ID.to_string(),
                 })),
             );
         }
 
-        // TODO: Parse response, create groups, assign tasks, log events
-        // This will be completed once we integrate Claude API
+        // The task is now ready to be executed by the Task Grouper agent via MCP
+        // The agent will use MCP tools to create groups and assign tasks directly
+        // No need to read results or apply groupings - the agent does it all!
 
         Ok(())
     }
