@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE workspaces\n                 SET container_ref = NULL,\n                     updated_at = NOW()\n                 WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "24e16de05491b829b300743d8ea3d7d076a2ba590dd53c8ec275c29e00af6ee8"
+}

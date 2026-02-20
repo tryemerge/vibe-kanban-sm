@@ -315,10 +315,10 @@ Task.task_group_id → TaskGroup.workspace_id → Workspace.container_ref
 - [x] Task execution finds workspace via group
 - [x] Per-task workspace creation removed/disabled
 
-### Phase 3: Backend PR Creation ✅❌
-- [ ] Group completion detection
-- [ ] PR creation at group level
-- [ ] Workspace cleanup policy implemented
+### Phase 3: Backend PR Creation ✅
+- [x] Group completion detection
+- [x] PR creation at group level
+- [x] Workspace cleanup policy implemented
 
 ### Phase 4: Background Services ✅❌
 - [ ] TaskGrouper service fixed and running
@@ -400,6 +400,13 @@ Task.task_group_id → TaskGroup.workspace_id → Workspace.container_ref
   - Updated task_attempts.rs to use group workspace
   - Updated tasks.rs (create_task_and_start, share_task) to use group workspace
   - Per-task workspace creation kept as fallback for ungrouped tasks
+- Completed Phase 3: Backend PR creation
+  - Added TaskGroup::all_tasks_completed() to detect group completion
+  - Added group completion hook in container.rs (when last task completes)
+  - Transitions group to "done" state and creates completion event
+  - Added TaskGroup::get_pr_info() to gather workspace/tasks for PR creation
+  - Added TaskGroup::mark_workspace_complete() to clean up after PR
+  - Policy: Keep worktrees for history (don't delete immediately)
 
 ---
 

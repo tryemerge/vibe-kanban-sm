@@ -406,4 +406,91 @@ impl TaskGroup {
 
         Ok(workspace)
     }
+
+    /// Check if all tasks in this group have completed (status = Done).
+    /// Used to detect when the group is ready for PR creation.
+    pub async fn all_tasks_completed(
+        pool: &PgPool,
+        group_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        use super::task::TaskStatus;
+
+        let result = sqlx::query!(
+            r#"SELECT COUNT(*) as "count!"
+               FROM tasks
+               WHERE task_group_id = $1
+                 AND status != $2"#,
+            group_id,
+            TaskStatus::Done as TaskStatus
+        )
+        .fetch_one(pool)
+        .await?;
+
+        // If count is 0, all tasks are done (or there are no tasks)
+        Ok(result.count == 0)
+    }
+
+    /// Get information needed to create a PR for this completed group.
+    /// Returns (workspace, tasks, group) tuple for PR creation.
+    pub async fn get_pr_info(
+        pool: &PgPool,
+        group_id: Uuid,
+    ) -> Result<(super::workspace::Workspace, Vec<super::task::Task>, Self), sqlx::Error> {
+        // Get the group
+        let group = Self::find_by_id(pool, group_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+
+        // Get the workspace
+        let workspace_id = group.workspace_id
+            .ok_or_else(|| sqlx::Error::Protocol(
+                format!("Group {} has no workspace", group_id).into()
+            ))?;
+
+        let workspace = super::workspace::Workspace::find_by_id(pool, workspace_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+
+        // Get all tasks in the group
+        let tasks = Self::get_tasks(pool, group_id).await?;
+
+        Ok((workspace, tasks, group))
+    }
+
+    /// Mark the group's workspace as complete after PR creation.
+    /// This preserves the workspace for history but marks it as no longer active.
+    ///
+    /// Policy: Keep worktrees for history (don't delete immediately).
+    /// A separate cleanup service can handle deletion based on age/retention policy.
+    pub async fn mark_workspace_complete(
+        pool: &PgPool,
+        group_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        // Get the group's workspace_id
+        let group = Self::find_by_id(pool, group_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+
+        if let Some(workspace_id) = group.workspace_id {
+            // Update workspace: clear container_ref (marks as inactive)
+            // Keep the workspace record for history
+            sqlx::query!(
+                "UPDATE workspaces
+                 SET container_ref = NULL,
+                     updated_at = NOW()
+                 WHERE id = $1",
+                workspace_id
+            )
+            .execute(pool)
+            .await?;
+
+            tracing::info!(
+                "Marked workspace {} for group {} as complete (container ref cleared)",
+                workspace_id,
+                group_id
+            );
+        }
+
+        Ok(())
+    }
 }

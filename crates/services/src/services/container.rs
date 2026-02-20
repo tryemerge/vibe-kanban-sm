@@ -30,6 +30,8 @@ use db::{
         task::{Task, TaskState, TaskStatus},
         task_dependency::TaskDependency,
         task_event::{ActorType, CreateTaskEvent, EventTriggerType, TaskEvent},
+        task_group::TaskGroup,
+        group_event::{CreateGroupEvent, GroupEvent},
         workspace::{Workspace, WorkspaceError},
         workspace_repo::WorkspaceRepo,
     },
@@ -877,6 +879,51 @@ pub trait ContainerService {
                         if done_col.is_terminal && done_col.status == TaskStatus::Done {
                             if let Err(e) = TaskDependency::satisfy_by_prerequisite(pool, task.id).await {
                                 tracing::error!("Failed to satisfy dependencies for task {}: {}", task.id, e);
+                            }
+
+                            // ADR-015: Check if this task's group is now complete
+                            if let Some(group_id) = task.task_group_id {
+                                match TaskGroup::all_tasks_completed(pool, group_id).await {
+                                    Ok(true) => {
+                                        tracing::info!(
+                                            target: "vibe_kanban::group",
+                                            "All tasks in group {} completed - ready for PR creation",
+                                            group_id
+                                        );
+
+                                        // Transition group to "done" state (from "executing")
+                                        if let Err(e) = TaskGroup::transition_state(pool, group_id, "executing", "done").await {
+                                            tracing::error!("Failed to transition group {} to done: {}", group_id, e);
+                                        }
+
+                                        // Create group event for completion
+                                        let event = CreateGroupEvent {
+                                            task_group_id: group_id,
+                                            task_id: Some(task.id),
+                                            event_type: "completed".to_string(),
+                                            actor_type: "system".to_string(),
+                                            summary: "All tasks in group completed".to_string(),
+                                            payload: Some(serde_json::json!({
+                                                "all_tasks_done": true,
+                                                "ready_for_pr": true
+                                            }).to_string()),
+                                        };
+                                        if let Err(e) = GroupEvent::create(pool, &event).await {
+                                            tracing::error!("Failed to create group completion event: {}", e);
+                                        }
+                                    }
+                                    Ok(false) => {
+                                        tracing::debug!(
+                                            target: "vibe_kanban::group",
+                                            "Task {} completed, but group {} still has incomplete tasks",
+                                            task.id,
+                                            group_id
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to check group {} completion: {}", group_id, e);
+                                    }
+                                }
                             }
                         }
 
