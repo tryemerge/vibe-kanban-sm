@@ -55,7 +55,7 @@ export function useTaskGroupMutations(projectId: string) {
   };
 
   const createGroup = useMutation({
-    mutationFn: (data: { name: string; color: string | null }) =>
+    mutationFn: (data: { name: string; color: string | null; is_backlog: boolean | null }) =>
       taskGroupsApi.create(projectId, data),
     onSuccess: invalidateGroups,
   });

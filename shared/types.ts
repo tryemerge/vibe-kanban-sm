@@ -213,9 +213,13 @@ is_auto_group: boolean, };
 
 export type CreateTaskDependency = { task_id: string, depends_on_task_id: string, };
 
-export type TaskGroup = { id: string, project_id: string, name: string, color: string | null, position: number, started_at: Date | null, created_at: Date, };
+export type TaskGroup = { id: string, project_id: string, name: string, color: string | null, position: number, started_at: Date | null, created_at: Date, state: string, is_backlog: boolean, execution_dag: string | null, 
+/**
+ * The workspace/worktree for this group (all tasks share it)
+ */
+workspace_id: string | null, };
 
-export type CreateTaskGroup = { project_id: string, name: string, color: string | null, };
+export type CreateTaskGroup = { project_id: string, name: string, color: string | null, is_backlog: boolean | null, };
 
 export type UpdateTaskGroup = { name: string | null, color: string | null, };
 
@@ -273,7 +277,11 @@ final_context: string | null,
 /**
  * Brief summary of what was accomplished in this attempt
  */
-completion_summary: string | null, created_at: string, updated_at: string, };
+completion_summary: string | null, created_at: string, updated_at: string, 
+/**
+ * The TaskGroup that owns this workspace (ADR-015: group-level worktrees)
+ */
+task_group_id: string | null, };
 
 export type Session = { id: string, workspace_id: string, executor: string | null, created_at: string, updated_at: string, };
 

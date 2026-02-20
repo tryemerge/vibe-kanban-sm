@@ -110,7 +110,7 @@ function TaskGroupsList({ projectId }: { projectId: string }) {
   const handleCreate = () => {
     if (!newGroupName.trim()) return;
     createGroup.mutate(
-      { name: newGroupName.trim(), color: newGroupColor },
+      { name: newGroupName.trim(), color: newGroupColor, is_backlog: null },
       {
         onSuccess: () => {
           setNewGroupName('');

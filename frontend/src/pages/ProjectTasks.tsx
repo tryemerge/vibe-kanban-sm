@@ -54,6 +54,9 @@ import TaskKanbanBoard, {
 } from '@/components/tasks/TaskKanbanBoard';
 import { TaskLabelsProvider } from '@/contexts/TaskLabelsContext';
 import { TaskGroupsProvider } from '@/contexts/TaskGroupsContext';
+import { TaskGroupBoard } from '@/components/tasks/TaskGroupBoard';
+import { SplitScreenLayout } from '@/components/layouts/SplitScreenLayout';
+import { useTaskGroups } from '@/hooks/useTaskGroups';
 import { useSwimLaneConfig } from '@/hooks/useSwimLaneConfig';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import {
@@ -163,6 +166,7 @@ export function ProjectTasks() {
   const [selectedSharedTaskId, setSelectedSharedTaskId] = useState<
     string | null
   >(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const { userId } = useAuth();
 
   const {
@@ -194,6 +198,9 @@ export function ProjectTasks() {
     isLoading,
     error: streamError,
   } = useProjectTasks(projectId || '');
+
+  // Fetch task groups for split-screen display
+  const { data: taskGroups = [] } = useTaskGroups(projectId);
 
   // Fetch columns for the project to check for agent assignments
   const { data: projectColumns } = useProjectColumns(projectId);
@@ -1009,60 +1016,72 @@ export function ProjectTasks() {
     ) : (
       <TaskGroupsProvider projectId={projectId}>
       <TaskLabelsProvider projectId={projectId}>
-        <div className="w-full h-full flex flex-col min-h-0">
-          {/* Kanban Toolbar */}
-          <div className="shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b bg-background/50">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={swimLanesEnabled ? 'secondary' : 'ghost'}
-                    size="sm"
-                    onClick={() => {
-                      if (swimLanesEnabled) {
-                        setGroupBy({ type: 'none' });
-                      } else {
-                        setGroupBy({ type: 'label' });
-                      }
-                    }}
-                    className="gap-2"
-                  >
-                    {swimLanesEnabled ? (
-                      <Rows3 className="h-4 w-4" />
-                    ) : (
-                      <LayoutList className="h-4 w-4" />
-                    )}
-                    <span className="hidden sm:inline">
-                      {swimLanesEnabled ? 'Swim Lanes' : 'Flat View'}
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {swimLanesEnabled
-                    ? 'Switch to flat view'
-                    : 'Group tasks by label (swim lanes)'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-
-          {/* Kanban Board */}
-          <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto overscroll-x-contain">
-            <TaskKanbanBoard
-              columnDefs={columnDefs}
-              columnItems={kanbanColumnItems}
-              onDragEnd={handleDragEnd}
-              onViewTaskDetails={handleViewTaskDetails}
-              onViewSharedTask={handleViewSharedTask}
-              selectedTaskId={selectedTask?.id}
-              selectedSharedTaskId={selectedSharedTaskId}
-              onCreateTask={handleCreateNewTask}
-              projectId={projectId!}
-              swimLaneConfig={swimLaneConfig}
-              onToggleLaneCollapse={toggleLaneCollapse}
+        <SplitScreenLayout
+          topPanel={
+            <TaskGroupBoard
+              groups={taskGroups}
+              selectedGroupId={selectedGroupId}
+              onSelectGroup={setSelectedGroupId}
+              ungroupedTaskCount={tasks.filter(t => !t.task_group_id).length}
             />
-          </div>
-        </div>
+          }
+          bottomPanel={
+            <div className="w-full h-full flex flex-col min-h-0">
+              {/* Kanban Toolbar */}
+              <div className="shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b bg-background/50">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={swimLanesEnabled ? 'secondary' : 'ghost'}
+                        size="sm"
+                        onClick={() => {
+                          if (swimLanesEnabled) {
+                            setGroupBy({ type: 'none' });
+                          } else {
+                            setGroupBy({ type: 'label' });
+                          }
+                        }}
+                        className="gap-2"
+                      >
+                        {swimLanesEnabled ? (
+                          <Rows3 className="h-4 w-4" />
+                        ) : (
+                          <LayoutList className="h-4 w-4" />
+                        )}
+                        <span className="hidden sm:inline">
+                          {swimLanesEnabled ? 'Swim Lanes' : 'Flat View'}
+                        </span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {swimLanesEnabled
+                        ? 'Switch to flat view'
+                        : 'Group tasks by label (swim lanes)'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+
+              {/* Kanban Board */}
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto overscroll-x-contain">
+                <TaskKanbanBoard
+                  columnDefs={columnDefs}
+                  columnItems={kanbanColumnItems}
+                  onDragEnd={handleDragEnd}
+                  onViewTaskDetails={handleViewTaskDetails}
+                  onViewSharedTask={handleViewSharedTask}
+                  selectedTaskId={selectedTask?.id}
+                  selectedSharedTaskId={selectedSharedTaskId}
+                  onCreateTask={handleCreateNewTask}
+                  projectId={projectId!}
+                  swimLaneConfig={swimLaneConfig}
+                  onToggleLaneCollapse={toggleLaneCollapse}
+                />
+              </div>
+            </div>
+          }
+        />
       </TaskLabelsProvider>
       </TaskGroupsProvider>
     );
