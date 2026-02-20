@@ -310,10 +310,10 @@ Task.task_group_id → TaskGroup.workspace_id → Workspace.container_ref
 - [x] Models updated
 - [x] SQLx cache regenerated
 
-### Phase 2: Backend Workspace Management ✅❌
-- [ ] Workspace creation at group level
-- [ ] Task execution finds workspace via group
-- [ ] Per-task workspace creation removed/disabled
+### Phase 2: Backend Workspace Management ✅
+- [x] Workspace creation at group level
+- [x] Task execution finds workspace via group
+- [x] Per-task workspace creation removed/disabled
 
 ### Phase 3: Backend PR Creation ✅❌
 - [ ] Group completion detection
@@ -388,6 +388,18 @@ Task.task_group_id → TaskGroup.workspace_id → Workspace.container_ref
 - Created ADR-015 and IMPL-015
 - Documented architecture and phased implementation plan
 - Ready to begin Phase 1 (database schema migrations)
+
+### 2026-02-20
+- Completed Phase 1: Database schema migrations
+  - Added workspace_id to task_groups table
+  - Added task_group_id to workspaces table
+  - Regenerated SQLx cache
+- Completed Phase 2: Backend workspace management
+  - Added TaskGroup::create_workspace() method
+  - Added Task::get_workspace_via_group() helper
+  - Updated task_attempts.rs to use group workspace
+  - Updated tasks.rs (create_task_and_start, share_task) to use group workspace
+  - Per-task workspace creation kept as fallback for ungrouped tasks
 
 ---
 

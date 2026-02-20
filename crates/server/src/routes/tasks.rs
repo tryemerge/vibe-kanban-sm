@@ -345,10 +345,6 @@ pub async fn create_task_and_start(
 
     // Fallback: use the caller-provided executor (original behavior)
     let attempt_id = Uuid::new_v4();
-    let git_branch_name = deployment
-        .container()
-        .git_branch_from_workspace(&attempt_id, &task.title)
-        .await;
 
     let agent_working_dir = project
         .default_agent_working_dir
@@ -356,16 +352,40 @@ pub async fn create_task_and_start(
         .filter(|dir: &&String| !dir.is_empty())
         .cloned();
 
-    let workspace = Workspace::create(
-        pool,
-        &CreateWorkspace {
-            branch: git_branch_name,
-            agent_working_dir,
-        },
-        attempt_id,
-        task.id,
-    )
-    .await?;
+    // ADR-015: Try to find workspace via TaskGroup first (group-level worktrees)
+    let workspace = match Task::get_workspace_via_group(pool, task.id).await? {
+        Some(group_workspace) => {
+            tracing::info!(
+                "Task {} using group workspace {} (shared worktree)",
+                task.id,
+                group_workspace.id
+            );
+            group_workspace
+        }
+        None => {
+            // Legacy path: Create per-task workspace (for ungrouped tasks)
+            let git_branch_name = deployment
+                .container()
+                .git_branch_from_workspace(&attempt_id, &task.title)
+                .await;
+
+            tracing::info!(
+                "Task {} creating per-task workspace (ungrouped task)",
+                task.id
+            );
+
+            Workspace::create(
+                pool,
+                &CreateWorkspace {
+                    branch: git_branch_name,
+                    agent_working_dir,
+                },
+                attempt_id,
+                task.id,
+            )
+            .await?
+        }
+    };
 
     let workspace_repos: Vec<CreateWorkspaceRepo> = payload
         .repos
@@ -922,60 +942,78 @@ async fn spawn_agent_execution(
         );
         (existing, true)
     } else {
-        // No existing workspace - create a new one
-        let project = Project::find_by_id(pool, task.project_id)
-            .await?
-            .ok_or(ProjectError::ProjectNotFound)?;
+        // No existing workspace - check for group workspace first (ADR-015)
+        match Task::get_workspace_via_group(pool, task.id).await? {
+            Some(group_workspace) => {
+                tracing::info!(
+                    "Task {} using group workspace {} for share (shared worktree)",
+                    task.id,
+                    group_workspace.id
+                );
+                (group_workspace, false)
+            }
+            None => {
+                // Legacy path: Create per-task workspace
+                let project = Project::find_by_id(pool, task.project_id)
+                    .await?
+                    .ok_or(ProjectError::ProjectNotFound)?;
 
-        let repos = ProjectRepo::find_repos_for_project(pool, project.id).await?;
-        if repos.is_empty() {
-            return Err(anyhow::anyhow!("Project has no repositories configured"));
+                let repos = ProjectRepo::find_repos_for_project(pool, project.id).await?;
+                if repos.is_empty() {
+                    return Err(anyhow::anyhow!("Project has no repositories configured"));
+                }
+
+                let git_service = GitService {};
+                let mut workspace_repos_to_create: Vec<CreateWorkspaceRepo> = Vec::new();
+                for repo in &repos {
+                    let target_branch = git_service
+                        .get_current_branch(&repo.path)
+                        .unwrap_or_else(|_| "main".to_string());
+                    workspace_repos_to_create.push(CreateWorkspaceRepo {
+                        repo_id: repo.id,
+                        target_branch,
+                    });
+                }
+
+                let attempt_id = Uuid::new_v4();
+                let git_branch_name = deployment
+                    .container()
+                    .git_branch_from_workspace(&attempt_id, &task.title)
+                    .await;
+
+                let agent_working_dir = project
+                    .default_agent_working_dir
+                    .as_ref()
+                    .filter(|dir: &&String| !dir.is_empty())
+                    .cloned();
+
+                tracing::info!(
+                    "Task {} creating per-task workspace for share (ungrouped task)",
+                    task.id
+                );
+
+                let new_workspace = Workspace::create(
+                    pool,
+                    &CreateWorkspace {
+                        branch: git_branch_name,
+                        agent_working_dir,
+                    },
+                    attempt_id,
+                    task.id,
+                )
+                .await?;
+
+                WorkspaceRepo::create_many(pool, new_workspace.id, &workspace_repos_to_create).await?;
+
+                tracing::info!(
+                    "Created new workspace {} for task {} in column '{}'",
+                    new_workspace.id,
+                    task.id,
+                    column_name
+                );
+                (new_workspace, false)
+            }
         }
-
-        let git_service = GitService {};
-        let mut workspace_repos_to_create: Vec<CreateWorkspaceRepo> = Vec::new();
-        for repo in &repos {
-            let target_branch = git_service
-                .get_current_branch(&repo.path)
-                .unwrap_or_else(|_| "main".to_string());
-            workspace_repos_to_create.push(CreateWorkspaceRepo {
-                repo_id: repo.id,
-                target_branch,
-            });
-        }
-
-        let attempt_id = Uuid::new_v4();
-        let git_branch_name = deployment
-            .container()
-            .git_branch_from_workspace(&attempt_id, &task.title)
-            .await;
-
-        let agent_working_dir = project
-            .default_agent_working_dir
-            .as_ref()
-            .filter(|dir: &&String| !dir.is_empty())
-            .cloned();
-
-        let new_workspace = Workspace::create(
-            pool,
-            &CreateWorkspace {
-                branch: git_branch_name,
-                agent_working_dir,
-            },
-            attempt_id,
-            task.id,
-        )
-        .await?;
-
-        WorkspaceRepo::create_many(pool, new_workspace.id, &workspace_repos_to_create).await?;
-
-        tracing::info!(
-            "Created new workspace {} for task {} in column '{}'",
-            new_workspace.id,
-            task.id,
-            column_name
-        );
-        (new_workspace, false)
     };
 
     // Emit debug event for attempt creation

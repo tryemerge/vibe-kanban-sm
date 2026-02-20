@@ -706,4 +706,38 @@ ORDER BY t.created_at DESC"#,
             children,
         })
     }
+
+    /// Find the workspace for this task via its TaskGroup (ADR-015: group-level worktrees).
+    ///
+    /// If the task belongs to a group, this returns the group's shared workspace.
+    /// If the task has no group, returns None (caller should use legacy per-task workspace).
+    pub async fn get_workspace_via_group(
+        pool: &PgPool,
+        task_id: Uuid,
+    ) -> Result<Option<Workspace>, sqlx::Error> {
+        // Get the task
+        let task = Self::find_by_id(pool, task_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+
+        // If task has no group, return None (use legacy per-task workspace)
+        let group_id = match task.task_group_id {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+
+        // Get the group
+        let group = super::task_group::TaskGroup::find_by_id(pool, group_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+
+        // If group has no workspace yet, return None
+        let workspace_id = match group.workspace_id {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+
+        // Get the workspace
+        Workspace::find_by_id(pool, workspace_id).await
+    }
 }

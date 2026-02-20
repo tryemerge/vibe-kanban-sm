@@ -342,4 +342,68 @@ impl TaskGroup {
         .fetch_all(pool)
         .await
     }
+
+    /// Create a workspace for this group when it enters "executing" state.
+    /// The workspace is shared by all tasks in the group.
+    ///
+    /// This method:
+    /// 1. Finds the first task in the group (by created_at)
+    /// 2. Creates a workspace associated with that task
+    /// 3. Links the workspace to the group via task_group_id
+    /// 4. Updates the group's workspace_id field
+    pub async fn create_workspace(
+        pool: &PgPool,
+        group_id: Uuid,
+        branch_name: &str,
+    ) -> Result<super::workspace::Workspace, sqlx::Error> {
+        use super::workspace::{CreateWorkspace, Workspace};
+
+        // Get all tasks in the group
+        let tasks = Self::get_tasks(pool, group_id).await?;
+
+        if tasks.is_empty() {
+            return Err(sqlx::Error::Protocol(
+                format!("Cannot create workspace for group {}: no tasks in group", group_id).into()
+            ));
+        }
+
+        // Use the first task as the primary task for the workspace
+        let primary_task_id = tasks[0].id;
+
+        // Create workspace with the group's branch
+        let workspace_id = Uuid::new_v4();
+        let create_data = CreateWorkspace {
+            branch: branch_name.to_string(),
+            agent_working_dir: None,
+        };
+
+        let mut workspace = Workspace::create(pool, &create_data, workspace_id, primary_task_id).await
+            .map_err(|e| match e {
+                super::workspace::WorkspaceError::Database(db_err) => db_err,
+                other => sqlx::Error::Protocol(format!("Workspace creation error: {}", other).into()),
+            })?;
+
+        // Link workspace to group by updating task_group_id
+        sqlx::query!(
+            "UPDATE workspaces SET task_group_id = $1, updated_at = NOW() WHERE id = $2",
+            group_id,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+
+        // Update workspace object to reflect the change
+        workspace.task_group_id = Some(group_id);
+
+        // Update group's workspace_id to point to this workspace
+        sqlx::query!(
+            "UPDATE task_groups SET workspace_id = $1 WHERE id = $2",
+            workspace_id,
+            group_id
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(workspace)
+    }
 }

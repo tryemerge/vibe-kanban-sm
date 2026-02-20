@@ -178,21 +178,41 @@ pub async fn create_task_attempt(
         .cloned();
 
     let attempt_id = Uuid::new_v4();
-    let git_branch_name = deployment
-        .container()
-        .git_branch_from_workspace(&attempt_id, &task.title)
-        .await;
 
-    let workspace = Workspace::create(
-        pool,
-        &CreateWorkspace {
-            branch: git_branch_name.clone(),
-            agent_working_dir,
-        },
-        attempt_id,
-        payload.task_id,
-    )
-    .await?;
+    // ADR-015: Try to find workspace via TaskGroup first (group-level worktrees)
+    let workspace = match Task::get_workspace_via_group(pool, payload.task_id).await? {
+        Some(group_workspace) => {
+            tracing::info!(
+                "Task {} using group workspace {} (shared worktree)",
+                task.id,
+                group_workspace.id
+            );
+            group_workspace
+        }
+        None => {
+            // Legacy path: Create per-task workspace (for ungrouped tasks)
+            let git_branch_name = deployment
+                .container()
+                .git_branch_from_workspace(&attempt_id, &task.title)
+                .await;
+
+            tracing::info!(
+                "Task {} creating per-task workspace (ungrouped task)",
+                task.id
+            );
+
+            Workspace::create(
+                pool,
+                &CreateWorkspace {
+                    branch: git_branch_name.clone(),
+                    agent_working_dir,
+                },
+                attempt_id,
+                payload.task_id,
+            )
+            .await?
+        }
+    };
 
     let workspace_repos: Vec<CreateWorkspaceRepo> = payload
         .repos
