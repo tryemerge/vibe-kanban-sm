@@ -1023,6 +1023,7 @@ export function ProjectTasks() {
               selectedGroupId={selectedGroupId}
               onSelectGroup={setSelectedGroupId}
               ungroupedTaskCount={tasks.filter(t => !t.task_group_id).length}
+              projectId={projectId || ''}
             />
           }
           bottomPanel={

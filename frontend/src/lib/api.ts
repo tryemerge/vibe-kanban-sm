@@ -2053,4 +2053,21 @@ export const taskGroupsApi = {
     );
     return handleApiResponse<void>(response);
   },
+
+  // Manual grouping analysis
+  analyzeBacklog: async (
+    projectId: string
+  ): Promise<{ message: string; ungrouped_count: number; project_id?: string }> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/analyze-backlog`,
+      {
+        method: 'POST',
+      }
+    );
+    return handleApiResponse<{
+      message: string;
+      ungrouped_count: number;
+      project_id?: string;
+    }>(response);
+  },
 };
