@@ -78,6 +78,12 @@ pub struct AddGroupDependencyMcpRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FinalizeTaskGroupRequest {
+    #[schemars(description = "The ID of the task group to finalize")]
+    pub group_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StartGroupAnalysisRequest {
     #[schemars(description = "The ID of the task group to analyze")]
     pub group_id: Uuid,
@@ -1422,6 +1428,28 @@ impl TaskServer {
         let payload = serde_json::json!({
             "task_group_id": group_id.to_string(),
             "depends_on_group_id": depends_on_group_id.to_string(),
+        });
+        let result: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "Mark a task group as finalized and ready for analysis. Transitions from 'draft' to 'pending' state. The group will move to analysis when its dependencies are satisfied."
+    )]
+    async fn finalize_task_group(
+        &self,
+        Parameters(FinalizeTaskGroupRequest { group_id }): Parameters<FinalizeTaskGroupRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/task-groups/{}/transition", group_id));
+        let payload = serde_json::json!({
+            "from": "draft",
+            "to": "pending",
         });
         let result: serde_json::Value = match self
             .send_json(self.client.post(&url).json(&payload))

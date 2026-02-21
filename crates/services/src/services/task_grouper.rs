@@ -187,10 +187,11 @@ Analyze the following {} ungrouped tasks in project "{}" and organize them into 
 
 Use the available MCP tools to:
 1. Identify patterns and relationships between tasks
-2. Create new task groups for related tasks (use simple names like "Auth System", "Payment Flow")
+2. Create new task groups OR add to existing draft groups (use simple names like "Auth System", "Payment Flow")
 3. Assign tasks to the appropriate groups using `add_task_to_group`
 4. Set inter-group dependencies when needed using `add_group_dependency`
-5. Document your grouping rationale using `create_artifact`
+5. **Finalize groups** when complete using `finalize_task_group`
+6. Document your grouping rationale using `create_artifact`
 
 ## Guidelines
 
@@ -198,16 +199,46 @@ Use the available MCP tools to:
 - Group by feature/domain, dependency, or purpose commonality
 - Use SIMPLE, descriptive group names
 - Don't force unrelated tasks into groups - leave them ungrouped if they don't fit
+- Only add to existing groups if they're in "draft" state (not started)
 - The Group Evaluator will refine groups later, so focus on clustering similar work
+
+## When to Finalize a Group
+
+Call `finalize_task_group(group_id)` when a group is complete and ready for analysis:
+
+**Finalize when:**
+- ✅ Group has a cohesive set of related tasks (3-8 tasks is ideal)
+- ✅ No more ungrouped tasks fit this group's purpose
+- ✅ Group dependencies are set correctly
+- ✅ You're confident this is a well-organized unit of work
+
+**Don't finalize when:**
+- ❌ You expect more related tasks to arrive soon
+- ❌ Group is too small (<3 tasks) and might grow
+- ❌ Group purpose is unclear or might change
+- ❌ You're unsure about task assignments
+
+**What finalization does:**
+- Transitions group from "draft" → "pending" state
+- Group becomes immutable (no more tasks can be added)
+- Group waits for dependencies to clear
+- When dependencies satisfied → Group Evaluator analyzes and creates execution plan
+
+**Strategy:**
+- Process all ungrouped tasks first
+- Set up all groups and dependencies
+- Then finalize completed groups at the end
+- Leave incomplete/uncertain groups in "draft" for future grouping passes
 
 ## MCP Tools Available
 
-- `list_tasks` - Query tasks in the project
+- `list_tasks` - Query tasks and existing groups in the project
 - `get_task` - Get detailed task information
 - `create_task_group` - Create a new group (name, color, project_id)
 - `add_task_to_group` - Assign a task to a group
-- `add_group_dependency` - Set prerequisite between groups
-- `create_artifact` - Log your grouping decisions
+- `add_group_dependency` - Set prerequisite between groups (group A depends on group B)
+- `finalize_task_group` - Mark group as complete and ready for analysis (draft → pending)
+- `create_artifact` - Log your grouping decisions and rationale
 
 See your system prompt for complete instructions.
 "#,

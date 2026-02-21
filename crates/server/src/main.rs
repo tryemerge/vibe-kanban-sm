@@ -62,8 +62,10 @@ async fn main() -> Result<(), VibeKanbanError> {
         .backfill_repo_names()
         .await
         .map_err(DeploymentError::from)?;
+    // Spawn PR monitor service (lightweight, runs every 60s)
     deployment.spawn_pr_monitor_service().await;
-    deployment.spawn_task_grouper_service().await;
+    // NOTE: Task Grouper service is NOT run automatically to avoid connection pool contention
+    // It should be triggered manually via the "Group Tasks" button or API endpoint
     deployment
         .track_if_analytics_allowed("session_start", serde_json::json!({}))
         .await;

@@ -77,6 +77,13 @@ const TEST_CASES: TestCase[] = [
       '3 chained tasks: calculation engine, UI, integration with state persistence.',
     projectName: 'Pi Calculator Test',
   },
+  {
+    id: 'task-grouper',
+    name: 'Task Grouper Test',
+    description:
+      '12 ungrouped tasks simulating a product catalog feature, perfect for testing automatic task grouping.',
+    projectName: 'Task Grouper Test',
+  },
 ];
 
 interface StoredTestProject {
@@ -511,6 +518,173 @@ export function EvaluateSettings() {
           title: 'Build a counter page',
           description:
             'Create a simple HTML page with a button. Every time the button is clicked, add 1 to a counter and display the updated number on the page.\n\nRequirements:\n- A single HTML file with embedded CSS and JS\n- A button labeled "Click me" or "Increment"\n- A visible counter that starts at 0\n- Each button click adds 1 to the counter\n- The updated number is displayed immediately\n- Use vanilla HTML/CSS/JS, no frameworks',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+      } else if (selectedTestCase === 'task-grouper') {
+        // Task Grouper Test: 12 ungrouped tasks for testing automatic grouping
+        // These tasks should naturally cluster into 4 groups:
+        // - Database Models (Product, Category, Inventory)
+        // - API Endpoints (Product, Category, Search)
+        // - Frontend UI (List, Detail, Search)
+        // - Admin Features (Dashboard, Product Mgmt, Inventory Mgmt)
+
+        // Database Models Group
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Create Product database model',
+          description:
+            'Design and implement the Product model for the database.\n\nRequirements:\n- Fields: id, name, description, price, category_id, sku, created_at, updated_at\n- Add indexes for category_id and sku\n- Include validation for required fields\n- Set up relationships with Category',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Create Category database model',
+          description:
+            'Design and implement the Category model for the database.\n\nRequirements:\n- Fields: id, name, slug, description, parent_id, created_at, updated_at\n- Support hierarchical categories (parent_id)\n- Add unique constraint on slug\n- Include validation for required fields',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Create Inventory database model',
+          description:
+            'Design and implement the Inventory model for stock tracking.\n\nRequirements:\n- Fields: id, product_id, quantity, warehouse_location, last_updated\n- Foreign key to Product\n- Index on product_id\n- Track stock levels and locations',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        // API Endpoints Group
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Product API endpoints',
+          description:
+            'Create RESTful API endpoints for Product operations.\n\nRequirements:\n- GET /api/products - List all products with pagination\n- GET /api/products/:id - Get single product\n- POST /api/products - Create new product\n- PUT /api/products/:id - Update product\n- DELETE /api/products/:id - Delete product\n- Include proper error handling and validation',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Category API endpoints',
+          description:
+            'Create RESTful API endpoints for Category operations.\n\nRequirements:\n- GET /api/categories - List all categories\n- GET /api/categories/:id - Get single category with products\n- POST /api/categories - Create new category\n- PUT /api/categories/:id - Update category\n- DELETE /api/categories/:id - Delete category\n- Support hierarchical category queries',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Product Search API endpoint',
+          description:
+            'Create a search endpoint for products.\n\nRequirements:\n- GET /api/search?q=query&category=id&minPrice=&maxPrice=\n- Full-text search on product name and description\n- Filter by category, price range\n- Return paginated results\n- Support sorting by price, name, relevance',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        // Frontend UI Group
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Product List page',
+          description:
+            'Create the main product listing page UI.\n\nRequirements:\n- Display products in a responsive grid\n- Show product image, name, price, category\n- Implement pagination\n- Add category filter sidebar\n- Add price range filter\n- Use the Product API endpoints',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Product Detail page',
+          description:
+            'Create the product detail page UI.\n\nRequirements:\n- Display full product information\n- Show large product image\n- Display price, description, SKU, stock status\n- Add "Add to Cart" button\n- Show related products from same category\n- Breadcrumb navigation',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Search UI component',
+          description:
+            'Create the product search interface.\n\nRequirements:\n- Search input with autocomplete\n- Real-time search suggestions\n- Display search results with filters\n- Highlight search terms in results\n- Show "no results" state\n- Use the Search API endpoint',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        // Admin Features Group
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Admin Dashboard',
+          description:
+            'Create the admin dashboard overview page.\n\nRequirements:\n- Display total products, categories, low stock alerts\n- Show recent activity feed\n- Display sales charts and metrics\n- Quick actions for common tasks\n- Responsive layout',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Product Management UI',
+          description:
+            'Create the admin interface for managing products.\n\nRequirements:\n- Product list table with search and filters\n- Add/Edit product form\n- Image upload for products\n- Bulk actions (delete, update category)\n- Export product data to CSV\n- Use Product API endpoints',
+          status: null,
+          column_id: null,
+          parent_workspace_id: null,
+          image_ids: null,
+          shared_task_id: null,
+          task_group_id: null,
+        });
+
+        await tasksApi.create({
+          project_id: project.id,
+          title: 'Build Inventory Management UI',
+          description:
+            'Create the admin interface for managing inventory.\n\nRequirements:\n- Inventory list showing stock levels\n- Low stock alerts and highlighting\n- Update stock quantities\n- Track inventory history\n- Filter by warehouse location\n- Export inventory reports',
           status: null,
           column_id: null,
           parent_workspace_id: null,

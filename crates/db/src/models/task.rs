@@ -177,8 +177,37 @@ impl Task {
         pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<TaskWithAttemptStatus>, sqlx::Error> {
+        // Optimized query using CTEs instead of correlated subqueries
+        // This scans each table once instead of N times per task
         let records = sqlx::query!(
-            r#"SELECT
+            r#"
+WITH latest_attempts AS (
+  -- Get the most recent session and execution info per task
+  SELECT DISTINCT ON (w.task_id)
+    w.task_id,
+    w.id as latest_attempt_id,
+    s.executor,
+    ep.status as latest_status
+  FROM workspaces w
+  LEFT JOIN sessions s ON s.workspace_id = w.id
+  LEFT JOIN execution_processes ep ON ep.session_id = s.id
+    AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+  WHERE w.cancelled_at IS NULL
+  ORDER BY w.task_id, w.created_at DESC, s.created_at DESC, ep.created_at DESC
+),
+running_attempts AS (
+  -- Find tasks with currently running attempts
+  SELECT
+    w.task_id,
+    bool_or(ep.status = 'running') as has_running
+  FROM workspaces w
+  JOIN sessions s ON s.workspace_id = w.id
+  JOIN execution_processes ep ON ep.session_id = s.id
+  WHERE ep.status = 'running'
+    AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+  GROUP BY w.task_id
+)
+SELECT
   t.id                            AS "id!: Uuid",
   t.project_id                    AS "project_id!: Uuid",
   t.title,
@@ -189,50 +218,18 @@ impl Task {
   t.shared_task_id                AS "shared_task_id: Uuid",
   t.task_group_id                 AS "task_group_id: Uuid",
   t.task_state                    AS "task_state!: TaskState",
-  t.workflow_decisions             AS "workflow_decisions: JsonValue",
+  t.workflow_decisions            AS "workflow_decisions: JsonValue",
   t.created_at                    AS "created_at!: DateTime<Utc>",
   t.updated_at                    AS "updated_at!: DateTime<Utc>",
 
-  CASE WHEN EXISTS (
-    SELECT 1
-      FROM workspaces w
-      JOIN sessions s ON s.workspace_id = w.id
-      JOIN execution_processes ep ON ep.session_id = s.id
-     WHERE w.task_id       = t.id
-       AND ep.status        = 'running'
-       AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
-     LIMIT 1
-  ) THEN 1 ELSE 0 END            AS "has_in_progress_attempt!: i64",
-
-  CASE WHEN (
-    SELECT ep.status
-      FROM workspaces w
-      JOIN sessions s ON s.workspace_id = w.id
-      JOIN execution_processes ep ON ep.session_id = s.id
-     WHERE w.task_id       = t.id
-     AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
-     ORDER BY ep.created_at DESC
-     LIMIT 1
-  ) IN ('failed','killed') THEN 1 ELSE 0 END
-                                 AS "last_attempt_failed!: i64",
-
-  ( SELECT s.executor
-      FROM workspaces w
-      JOIN sessions s ON s.workspace_id = w.id
-      WHERE w.task_id = t.id
-     ORDER BY s.created_at DESC
-      LIMIT 1
-  )                                 AS "executor: String",
-
-  ( SELECT w.id
-      FROM workspaces w
-      WHERE w.task_id = t.id
-        AND w.cancelled_at IS NULL
-     ORDER BY w.created_at DESC
-      LIMIT 1
-    )                               AS "latest_attempt_id: Uuid"
+  COALESCE(CASE WHEN ra.has_running THEN 1 ELSE 0 END, 0) AS "has_in_progress_attempt!: i64",
+  COALESCE(CASE WHEN la.latest_status IN ('failed','killed') THEN 1 ELSE 0 END, 0) AS "last_attempt_failed!: i64",
+  la.executor                     AS "executor: String",
+  CASE WHEN la.task_id IS NULL THEN NULL ELSE la.latest_attempt_id END AS "latest_attempt_id: Uuid"
 
 FROM tasks t
+LEFT JOIN latest_attempts la ON la.task_id = t.id
+LEFT JOIN running_attempts ra ON ra.task_id = t.id
 WHERE t.project_id = $1
 ORDER BY t.created_at DESC"#,
             project_id

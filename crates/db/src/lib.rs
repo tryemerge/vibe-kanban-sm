@@ -53,6 +53,8 @@ impl DBService {
 
         let pool = if let Some(hook) = after_connect {
             PgPoolOptions::new()
+                .max_connections(10) // Reasonable default for single application
+                .min_connections(2)  // Keep a few connections ready
                 .after_connect(move |conn, _meta| {
                     let hook = hook.clone();
                     Box::pin(async move {
@@ -63,7 +65,11 @@ impl DBService {
                 .connect(&database_url)
                 .await?
         } else {
-            PgPool::connect(&database_url).await?
+            PgPoolOptions::new()
+                .max_connections(10)
+                .min_connections(2)
+                .connect(&database_url)
+                .await?
         };
 
         sqlx::migrate!("./migrations").run(&pool).await?;
