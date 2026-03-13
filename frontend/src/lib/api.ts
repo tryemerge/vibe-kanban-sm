@@ -123,6 +123,9 @@ import {
   ContextPreviewStats,
   EvaluateRun,
   CreateEvaluateRun,
+  Skill,
+  CreateSkill,
+  UpdateSkill,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -416,6 +419,31 @@ export const projectsApi = {
       }
     );
     return handleApiResponse<ProjectRepo>(response);
+  },
+
+  startAgent: async (
+    projectId: string
+  ): Promise<{ workspace_id: string; created: boolean }> => {
+    const response = await makeRequest(
+      `/api/projects/${projectId}/agent/start`,
+      { method: 'POST' }
+    );
+    return handleApiResponse<{ workspace_id: string; created: boolean }>(response);
+  },
+
+  startGrouperAgent: async (projectId: string): Promise<{ workspace_id: string; created: boolean }> => {
+    const response = await makeRequest(`/api/projects/${projectId}/grouper/start`, { method: 'POST' });
+    return handleApiResponse<{ workspace_id: string; created: boolean }>(response);
+  },
+
+  startGroupEvaluatorAgent: async (projectId: string): Promise<{ workspace_id: string; created: boolean }> => {
+    const response = await makeRequest(`/api/projects/${projectId}/group-evaluator/start`, { method: 'POST' });
+    return handleApiResponse<{ workspace_id: string; created: boolean }>(response);
+  },
+
+  startPrereqEvalAgent: async (projectId: string): Promise<{ workspace_id: string; created: boolean }> => {
+    const response = await makeRequest(`/api/projects/${projectId}/prereq-eval/start`, { method: 'POST' });
+    return handleApiResponse<{ workspace_id: string; created: boolean }>(response);
   },
 };
 
@@ -1755,12 +1783,31 @@ export const contextArtifactsApi = {
     return handleApiResponse<ContextArtifact[]>(response);
   },
 
+  get: async (artifactId: string): Promise<ContextArtifact> => {
+    const response = await makeRequest(`/api/context-artifacts/${artifactId}`);
+    return handleApiResponse<ContextArtifact>(response);
+  },
+
   delete: async (artifactId: string): Promise<void> => {
     const response = await makeRequest(
       `/api/context-artifacts/${artifactId}`,
       { method: 'DELETE' }
     );
     await handleApiResponse<void>(response);
+  },
+
+  create: async (data: {
+    project_id: string;
+    artifact_type: string;
+    title: string;
+    content: string;
+    scope?: string;
+  }): Promise<ContextArtifact> => {
+    const response = await makeRequest('/api/context-artifacts', {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'global', ...data }),
+    });
+    return handleApiResponse<ContextArtifact>(response);
   },
 
   previewContext: async (
@@ -2054,20 +2101,102 @@ export const taskGroupsApi = {
     return handleApiResponse<void>(response);
   },
 
+  transition: async (
+    groupId: string,
+    from: string,
+    to: string
+  ): Promise<TaskGroup> => {
+    const response = await makeRequest(
+      `/api/task-groups/${groupId}/transition`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ from, to }),
+      }
+    );
+    return handleApiResponse<TaskGroup>(response);
+  },
+
+  // Group workspaces (for column-level agent viewing)
+  listGroupWorkspaces: async (groupId: string): Promise<Workspace[]> => {
+    const response = await makeRequest(
+      `/api/task-groups/${groupId}/workspaces`
+    );
+    return handleApiResponse<Workspace[]>(response);
+  },
+
   // Manual grouping analysis
   analyzeBacklog: async (
-    projectId: string
-  ): Promise<{ message: string; ungrouped_count: number; project_id?: string }> => {
+    projectId: string,
+    prompt?: string
+  ): Promise<{ message: string; ungrouped_count: number; workspace_id?: string }> => {
     const response = await makeRequest(
       `/api/projects/${projectId}/analyze-backlog`,
       {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt || null }),
       }
     );
     return handleApiResponse<{
       message: string;
       ungrouped_count: number;
-      project_id?: string;
+      workspace_id?: string;
     }>(response);
+  },
+};
+
+// Skills API
+export const skillsApi = {
+  list: async (): Promise<Skill[]> => {
+    const response = await makeRequest('/api/skills');
+    return handleApiResponse<Skill[]>(response);
+  },
+
+  get: async (skillId: string): Promise<Skill> => {
+    const response = await makeRequest(`/api/skills/${skillId}`);
+    return handleApiResponse<Skill>(response);
+  },
+
+  create: async (data: CreateSkill): Promise<Skill> => {
+    const response = await makeRequest('/api/skills', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Skill>(response);
+  },
+
+  update: async (skillId: string, data: UpdateSkill): Promise<Skill> => {
+    const response = await makeRequest(`/api/skills/${skillId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Skill>(response);
+  },
+
+  delete: async (skillId: string): Promise<void> => {
+    const response = await makeRequest(`/api/skills/${skillId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  listForAgent: async (agentId: string): Promise<Skill[]> => {
+    const response = await makeRequest(`/api/agents/${agentId}/skills`);
+    return handleApiResponse<Skill[]>(response);
+  },
+
+  assignToAgent: async (agentId: string, skillId: string): Promise<void> => {
+    const response = await makeRequest(`/api/agents/${agentId}/skills/${skillId}`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  unassignFromAgent: async (agentId: string, skillId: string): Promise<void> => {
+    const response = await makeRequest(`/api/agents/${agentId}/skills/${skillId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
   },
 };

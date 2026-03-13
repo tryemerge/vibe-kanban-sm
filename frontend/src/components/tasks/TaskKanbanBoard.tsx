@@ -23,6 +23,7 @@ export type KanbanColumnItem =
       type: 'task';
       task: TaskWithAttemptStatus;
       sharedTask?: SharedTaskRecord;
+      backgroundColor?: string;
     }
   | {
       type: 'shared';
@@ -256,6 +257,7 @@ function TaskKanbanBoard({
           isOpen={selectedTaskId === item.task.id}
           projectId={projectId}
           sharedTask={item.sharedTask}
+          backgroundColor={item.type === 'task' ? item.backgroundColor : undefined}
         />
       );
     }

@@ -13,7 +13,7 @@ import type { ReactNode } from 'react';
 
 interface TaskAttemptPanelProps {
   attempt: WorkspaceWithSession | undefined;
-  task: TaskWithAttemptStatus | null;
+  task?: TaskWithAttemptStatus | null;
   projectId?: string;
   children: (sections: { logs: ReactNode; followUp: ReactNode }) => ReactNode;
 }
@@ -30,10 +30,6 @@ const TaskAttemptPanel = ({
     return <div className="p-6 text-muted-foreground">Loading attempt...</div>;
   }
 
-  if (!task) {
-    return <div className="p-6 text-muted-foreground">Loading task...</div>;
-  }
-
   const tabBar = (
     <div className="flex gap-1 px-4 py-2 border-b bg-background/50">
       <Button
@@ -43,15 +39,17 @@ const TaskAttemptPanel = ({
       >
         Logs
       </Button>
-      <Button
-        variant={activeTab === 'timeline' ? 'secondary' : 'ghost'}
-        size="sm"
-        onClick={() => setActiveTab('timeline')}
-      >
-        <Clock className="mr-1.5 h-3.5 w-3.5" />
-        Timeline
-      </Button>
-      {projectId && (
+      {task && (
+        <Button
+          variant={activeTab === 'timeline' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setActiveTab('timeline')}
+        >
+          <Clock className="mr-1.5 h-3.5 w-3.5" />
+          Timeline
+        </Button>
+      )}
+      {task && projectId && (
         <Button
           variant={activeTab === 'context' ? 'secondary' : 'ghost'}
           size="sm"
@@ -64,7 +62,7 @@ const TaskAttemptPanel = ({
     </div>
   );
 
-  if (activeTab === 'timeline') {
+  if (activeTab === 'timeline' && task) {
     return (
       <div className="flex flex-col h-full min-h-0">
         {tabBar}
@@ -75,7 +73,7 @@ const TaskAttemptPanel = ({
     );
   }
 
-  if (activeTab === 'context' && projectId) {
+  if (activeTab === 'context' && task && projectId) {
     return (
       <div className="flex flex-col h-full min-h-0">
         {tabBar}
@@ -94,11 +92,11 @@ const TaskAttemptPanel = ({
           <div className="flex-1 min-h-0 flex flex-col">
             {children({
               logs: (
-                <VirtualizedList key={attempt.id} attempt={attempt} task={task} />
+                <VirtualizedList key={attempt.id} attempt={attempt} task={task ?? undefined} />
               ),
-              followUp: (
+              followUp: task ? (
                 <TaskFollowUpSection task={task} session={attempt.session} />
-              ),
+              ) : null,
             })}
           </div>
         </div>

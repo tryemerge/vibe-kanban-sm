@@ -26,9 +26,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
-import { agentsApi } from '@/lib/api';
-import type { Agent, CreateAgent, UpdateAgent } from 'shared/types';
+import { agentsApi, skillsApi } from '@/lib/api';
+import type { Agent, CreateAgent, Skill, UpdateAgent } from 'shared/types';
 
 export function AgentDefinitionsSettings() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -52,6 +53,12 @@ export function AgentDefinitionsSettings() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [agentToDelete, setAgentToDelete] = useState<Agent | null>(null);
 
+  // Skills assignment state
+  const [allSkills, setAllSkills] = useState<Skill[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
+  const [originalSkillIds, setOriginalSkillIds] = useState<Set<string>>(new Set());
+  const [skillsLoading, setSkillsLoading] = useState(false);
+
   const fetchAgents = useCallback(async () => {
     setAgentsLoading(true);
     setAgentsError(null);
@@ -70,6 +77,26 @@ export function AgentDefinitionsSettings() {
     fetchAgents();
   }, [fetchAgents]);
 
+  const loadSkillsForDialog = async (agentId?: string) => {
+    setSkillsLoading(true);
+    try {
+      const [all, assigned] = await Promise.all([
+        skillsApi.list(),
+        agentId ? skillsApi.listForAgent(agentId) : Promise.resolve([]),
+      ]);
+      setAllSkills(all);
+      const ids = new Set(assigned.map((s) => s.id));
+      setSelectedSkillIds(ids);
+      setOriginalSkillIds(ids);
+    } catch {
+      setAllSkills([]);
+      setSelectedSkillIds(new Set());
+      setOriginalSkillIds(new Set());
+    } finally {
+      setSkillsLoading(false);
+    }
+  };
+
   const openCreateAgentDialog = () => {
     setEditingAgent(null);
     setAgentForm({
@@ -85,6 +112,7 @@ export function AgentDefinitionsSettings() {
       start_command: null,
     });
     setAgentDialogOpen(true);
+    loadSkillsForDialog();
   };
 
   const openEditAgentDialog = (agent: Agent) => {
@@ -102,11 +130,13 @@ export function AgentDefinitionsSettings() {
       start_command: agent.start_command,
     });
     setAgentDialogOpen(true);
+    loadSkillsForDialog(agent.id);
   };
 
   const handleAgentSave = async () => {
     setAgentSaving(true);
     try {
+      let savedAgentId: string;
       if (editingAgent) {
         const updateData: UpdateAgent = {
           name: agentForm.name || null,
@@ -121,9 +151,20 @@ export function AgentDefinitionsSettings() {
           start_command: agentForm.start_command,
         };
         await agentsApi.update(editingAgent.id, updateData);
+        savedAgentId = editingAgent.id;
       } else {
-        await agentsApi.create(agentForm);
+        const created = await agentsApi.create(agentForm);
+        savedAgentId = created.id;
       }
+
+      // Sync skill assignments
+      const toAssign = [...selectedSkillIds].filter((id) => !originalSkillIds.has(id));
+      const toUnassign = [...originalSkillIds].filter((id) => !selectedSkillIds.has(id));
+      await Promise.all([
+        ...toAssign.map((skillId) => skillsApi.assignToAgent(savedAgentId, skillId)),
+        ...toUnassign.map((skillId) => skillsApi.unassignFromAgent(savedAgentId, skillId)),
+      ]);
+
       setAgentDialogOpen(false);
       await fetchAgents();
     } catch (err) {
@@ -423,6 +464,51 @@ export function AgentDefinitionsSettings() {
                   });
                 }}
               />
+            </div>
+
+            {/* Skills assignment */}
+            <div className="space-y-2">
+              <Label>Assigned Skills</Label>
+              {skillsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Loading skills…
+                </div>
+              ) : allSkills.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-1">
+                  No skills defined yet. Create skills in Settings → Skills.
+                </p>
+              ) : (
+                <div className="space-y-2 border rounded-md p-3 max-h-48 overflow-y-auto">
+                  {allSkills.map((skill) => (
+                    <div key={skill.id} className="flex items-start gap-2.5">
+                      <Checkbox
+                        id={`skill-${skill.id}`}
+                        checked={selectedSkillIds.has(skill.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedSkillIds((prev) => {
+                            const next = new Set(prev);
+                            if (checked) next.add(skill.id);
+                            else next.delete(skill.id);
+                            return next;
+                          });
+                        }}
+                      />
+                      <label
+                        htmlFor={`skill-${skill.id}`}
+                        className="flex-1 cursor-pointer select-none"
+                      >
+                        <span className="text-sm font-medium leading-none">{skill.name}</span>
+                        {skill.description && (
+                          <span className="block text-xs text-muted-foreground mt-0.5">
+                            {skill.description}
+                          </span>
+                        )}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

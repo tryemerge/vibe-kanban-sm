@@ -1,12 +1,4 @@
-import {
-  DataWithScrollModifier,
-  ScrollModifier,
-  VirtuosoMessageList,
-  VirtuosoMessageListLicense,
-  VirtuosoMessageListMethods,
-  VirtuosoMessageListProps,
-} from '@virtuoso.dev/message-list';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import DisplayConversationEntry from '../NormalizedConversation/DisplayConversationEntry';
 import { useEntries } from '@/contexts/EntriesContext';
@@ -25,67 +17,20 @@ interface VirtualizedListProps {
   task?: TaskWithAttemptStatus;
 }
 
-interface MessageListContext {
-  attempt: WorkspaceWithSession;
-  task?: TaskWithAttemptStatus;
-}
-
-const INITIAL_TOP_ITEM = { index: 'LAST' as const, align: 'end' as const };
-
-const InitialDataScrollModifier: ScrollModifier = {
-  type: 'item-location',
-  location: INITIAL_TOP_ITEM,
-  purgeItemSizes: true,
-};
-
-const AutoScrollToBottom: ScrollModifier = {
-  type: 'auto-scroll-to-bottom',
-  autoScroll: 'smooth',
-};
-
-const ItemContent: VirtuosoMessageListProps<
-  PatchTypeWithKey,
-  MessageListContext
->['ItemContent'] = ({ data, context }) => {
-  const attempt = context?.attempt;
-  const task = context?.task;
-
-  if (data.type === 'STDOUT') {
-    return <p>{data.content}</p>;
-  }
-  if (data.type === 'STDERR') {
-    return <p>{data.content}</p>;
-  }
-  if (data.type === 'NORMALIZED_ENTRY' && attempt) {
-    return (
-      <DisplayConversationEntry
-        expansionKey={data.patchKey}
-        entry={data.content}
-        executionProcessId={data.executionProcessId}
-        taskAttempt={attempt}
-        task={task}
-      />
-    );
-  }
-
-  return null;
-};
-
-const computeItemKey: VirtuosoMessageListProps<
-  PatchTypeWithKey,
-  MessageListContext
->['computeItemKey'] = ({ data }) => `l-${data.patchKey}`;
-
 const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
-  const [channelData, setChannelData] =
-    useState<DataWithScrollModifier<PatchTypeWithKey> | null>(null);
+  const [entries, setLocalEntries] = useState<PatchTypeWithKey[]>([]);
   const [loading, setLoading] = useState(true);
   const { setEntries, reset } = useEntries();
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Track whether the user is at the bottom so we don't hijack manual scrolls
+  const stickyToBottom = useRef(true);
+
   useEffect(() => {
     setLoading(true);
-    setChannelData(null);
+    setLocalEntries([]);
     reset();
+    stickyToBottom.current = true;
   }, [attempt.id, reset]);
 
   const onEntriesUpdated = (
@@ -93,51 +38,78 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     addType: AddEntryType,
     newLoading: boolean
   ) => {
-    let scrollModifier: ScrollModifier = InitialDataScrollModifier;
-
-    if (addType === 'running' && !loading) {
-      scrollModifier = AutoScrollToBottom;
-    }
-
-    setChannelData({ data: newEntries, scrollModifier });
+    setLocalEntries(newEntries);
     setEntries(newEntries);
 
     if (loading) {
       setLoading(newLoading);
     }
+
+    // On initial/historic load, always scroll to bottom to show latest
+    if (addType === 'initial' || addType === 'historic') {
+      stickyToBottom.current = true;
+    }
   };
 
   useConversationHistory({ attempt, onEntriesUpdated });
 
-  const messageListRef = useRef<VirtuosoMessageListMethods | null>(null);
-  const messageListContext = useMemo(
-    () => ({ attempt, task }),
-    [attempt, task]
-  );
+  // Scroll to bottom whenever entries change, if sticky
+  useEffect(() => {
+    if (!stickyToBottom.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  });
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickyToBottom.current = distanceFromBottom < 80;
+  };
 
   return (
     <ApprovalFormProvider>
-      <VirtuosoMessageListLicense
-        licenseKey={import.meta.env.VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY}
-      >
-        <VirtuosoMessageList<PatchTypeWithKey, MessageListContext>
-          ref={messageListRef}
-          className="flex-1"
-          data={channelData}
-          initialLocation={INITIAL_TOP_ITEM}
-          context={messageListContext}
-          computeItemKey={computeItemKey}
-          ItemContent={ItemContent}
-          Header={() => <div className="h-2"></div>}
-          Footer={() => <div className="h-2"></div>}
-        />
-      </VirtuosoMessageListLicense>
-      {loading && (
-        <div className="float-left top-0 left-0 w-full h-full bg-primary flex flex-col gap-2 justify-center items-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <p>Loading History</p>
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto"
+          onScroll={handleScroll}
+        >
+          <div className="h-2" />
+          {entries.map((data) => {
+            const key = `l-${data.patchKey}`;
+            if (data.type === 'STDOUT') {
+              return <p key={key}>{data.content}</p>;
+            }
+            if (data.type === 'STDERR') {
+              return <p key={key}>{data.content}</p>;
+            }
+            if (data.type === 'NORMALIZED_ENTRY') {
+              return (
+                <DisplayConversationEntry
+                  key={key}
+                  expansionKey={data.patchKey}
+                  entry={data.content}
+                  executionProcessId={data.executionProcessId}
+                  taskAttempt={attempt}
+                  task={task}
+                />
+              );
+            }
+            return null;
+          })}
+          <div className="h-2" />
         </div>
-      )}
+
+        {loading && (
+          <div className="absolute inset-0 bg-background flex flex-col gap-2 justify-center items-center z-10">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <p>Loading History</p>
+          </div>
+        )}
+      </div>
     </ApprovalFormProvider>
   );
 };

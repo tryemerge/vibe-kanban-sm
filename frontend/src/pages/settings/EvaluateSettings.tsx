@@ -1,5 +1,9 @@
 import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { runScenario } from '@/lib/scenarioRunner';
+import type { ScenarioDef } from '@/lib/scenarioRunner';
+import kanbanScenario from '../../../../scripts/scenarios/definitions/kanban-board-app.json';
+import baselineScenario from '../../../../scripts/scenarios/definitions/baseline-api-tasks.json';
 import { useTranslation } from 'react-i18next';
 import {
   boardsApi,
@@ -60,6 +64,8 @@ interface TestCase {
   name: string;
   description: string;
   projectName: string;
+  /** If set, use runScenario() instead of hardcoded task creation. */
+  scenario?: ScenarioDef;
 }
 
 const TEST_CASES: TestCase[] = [
@@ -83,6 +89,20 @@ const TEST_CASES: TestCase[] = [
     description:
       '12 ungrouped tasks simulating a product catalog feature, perfect for testing automatic task grouping.',
     projectName: 'Task Grouper Test',
+  },
+  {
+    id: 'kanban-board-app',
+    name: 'Kanban Board App',
+    description: (kanbanScenario as ScenarioDef).description || 'Seeds a kanban board project with Plans, groups, and tasks.',
+    projectName: `Test: ${(kanbanScenario as ScenarioDef).name}`,
+    scenario: kanbanScenario as ScenarioDef,
+  },
+  {
+    id: 'baseline-api-tasks',
+    name: 'Baseline API Tasks',
+    description: (baselineScenario as ScenarioDef).description || 'Context compounding test with related API tasks.',
+    projectName: `Test: ${(baselineScenario as ScenarioDef).name}`,
+    scenario: baselineScenario as ScenarioDef,
   },
 ];
 
@@ -477,6 +497,20 @@ export function EvaluateSettings() {
     try {
       const testCase = TEST_CASES.find((t) => t.id === selectedTestCase)!;
 
+      // Scenario-based test cases use runScenario() with the selected board
+      if (testCase.scenario) {
+        const scenarioWithBoard = { ...testCase.scenario, board_id: selectedBoardId };
+        const { projectId } = await runScenario(scenarioWithBoard, () => {});
+        const stored: StoredTestProject = {
+          projectId,
+          createdAt: new Date().toISOString(),
+          testCaseName: testCase.projectName,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+        setStoredProject(stored);
+        return;
+      }
+
       // 1. Initialize git repo (creates directory + git init if not already present)
       const repoSlug = testCase.id;
       try {
@@ -488,7 +522,7 @@ export function EvaluateSettings() {
         // Repo may already exist from a prior run — that's fine
       }
 
-      // 2. Create project
+      // 2. Create project with the selected board assigned directly
       const project = await projectsApi.create({
         name: testCase.projectName,
         repositories: [
@@ -497,18 +531,7 @@ export function EvaluateSettings() {
             git_repo_path: `/tmp/${repoSlug}`,
           },
         ],
-      });
-
-      // 3. Assign the selected board (replace auto-created one)
-      if (project.board_id && project.board_id !== selectedBoardId) {
-        await boardsApi.delete(project.board_id).catch(() => {});
-      }
-      await projectsApi.update(project.id, {
-        name: null,
-        board_id: selectedBoardId,
-        dev_script: null,
-        dev_script_working_dir: null,
-        default_agent_working_dir: null,
+        board_id: selectedBoardId || null,
       });
 
       // 4. Create tasks based on selected test case
@@ -859,7 +882,15 @@ export function EvaluateSettings() {
       });
 
       // Destroy the project (board is global, don't delete it)
-      await projectsApi.delete(testProjectId);
+      // If the project no longer exists (404), treat it as already destroyed
+      try {
+        await projectsApi.delete(testProjectId);
+      } catch (deleteErr) {
+        const msg = deleteErr instanceof Error ? deleteErr.message : String(deleteErr);
+        if (!msg.includes('404') && !msg.toLowerCase().includes('not found')) {
+          throw deleteErr;
+        }
+      }
       localStorage.removeItem(STORAGE_KEY);
       setStoredProject(null);
       setSelectedTaskId(undefined);

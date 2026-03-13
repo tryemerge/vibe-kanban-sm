@@ -13,6 +13,8 @@
         "agentsDesc": "Provider configurations",
         "agent-definitions": "Agents",
         "agent-definitionsDesc": "Agent roles, prompts, and capabilities",
+        "skills": "Skills",
+        "skillsDesc": "Reusable procedures assigned to agents",
         "templates": "Templates",
         "templatesDesc": "Pre-built board templates",
         "knowledge": "Knowledge Base",

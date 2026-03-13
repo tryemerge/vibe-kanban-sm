@@ -10,3 +10,4 @@ export { TemplatesSettings } from './TemplatesSettings';
 export { KnowledgeBaseSettings } from './KnowledgeBaseSettings';
 export { TaskGroupsSettings } from './TaskGroupsSettings';
 export { EvaluateSettings } from './EvaluateSettings';
+export { SkillsSettings } from './SkillsSettings';

@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ChevronDown, ChevronUp, X, Bug, RefreshCw, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProject } from '@/contexts/ProjectContext';
 import { useProjectColumns } from '@/hooks';
+import { useJsonPatchWsStream } from '@/hooks/useJsonPatchWsStream';
 import { cn } from '@/lib/utils';
+import type { GroupEvent } from 'shared/types';
 
 interface DebugEvent {
   id: string;
@@ -42,7 +44,7 @@ export function DebugPanel() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [events, setEvents] = useState<DebugEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const [activeTab, setActiveTab] = useState<'events' | 'columns' | 'state'>(
+  const [activeTab, setActiveTab] = useState<'events' | 'columns' | 'state' | 'orchestration'>(
     'events'
   );
   const [panelHeight, setPanelHeight] = useState(288); // Default h-72 = 288px
@@ -219,6 +221,14 @@ export function DebugPanel() {
             >
               State
             </Button>
+            <Button
+              variant={activeTab === 'orchestration' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-6 text-xs"
+              onClick={() => setActiveTab('orchestration')}
+            >
+              Orchestration
+            </Button>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -273,6 +283,7 @@ export function DebugPanel() {
             <ColumnsTab columns={columns} projectId={projectId} />
           )}
           {activeTab === 'state' && <StateTab />}
+          {activeTab === 'orchestration' && <OrchestrationTab projectId={projectId} />}
         </div>
       )}
     </div>
@@ -656,6 +667,276 @@ function StateTab() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+type GroupEventsState = {
+  group_events: Record<string, GroupEvent>;
+};
+
+
+function OrchestrationTab({ projectId }: { projectId: string | undefined }) {
+  const endpoint = projectId
+    ? `/api/projects/${encodeURIComponent(projectId)}/group-events/stream/ws`
+    : undefined;
+
+  const initialData = useCallback((): GroupEventsState => ({ group_events: {} }), []);
+
+  const { data, isConnected } = useJsonPatchWsStream(
+    endpoint,
+    !!projectId,
+    initialData
+  );
+
+  const groupEvents = useMemo(() => {
+    if (!data?.group_events) return [];
+    return Object.values(data.group_events).sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+  }, [data]);
+
+  if (!projectId) {
+    return (
+      <div className="text-muted-foreground p-4 text-center">
+        No project selected
+      </div>
+    );
+  }
+
+  if (!isConnected && groupEvents.length === 0) {
+    return (
+      <div className="text-muted-foreground p-4 text-center">
+        Connecting to orchestration stream...
+      </div>
+    );
+  }
+
+  if (groupEvents.length === 0) {
+    return (
+      <div className="text-muted-foreground p-4 text-center">
+        No orchestration events yet. Click "Group Tasks" to trigger the Task Grouper agent.
+      </div>
+    );
+  }
+
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new events arrive
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !bottomRef.current) return;
+    // Only auto-scroll if user is already near the bottom (within 150px)
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+    if (isNearBottom) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [groupEvents.length]);
+
+  return (
+    <div ref={containerRef} className="space-y-1 overflow-y-auto">
+      <div className="text-muted-foreground mb-2 sticky top-0 bg-background z-10 pb-1">
+        {groupEvents.length} orchestration events{' '}
+        <span className={cn('text-xs', isConnected ? 'text-green-500' : 'text-amber-500')}>
+          ({isConnected ? 'live' : 'reconnecting'})
+        </span>
+      </div>
+      {groupEvents.map((event) => (
+        <OrchestrationEventRow key={event.id} event={event} />
+      ))}
+      <div ref={bottomRef} />
+    </div>
+  );
+}
+
+function OrchestrationEventRow({ event }: { event: GroupEvent }) {
+  const time = new Date(event.created_at).toLocaleTimeString();
+
+  const getEventColor = (type: string) => {
+    switch (type) {
+      case 'orchestration_started':
+        return 'text-blue-600 bg-blue-50 dark:bg-blue-950';
+      case 'orchestration_message':
+        return 'text-gray-600 bg-gray-50 dark:bg-gray-950';
+      case 'orchestration_completed':
+      case 'completed':
+        return 'text-green-600 bg-green-50 dark:bg-green-950';
+      case 'orchestration_error':
+        return 'text-red-600 bg-red-50 dark:bg-red-950';
+      case 'group_state_change':
+        return 'text-purple-600 bg-purple-50 dark:bg-purple-950';
+      case 'dag_stored':
+      case 'dag_task_added':
+        return 'text-amber-600 bg-amber-50 dark:bg-amber-950';
+      case 'analysis_task_created':
+      case 'analysis_complete':
+        return 'text-cyan-600 bg-cyan-50 dark:bg-cyan-950';
+      case 'group_created':
+      case 'task_added':
+        return 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950';
+      default:
+        return 'text-muted-foreground';
+    }
+  };
+
+  const renderEventContent = () => {
+    switch (event.event_type) {
+      case 'orchestration_started':
+        return (
+          <div className="flex flex-col gap-1">
+            <div>
+              <span className="font-medium">{event.summary}</span>
+            </div>
+            {event.payload && (
+              <div className="text-[10px] bg-muted/50 p-2 rounded max-h-64 overflow-y-auto whitespace-pre-wrap break-all font-mono">
+                {event.payload}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'orchestration_message':
+        return (
+          <div className="flex flex-col gap-1">
+            <div>{event.summary}</div>
+            {event.payload && (
+              <div className="text-[10px] bg-muted/50 p-1 rounded whitespace-pre-wrap break-all">
+                {event.payload}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'orchestration_completed':
+      case 'completed':
+        return (
+          <div>
+            <span className="font-medium text-green-600">✓ {event.summary}</span>
+          </div>
+        );
+
+      case 'orchestration_error':
+        return (
+          <div className="flex flex-col gap-1">
+            <div>
+              <span className="font-medium text-red-600">✗ {event.summary}</span>
+            </div>
+            {event.payload && (
+              <div className="text-[10px] bg-muted/50 p-2 rounded max-h-48 overflow-y-auto whitespace-pre-wrap break-all font-mono text-red-600">
+                {event.payload}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'group_state_change':
+        return (
+          <div className="flex flex-col gap-1">
+            <div>
+              <span className="font-medium text-purple-600">{event.summary}</span>
+            </div>
+            {event.payload && (() => {
+              try {
+                const p = JSON.parse(event.payload);
+                return (
+                  <div className="text-[10px] font-mono">
+                    <span className="opacity-60">{p.from}</span>
+                    <span className="mx-1">→</span>
+                    <span className="font-semibold">{p.to}</span>
+                  </div>
+                );
+              } catch {
+                return null;
+              }
+            })()}
+          </div>
+        );
+
+      case 'dag_stored':
+        return (
+          <div className="flex flex-col gap-1">
+            <div>
+              <span className="font-medium text-amber-600">{event.summary}</span>
+            </div>
+            {event.payload && (() => {
+              try {
+                const p = JSON.parse(event.payload);
+                return (
+                  <div className="text-[10px] font-mono">
+                    {p.parallel_sets_count && <span>{p.parallel_sets_count} parallel set(s)</span>}
+                    {p.total_tasks && <span className="ml-2">· {p.total_tasks} tasks</span>}
+                  </div>
+                );
+              } catch {
+                return null;
+              }
+            })()}
+          </div>
+        );
+
+      case 'dag_task_added':
+      case 'group_created':
+      case 'task_added':
+        return (
+          <div>
+            <span className="font-medium">{event.summary}</span>
+          </div>
+        );
+
+      case 'analysis_task_created':
+      case 'analysis_complete':
+        return (
+          <div className="flex flex-col gap-1">
+            <div>
+              <span className="font-medium text-cyan-600">{event.summary}</span>
+            </div>
+            {event.payload && (() => {
+              try {
+                const p = JSON.parse(event.payload);
+                return (
+                  <div className="text-[10px] bg-muted/50 p-1 rounded font-mono">
+                    {p.recommendation && <span>Recommendation: <span className="font-semibold">{p.recommendation}</span></span>}
+                    {p.task_count && <span className="ml-2">· {p.task_count} tasks</span>}
+                    {p.gaps_identified?.length > 0 && (
+                      <div className="mt-0.5 text-amber-600">Gaps: {p.gaps_identified.join(', ')}</div>
+                    )}
+                  </div>
+                );
+              } catch {
+                return null;
+              }
+            })()}
+          </div>
+        );
+
+      default:
+        return (
+          <div>
+            <span className="font-medium">{event.summary}</span>
+            {event.payload && (
+              <div className="text-[10px] text-muted-foreground ml-2">
+                {event.payload.slice(0, 200)}{event.payload.length > 200 ? '...' : ''}
+              </div>
+            )}
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        'flex gap-2 py-1 px-2 rounded border-l-2',
+        getEventColor(event.event_type)
+      )}
+    >
+      <span className="text-muted-foreground shrink-0 w-20">{time}</span>
+      <span className="shrink-0 w-32 font-medium opacity-70">
+        {event.event_type.replace(/_/g, ' ')}
+      </span>
+      <span className="flex-1">{renderEventContent()}</span>
     </div>
   );
 }

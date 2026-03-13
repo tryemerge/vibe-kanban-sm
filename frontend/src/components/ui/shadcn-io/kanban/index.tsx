@@ -8,9 +8,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import type { DragEndEvent, Modifier } from '@dnd-kit/core';
+import type { DragEndEvent, DragStartEvent, Modifier } from '@dnd-kit/core';
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   rectIntersection,
   useDraggable,
@@ -18,7 +19,16 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { type ReactNode, type Ref, type KeyboardEvent } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+  type KeyboardEvent,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Plus } from 'lucide-react';
@@ -64,6 +74,17 @@ export const KanbanBoard = ({ id, children, className }: KanbanBoardProps) => {
   );
 };
 
+// Context for cards to register their content for the drag overlay
+type CardRegistry = {
+  register: (id: string, node: HTMLDivElement | null) => void;
+  unregister: (id: string) => void;
+};
+
+const CardRegistryContext = createContext<CardRegistry>({
+  register: () => {},
+  unregister: () => {},
+});
+
 export type KanbanCardProps = Pick<Feature, 'id' | 'name'> & {
   index: number;
   parent: string;
@@ -75,6 +96,7 @@ export type KanbanCardProps = Pick<Feature, 'id' | 'name'> & {
   onKeyDown?: (e: KeyboardEvent) => void;
   isOpen?: boolean;
   dragDisabled?: boolean;
+  style?: React.CSSProperties;
 };
 
 export const KanbanCard = ({
@@ -90,17 +112,20 @@ export const KanbanCard = ({
   onKeyDown,
   isOpen,
   dragDisabled = false,
+  style: externalStyle,
 }: KanbanCardProps) => {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id,
-      data: { index, parent },
-      disabled: dragDisabled,
-    });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id,
+    data: { index, parent },
+    disabled: dragDisabled,
+  });
 
-  // Combine DnD ref and forwarded ref
+  const registry = useContext(CardRegistryContext);
+
+  // Combine DnD ref, forwarded ref, and registry ref
   const combinedRef = (node: HTMLDivElement | null) => {
     setNodeRef(node);
+    registry.register(id as string, node);
     if (typeof forwardedRef === 'function') {
       forwardedRef(node);
     } else if (forwardedRef && typeof forwardedRef === 'object') {
@@ -112,8 +137,8 @@ export const KanbanCard = ({
   return (
     <Card
       className={cn(
-        'p-3 outline-none border-b flex-col space-y-2',
-        isDragging && 'cursor-grabbing',
+        'p-3 outline-none border-b flex-col space-y-2 touch-none',
+        isDragging && 'opacity-30 border-dashed',
         isOpen && 'ring-2 ring-secondary-foreground ring-inset',
         className
       )}
@@ -123,12 +148,7 @@ export const KanbanCard = ({
       tabIndex={tabIndex}
       onClick={onClick}
       onKeyDown={onKeyDown}
-      style={{
-        zIndex: isDragging ? 1000 : 1,
-        transform: transform
-          ? `translateX(${transform.x}px) translateY(${transform.y}px)`
-          : 'none',
-      }}
+      style={externalStyle}
     >
       {children ?? <p className="m-0 font-medium text-sm">{name}</p>}
     </Card>
@@ -272,25 +292,87 @@ export const KanbanProvider = ({
 }: KanbanProviderProps) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
+      activationConstraint: { distance: 3 },
     })
   );
 
+  // Track the active drag item for the overlay
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [overlayContent, setOverlayContent] = useState<HTMLElement | null>(
+    null
+  );
+
+  // Registry: cards register their DOM nodes so we can clone them for the overlay
+  const cardNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const register = useCallback((id: string, node: HTMLDivElement | null) => {
+    if (node) {
+      cardNodesRef.current.set(id, node);
+    } else {
+      cardNodesRef.current.delete(id);
+    }
+  }, []);
+
+  const unregister = useCallback((id: string) => {
+    cardNodesRef.current.delete(id);
+  }, []);
+
+  const registryValue = { register, unregister };
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const id = event.active.id as string;
+    setActiveId(id);
+
+    // Clone the card's DOM for the overlay
+    const node = cardNodesRef.current.get(id);
+    if (node) {
+      const clone = node.cloneNode(true) as HTMLElement;
+      // Match the original card's dimensions
+      clone.style.width = `${node.offsetWidth}px`;
+      clone.style.opacity = '1';
+      clone.style.borderStyle = 'solid';
+      setOverlayContent(clone);
+    }
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveId(null);
+      setOverlayContent(null);
+      onDragEnd(event);
+    },
+    [onDragEnd]
+  );
+
   return (
-    <DndContext
-      collisionDetection={rectIntersection}
-      onDragEnd={onDragEnd}
-      sensors={sensors}
-      modifiers={[restrictToFirstScrollableAncestorCustom]}
-    >
-      <div
-        className={cn(
-          'inline-grid grid-flow-col auto-cols-[minmax(200px,400px)] divide-x border-x items-stretch min-h-full',
-          className
-        )}
+    <CardRegistryContext.Provider value={registryValue}>
+      <DndContext
+        collisionDetection={rectIntersection}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        sensors={sensors}
+        modifiers={[restrictToFirstScrollableAncestorCustom]}
       >
-        {children}
-      </div>
-    </DndContext>
+        <div
+          className={cn(
+            'inline-grid grid-flow-col auto-cols-[minmax(200px,400px)] divide-x border-x items-stretch min-h-full',
+            className
+          )}
+        >
+          {children}
+        </div>
+        <DragOverlay dropAnimation={null}>
+          {activeId && overlayContent ? (
+            <div
+              className="shadow-xl cursor-grabbing rounded-md"
+              style={{ willChange: 'transform' }}
+              dangerouslySetInnerHTML={{
+                __html: overlayContent.outerHTML,
+              }}
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </CardRegistryContext.Provider>
   );
 };

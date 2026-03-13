@@ -23,6 +23,7 @@ import {
   SettingsLayout,
   TaskGroupsSettings,
   TemplatesSettings,
+  SkillsSettings,
 } from '@/pages/settings/';
 import { UserSystemProvider, useUserSystem } from '@/components/ConfigProvider';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -41,6 +42,7 @@ import { ReleaseNotesDialog } from '@/components/dialogs/global/ReleaseNotesDial
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
 import NiceModal from '@ebay/nice-modal-react';
 import { DebugPanel } from '@/components/debug/DebugPanel';
+import { Toaster } from 'sonner';
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -156,6 +158,7 @@ function AppContent() {
                   <Route path="boards" element={<BoardSettings />} />
                   <Route path="agents" element={<AgentSettings />} />
                   <Route path="agent-definitions" element={<AgentDefinitionsSettings />} />
+                  <Route path="skills" element={<SkillsSettings />} />
                   <Route path="templates" element={<TemplatesSettings />} />
                   <Route path="knowledge" element={<KnowledgeBaseSettings />} />
                   <Route path="task-groups" element={<TaskGroupsSettings />} />
@@ -179,6 +182,7 @@ function AppContent() {
           </div>
           <DebugPanel />
         </SearchProvider>
+        <Toaster position="bottom-right" richColors closeButton />
       </ThemeProvider>
     </I18nextProvider>
   );

@@ -1,6 +1,9 @@
+import { useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { taskGroupsApi } from '@/lib/api';
 import { taskKeys } from '@/hooks/useTask';
+import { useJsonPatchWsStream } from './useJsonPatchWsStream';
+import type { TaskGroup } from 'shared/types';
 
 // Query key factory for task groups
 export const taskGroupsKeys = {
@@ -11,16 +14,37 @@ export const taskGroupsKeys = {
     [...taskGroupsKeys.all, 'dependencies', projectId] as const,
 };
 
+type TaskGroupsState = {
+  task_groups: Record<string, TaskGroup>;
+};
+
 /**
- * Hook to fetch all task groups for a project
+ * Hook to stream all task groups for a project via WebSocket
  */
 export function useTaskGroups(projectId: string | undefined) {
-  return useQuery({
-    queryKey: taskGroupsKeys.byProject(projectId || ''),
-    queryFn: () => taskGroupsApi.list(projectId!),
-    enabled: !!projectId,
-    staleTime: 30000,
-  });
+  const endpoint = projectId
+    ? `/api/projects/${encodeURIComponent(projectId)}/task-groups/stream/ws`
+    : undefined;
+
+  const initialData = useCallback((): TaskGroupsState => ({ task_groups: {} }), []);
+
+  const { data, isConnected, error } = useJsonPatchWsStream(
+    endpoint,
+    !!projectId,
+    initialData
+  );
+
+  const groups = useMemo(() => {
+    if (!data?.task_groups) return [];
+    return Object.values(data.task_groups);
+  }, [data]);
+
+  return {
+    data: groups,
+    isLoading: !isConnected && groups.length === 0,
+    isConnected,
+    error,
+  };
 }
 
 /**
@@ -31,7 +55,8 @@ export function useTaskGroupDependencies(projectId: string | undefined) {
     queryKey: taskGroupsKeys.dependencies(projectId || ''),
     queryFn: () => taskGroupsApi.listDependencies(projectId!),
     enabled: !!projectId,
-    staleTime: 30000,
+    staleTime: 5000,
+    refetchInterval: 5000,
   });
 }
 
@@ -41,23 +66,23 @@ export function useTaskGroupDependencies(projectId: string | undefined) {
 export function useTaskGroupMutations(projectId: string) {
   const queryClient = useQueryClient();
 
-  const invalidateGroups = () => {
+  // Dependencies still use React Query, so we invalidate those
+  const invalidateDeps = () => {
     queryClient.invalidateQueries({
-      queryKey: taskGroupsKeys.byProject(projectId),
+      queryKey: taskGroupsKeys.dependencies(projectId),
     });
   };
 
-  const invalidateGroupsAndTasks = () => {
-    invalidateGroups();
+  const invalidateTasks = () => {
     queryClient.invalidateQueries({
       queryKey: taskKeys.all,
     });
   };
 
   const createGroup = useMutation({
-    mutationFn: (data: { name: string; color: string | null; is_backlog: boolean | null }) =>
-      taskGroupsApi.create(projectId, data),
-    onSuccess: invalidateGroups,
+    mutationFn: (data: { name: string; color: string | null; is_backlog: boolean | null; artifact_id?: string | null }) =>
+      taskGroupsApi.create(projectId, { ...data, artifact_id: data.artifact_id ?? null }),
+    // WS stream handles the read update
   });
 
   const updateGroup = useMutation({
@@ -68,29 +93,27 @@ export function useTaskGroupMutations(projectId: string) {
       groupId: string;
       data: { name: string | null; color: string | null };
     }) => taskGroupsApi.update(projectId, groupId, data),
-    onSuccess: invalidateGroups,
   });
 
   const deleteGroup = useMutation({
     mutationFn: (groupId: string) => taskGroupsApi.delete(projectId, groupId),
-    onSuccess: invalidateGroupsAndTasks,
+    onSuccess: invalidateTasks,
   });
 
   const reorderGroups = useMutation({
     mutationFn: (groupIds: string[]) =>
       taskGroupsApi.reorder(projectId, groupIds),
-    onSuccess: invalidateGroups,
   });
 
   const addTaskToGroup = useMutation({
     mutationFn: ({ taskId, groupId }: { taskId: string; groupId: string }) =>
       taskGroupsApi.addTask(taskId, groupId),
-    onSuccess: invalidateGroupsAndTasks,
+    onSuccess: invalidateTasks,
   });
 
   const removeTaskFromGroup = useMutation({
     mutationFn: (taskId: string) => taskGroupsApi.removeTask(taskId),
-    onSuccess: invalidateGroupsAndTasks,
+    onSuccess: invalidateTasks,
   });
 
   const addDependency = useMutation({
@@ -101,21 +124,26 @@ export function useTaskGroupMutations(projectId: string) {
       groupId: string;
       dependsOnGroupId: string;
     }) => taskGroupsApi.addDependency(projectId, groupId, dependsOnGroupId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: taskGroupsKeys.dependencies(projectId),
-      });
-    },
+    onSuccess: invalidateDeps,
   });
 
   const removeDependency = useMutation({
     mutationFn: (depId: string) =>
       taskGroupsApi.removeDependency(projectId, depId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: taskGroupsKeys.dependencies(projectId),
-      });
-    },
+    onSuccess: invalidateDeps,
+  });
+
+  const transitionGroup = useMutation({
+    mutationFn: ({
+      groupId,
+      from,
+      to,
+    }: {
+      groupId: string;
+      from: string;
+      to: string;
+    }) => taskGroupsApi.transition(groupId, from, to),
+    // WS stream handles the read update
   });
 
   return {
@@ -127,5 +155,6 @@ export function useTaskGroupMutations(projectId: string) {
     removeTaskFromGroup,
     addDependency,
     removeDependency,
+    transitionGroup,
   };
 }

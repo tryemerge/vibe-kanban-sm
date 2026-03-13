@@ -24,7 +24,19 @@ interface TaskCardProps {
   isOpen?: boolean;
   projectId: string;
   sharedTask?: SharedTaskRecord;
+  backgroundColor?: string;
 }
+
+// Helper to convert hex color to RGB with opacity
+const hexToRgba = (hex: string | null | undefined, opacity: number = 0.15) => {
+  if (!hex) return undefined;
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) return undefined;
+  const r = parseInt(result[1], 16);
+  const g = parseInt(result[2], 16);
+  const b = parseInt(result[3], 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
 
 export function TaskCard({
   task,
@@ -34,6 +46,7 @@ export function TaskCard({
   isOpen,
   projectId,
   sharedTask,
+  backgroundColor,
 }: TaskCardProps) {
   const { t } = useTranslation('tasks');
   const navigate = useNavigateWithSearch();
@@ -85,6 +98,10 @@ export function TaskCard({
     });
   }, [isOpen]);
 
+  const cardStyle = backgroundColor
+    ? { backgroundColor: hexToRgba(backgroundColor, 0.15) }
+    : undefined;
+
   return (
     <KanbanCard
       key={task.id}
@@ -101,6 +118,7 @@ export function TaskCard({
           ? 'relative overflow-hidden pl-5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-card-foreground before:content-[""]'
           : undefined
       }
+      style={cardStyle}
     >
       <div className="flex flex-col gap-2">
         <TaskCardHeader

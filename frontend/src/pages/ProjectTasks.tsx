@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertTriangle, Plus, X, Rows3, LayoutList } from 'lucide-react';
+import { AlertTriangle, Plus, X, Rows3, LayoutList, Bot, GitFork } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -11,10 +11,16 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Loader } from '@/components/ui/loader';
-import { tasksApi, attemptsApi, agentsApi } from '@/lib/api';
-import type { RepoBranchStatus, Workspace } from 'shared/types';
+import { tasksApi, attemptsApi, agentsApi, projectsApi, contextArtifactsApi, sessionsApi } from '@/lib/api';
+import type { RepoBranchStatus, Workspace, ContextArtifact } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { FeatureShowcaseDialog } from '@/components/dialogs/global/FeatureShowcaseDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { showcases } from '@/config/showcases';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { usePostHog } from 'posthog-js/react';
@@ -55,8 +61,10 @@ import TaskKanbanBoard, {
 import { TaskLabelsProvider } from '@/contexts/TaskLabelsContext';
 import { TaskGroupsProvider } from '@/contexts/TaskGroupsContext';
 import { TaskGroupBoard } from '@/components/tasks/TaskGroupBoard';
+import { TaskGroupDagView } from '@/components/tasks/TaskGroupDagView';
 import { SplitScreenLayout } from '@/components/layouts/SplitScreenLayout';
-import { useTaskGroups } from '@/hooks/useTaskGroups';
+import { PlansSidebar } from '@/components/tasks/PlansSidebar';
+import { useTaskGroups, useTaskGroupMutations, useTaskGroupDependencies } from '@/hooks/useTaskGroups';
 import { useSwimLaneConfig } from '@/hooks/useSwimLaneConfig';
 import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
 import {
@@ -72,6 +80,8 @@ import TaskAttemptPanel from '@/components/panels/TaskAttemptPanel';
 import TaskPanel from '@/components/panels/TaskPanel';
 import SharedTaskPanel from '@/components/panels/SharedTaskPanel';
 import TodoPanel from '@/components/tasks/TodoPanel';
+import { ProjectAgentPanel } from '@/components/tasks/ProjectAgentPanel';
+import { useTaskCompletionToasts } from '@/hooks/useTaskCompletionToasts';
 import { useAuth } from '@/hooks';
 import { NewCard, NewCardHeader } from '@/components/ui/new-card';
 import {
@@ -167,10 +177,12 @@ export function ProjectTasks() {
     string | null
   >(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+
   const { userId } = useAuth();
 
   const {
     projectId,
+    project,
     isLoading: projectLoading,
     error: projectError,
   } = useProject();
@@ -199,8 +211,13 @@ export function ProjectTasks() {
     error: streamError,
   } = useProjectTasks(projectId || '');
 
+  // Show in-app toasts when tasks complete or fail
+  useTaskCompletionToasts(tasks);
+
   // Fetch task groups for split-screen display
   const { data: taskGroups = [] } = useTaskGroups(projectId);
+  const { data: groupDependencies = [] } = useTaskGroupDependencies(projectId);
+  const { transitionGroup, createGroup } = useTaskGroupMutations(projectId || '');
 
   // Fetch columns for the project to check for agent assignments
   const { data: projectColumns } = useProjectColumns(projectId);
@@ -263,9 +280,154 @@ export function ProjectTasks() {
     }
   }, [taskId]);
 
+  // Column-level agent panel — one persistent workspace per agent type, stored on project
+  const [viewingColumnAgent, setViewingColumnAgent] = useState<'backlog' | 'analyzing' | 'prereq_eval' | null>(null);
+  const [columnAgentWorkspaceId, setColumnAgentWorkspaceId] = useState<string | null>(null);
+  // Workspace IDs come from the project directly (set by backend when agent first runs)
+  const grouperWorkspaceId = project?.grouper_workspace_id ?? null;
+  const groupEvaluatorWorkspaceId = project?.group_evaluator_workspace_id ?? null;
+  const prereqEvalWorkspaceId = project?.prereq_eval_workspace_id ?? null;
+
+  const handleViewColumnAgent = useCallback(async (slug: 'backlog' | 'analyzing' | 'prereq_eval') => {
+    if (!projectId) return;
+    // Toggle off if already viewing this agent
+    if (viewingColumnAgent === slug) {
+      setViewingColumnAgent(null);
+      setColumnAgentWorkspaceId(null);
+      return;
+    }
+    // Navigate away from selected task
+    navigate(paths.projectTasks(projectId));
+
+    let workspaceId: string | null =
+      slug === 'backlog' ? grouperWorkspaceId :
+      slug === 'analyzing' ? groupEvaluatorWorkspaceId :
+      prereqEvalWorkspaceId;
+
+    if (!workspaceId) {
+      // Create workspace on demand (idempotent on server)
+      try {
+        const starter =
+          slug === 'backlog' ? projectsApi.startGrouperAgent :
+          slug === 'analyzing' ? projectsApi.startGroupEvaluatorAgent :
+          projectsApi.startPrereqEvalAgent;
+        const result = await starter(projectId);
+        workspaceId = result.workspace_id;
+      } catch (err) {
+        console.error('Failed to start column agent:', err);
+        return;
+      }
+    }
+
+    setViewingColumnAgent(slug);
+    setColumnAgentWorkspaceId(workspaceId);
+  }, [projectId, viewingColumnAgent, grouperWorkspaceId, groupEvaluatorWorkspaceId, prereqEvalWorkspaceId, navigate]);
+
+  // DAG viewer state
+  const [viewingDag, setViewingDag] = useState(false);
+
+  // Project agent panel state
+  const [viewingProjectAgent, setViewingProjectAgent] = useState(false);
+  const [projectAgentWorkspaceId, setProjectAgentWorkspaceId] = useState<string | null>(
+    project?.agent_workspace_id ?? null
+  );
+  const [isStartingAgent, setIsStartingAgent] = useState(false);
+  const [pendingBriefMessage, setPendingBriefMessage] = useState<string | null>(null);
+
+  // Artifact viewing state (IMPL doc modal)
+  const [viewingArtifact, setViewingArtifact] = useState<ContextArtifact | null>(null);
+
+  const handleViewArtifact = useCallback(async (artifactId: string) => {
+    try {
+      const artifact = await contextArtifactsApi.get(artifactId);
+      setViewingArtifact(artifact);
+    } catch (err) {
+      console.error('Failed to fetch artifact', err);
+    }
+  }, []);
+
+  const handleCreateGroupFromPlan = useCallback((plan: ContextArtifact) => {
+    createGroup.mutate({
+      name: plan.title,
+      color: null,
+      is_backlog: null,
+      artifact_id: plan.id,
+    });
+  }, [createGroup]);
+
+  // Sync project.agent_workspace_id into state when project loads
+  useEffect(() => {
+    if (project?.agent_workspace_id && !projectAgentWorkspaceId) {
+      setProjectAgentWorkspaceId(project.agent_workspace_id);
+    }
+  }, [project?.agent_workspace_id, projectAgentWorkspaceId]);
+
+  const handleToggleProjectAgent = useCallback(async () => {
+    if (viewingProjectAgent) {
+      setViewingProjectAgent(false);
+      return;
+    }
+    if (projectAgentWorkspaceId) {
+      setViewingProjectAgent(true);
+      return;
+    }
+    if (!projectId) return;
+    setIsStartingAgent(true);
+    try {
+      const result = await projectsApi.startAgent(projectId);
+      setProjectAgentWorkspaceId(result.workspace_id);
+      setViewingProjectAgent(true);
+    } catch (err) {
+      console.error('Failed to start project agent:', err);
+    } finally {
+      setIsStartingAgent(false);
+    }
+  }, [viewingProjectAgent, projectAgentWorkspaceId, projectId]);
+
+  const { data: groupAttempt } = useTaskAttemptWithSession(columnAgentWorkspaceId ?? undefined);
+  const { data: projectAgentAttempt } = useTaskAttemptWithSession(
+    viewingProjectAgent ? (projectAgentWorkspaceId ?? undefined) : undefined
+  );
+
+  // When a pending brief message is set and the project agent session becomes available, send it
+  useEffect(() => {
+    const sessionId = projectAgentAttempt?.session?.id;
+    if (!pendingBriefMessage || !sessionId) return;
+    const message = pendingBriefMessage;
+    setPendingBriefMessage(null);
+    sessionsApi.followUp(sessionId, { prompt: message, variant: null, retry_process_id: null, force_when_dirty: null, perform_git_reset: null }).catch((err) => {
+      console.error('Failed to send brief to project agent:', err);
+    });
+  }, [pendingBriefMessage, projectAgentAttempt?.session?.id]);
+
+  const handleApproveBrief = useCallback((brief: ContextArtifact) => {
+    const message = `Please convert this brief into an ADR and implementation plan. Use chain_id = '${brief.id}' for BOTH the ADR and the iplan so they appear linked to this brief in the Plans panel.\n\nBrief title: ${brief.title}\n\n${brief.content}`;
+    const sessionId = projectAgentAttempt?.session?.id;
+    if (sessionId) {
+      sessionsApi.followUp(sessionId, { prompt: message, variant: null, retry_process_id: null, force_when_dirty: null, perform_git_reset: null }).catch((err) => {
+        console.error('Failed to send brief to project agent:', err);
+      });
+      if (!viewingProjectAgent) setViewingProjectAgent(true);
+    } else {
+      setPendingBriefMessage(message);
+      if (!viewingProjectAgent) handleToggleProjectAgent();
+    }
+  }, [viewingProjectAgent, projectAgentAttempt?.session?.id, handleToggleProjectAgent]);
+
+  // Close agent panels when a task is selected
+  useEffect(() => {
+    if (taskId) {
+      setViewingColumnAgent(null);
+      setColumnAgentWorkspaceId(null);
+      setViewingProjectAgent(false);
+    }
+  }, [taskId]);
+
   const isTaskPanelOpen = Boolean(taskId && selectedTask);
   const isSharedPanelOpen = Boolean(selectedSharedTask);
-  const isPanelOpen = isTaskPanelOpen || isSharedPanelOpen;
+  const isGroupPanelOpen = Boolean(columnAgentWorkspaceId && groupAttempt);
+  const isProjectAgentPanelOpen = Boolean(viewingProjectAgent && projectAgentAttempt);
+  const isPanelOpen = isTaskPanelOpen || isSharedPanelOpen || isGroupPanelOpen || isProjectAgentPanelOpen;
 
   const { config, updateAndSaveConfig, loading } = useUserSystem();
 
@@ -458,6 +620,9 @@ export function ProjectTasks() {
       columns[col.id] = [];
     }
 
+    // Build task group lookup for checking state
+    const taskGroupById = new Map(taskGroups.map(g => [g.id, g]));
+
     const matchesSearch = (
       title: string,
       description?: string | null
@@ -472,6 +637,23 @@ export function ProjectTasks() {
     };
 
     tasks.forEach((task) => {
+      // Skip system/meta tasks created by the Task Grouper agent
+      if (/^Group \d+ ungrouped tasks$/i.test(task.title)) {
+        return;
+      }
+
+      // Skip ungrouped tasks - they appear in the Task Group board at the top
+      if (!task.task_group_id) {
+        return;
+      }
+
+      // Only show tasks in the kanban once their group is executing or done
+      // Before that, tasks are managed at the group level (not yet in the kanban backlog)
+      const taskGroup = taskGroupById.get(task.task_group_id);
+      if (taskGroup && taskGroup.state !== 'executing' && taskGroup.state !== 'done') {
+        return;
+      }
+
       const columnId = getTaskColumnId(task);
       if (!columnId || !columns[columnId]) {
         // Task doesn't belong to any known column, skip it
@@ -496,10 +678,15 @@ export function ProjectTasks() {
         return;
       }
 
+      // Apply group color to tasks in executing groups for visual correlation
+      const backgroundColor =
+        taskGroup && taskGroup.state === 'executing' ? taskGroup.color ?? undefined : undefined;
+
       columns[columnId].push({
         type: 'task',
         task,
         sharedTask,
+        backgroundColor,
       });
     });
 
@@ -545,6 +732,7 @@ export function ProjectTasks() {
     hasSearch,
     normalizedSearch,
     tasks,
+    taskGroups,
     sharedOnlyByStatus,
     sharedTasksById,
     showSharedTasks,
@@ -746,6 +934,7 @@ export function ProjectTasks() {
       navigate(`/projects/${projectId}/tasks`, { replace: true });
     }
   }, [projectId, navigate]);
+
 
   const handleViewTaskDetails = useCallback(
     (task: Task, attemptIdToShow?: string) => {
@@ -990,7 +1179,15 @@ export function ProjectTasks() {
       : `${truncated}...`;
   };
 
+  // Check if there are tasks in the Task Group board (ungrouped or in draft/pending groups)
+  const hasTasksInGroupBoard = tasks.length > 0 || taskGroups.length > 0;
+
+  const dagContent = (
+    <TaskGroupDagView groups={taskGroups} dependencies={groupDependencies} />
+  );
+
   const kanbanContent =
+    viewingDag ? dagContent :
     tasks.length === 0 && !hasSharedTasks ? (
       <div className="max-w-7xl mx-auto mt-8">
         <Card>
@@ -1003,7 +1200,7 @@ export function ProjectTasks() {
           </CardContent>
         </Card>
       </div>
-    ) : !hasVisibleLocalTasks && !hasVisibleSharedTasks ? (
+    ) : !hasVisibleLocalTasks && !hasVisibleSharedTasks && !hasTasksInGroupBoard ? (
       <div className="max-w-7xl mx-auto mt-8">
         <Card>
           <CardContent className="text-center py-8">
@@ -1016,17 +1213,36 @@ export function ProjectTasks() {
     ) : (
       <TaskGroupsProvider projectId={projectId}>
       <TaskLabelsProvider projectId={projectId}>
-        <SplitScreenLayout
-          topPanel={
-            <TaskGroupBoard
-              groups={taskGroups}
-              selectedGroupId={selectedGroupId}
-              onSelectGroup={setSelectedGroupId}
-              ungroupedTaskCount={tasks.filter(t => !t.task_group_id).length}
+        <div className="flex h-full">
+          {/* Left Sidebar - Plans + Ungrouped Tasks */}
+          <div className="w-64 flex-shrink-0">
+            <PlansSidebar
               projectId={projectId || ''}
+              taskGroups={taskGroups}
+              onViewArtifact={handleViewArtifact}
+              onCreateGroupFromPlan={handleCreateGroupFromPlan}
+              onApproveBrief={handleApproveBrief}
             />
-          }
-          bottomPanel={
+          </div>
+
+          {/* Right Side - Split Screen */}
+          <div className="flex-1 flex flex-col min-w-0">
+            <SplitScreenLayout
+              topPanel={
+                <TaskGroupBoard
+                  groups={taskGroups}
+                  selectedGroupId={selectedGroupId}
+                  onSelectGroup={setSelectedGroupId}
+                  projectId={projectId || ''}
+                  tasks={tasks.filter(t => !/^Group \d+ ungrouped tasks$/i.test(t.title)).map(t => ({ id: t.id, title: t.title, task_group_id: t.task_group_id, status: t.status }))}
+                  onTransitionGroup={(groupId, from, to) => transitionGroup.mutate({ groupId, from, to })}
+                  onViewColumnAgent={(slug) => handleViewColumnAgent(slug)}
+                  activeColumnAgent={viewingColumnAgent}
+                  onViewGrouperAgent={() => handleViewColumnAgent('backlog')}
+                  onViewArtifact={handleViewArtifact}
+                />
+              }
+              bottomPanel={
             <div className="w-full h-full flex flex-col min-h-0">
               {/* Kanban Toolbar */}
               <div className="shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b bg-background/50">
@@ -1083,6 +1299,8 @@ export function ProjectTasks() {
             </div>
           }
         />
+          </div>
+        </div>
       </TaskLabelsProvider>
       </TaskGroupsProvider>
     );
@@ -1178,6 +1396,50 @@ export function ProjectTasks() {
         </Breadcrumb>
       </div>
     </NewCardHeader>
+  ) : groupAttempt ? (
+    <NewCardHeader
+      className="shrink-0"
+      actions={
+        <Button variant="icon" aria-label="Close" onClick={() => {
+          setViewingColumnAgent(null);
+          setColumnAgentWorkspaceId(null);
+        }}>
+          <X size={16} />
+        </Button>
+      }
+    >
+      <div className="mx-auto w-full">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbPage>
+                {viewingColumnAgent === 'backlog' ? 'Task Grouper' :
+                  viewingColumnAgent === 'prereq_eval' ? 'PreReq Evaluator' : 'Group Evaluator'}
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+    </NewCardHeader>
+  ) : isProjectAgentPanelOpen ? (
+    <NewCardHeader
+      className="shrink-0"
+      actions={
+        <Button variant="icon" aria-label="Close" onClick={() => setViewingProjectAgent(false)}>
+          <X size={16} />
+        </Button>
+      }
+    >
+      <div className="mx-auto w-full">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbPage>Project Agent</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+    </NewCardHeader>
   ) : null;
 
   const attemptContent = selectedTask ? (
@@ -1213,6 +1475,14 @@ export function ProjectTasks() {
     <NewCard className="h-full min-h-0 flex flex-col bg-diagonal-lines bg-muted border-0">
       <SharedTaskPanel task={selectedSharedTask} />
     </NewCard>
+  ) : groupAttempt ? (
+    <NewCard className="h-full min-h-0 flex flex-col bg-diagonal-lines bg-muted border-0">
+      <ProjectAgentPanel attempt={groupAttempt} />
+    </NewCard>
+  ) : isProjectAgentPanelOpen && projectAgentAttempt ? (
+    <NewCard className="h-full min-h-0 flex flex-col bg-diagonal-lines bg-muted border-0">
+      <ProjectAgentPanel attempt={projectAgentAttempt} />
+    </NewCard>
   ) : null;
 
   const auxContent =
@@ -1233,11 +1503,16 @@ export function ProjectTasks() {
 
   const effectiveMode: LayoutMode = selectedSharedTask ? null : mode;
 
+  // Prioritize the workspace that's actively being viewed
+  const activeAttemptId = viewingProjectAgent
+    ? projectAgentAttempt?.id
+    : attempt?.id ?? groupAttempt?.id ?? projectAgentAttempt?.id;
+
   const attemptArea = (
-    <GitOperationsProvider attemptId={attempt?.id}>
-      <ClickedElementsProvider attempt={attempt}>
-        <ReviewProvider attemptId={attempt?.id}>
-          <ExecutionProcessesProvider attemptId={attempt?.id}>
+    <GitOperationsProvider attemptId={activeAttemptId}>
+      <ClickedElementsProvider attempt={attempt ?? groupAttempt}>
+        <ReviewProvider attemptId={activeAttemptId}>
+          <ExecutionProcessesProvider attemptId={activeAttemptId}>
             <TasksLayout
               kanban={kanbanContent}
               attempt={attemptContent}
@@ -1265,7 +1540,69 @@ export function ProjectTasks() {
         </Alert>
       )}
 
+      {/* Persistent top toolbar — always visible */}
+      <div className="shrink-0 flex items-center justify-end gap-2 px-4 py-1.5 border-b bg-background/80">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={viewingDag ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewingDag((v) => !v)}
+                className="gap-1.5 text-xs h-7"
+              >
+                <GitFork className="h-3.5 w-3.5" />
+                DAG
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {viewingDag ? 'Close DAG view' : 'View group dependency graph'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={viewingProjectAgent ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={handleToggleProjectAgent}
+                disabled={isStartingAgent}
+                className="gap-1.5 text-xs h-7"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                {isStartingAgent ? 'Starting...' : 'Project Agent'}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {viewingProjectAgent
+                ? 'Close Project Agent'
+                : 'Chat with the Project Agent to manage tasks'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
       <div className="flex-1 min-h-0">{attemptArea}</div>
+
+      {/* Artifact viewer modal */}
+      <Dialog open={viewingArtifact !== null} onOpenChange={(open) => !open && setViewingArtifact(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
+                {viewingArtifact?.artifact_type}
+              </span>
+              {viewingArtifact?.title}
+            </DialogTitle>
+          </DialogHeader>
+          {viewingArtifact?.content && (
+            <div className="mt-2 text-sm whitespace-pre-wrap font-mono bg-muted/30 rounded-lg p-4 border">
+              {viewingArtifact.content}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -94,8 +94,11 @@ export const useConversationHistory = ({
   attempt,
   onEntriesUpdated,
 }: UseConversationHistoryParams): UseConversationHistoryResult => {
-  const { executionProcessesVisible: executionProcessesRaw } =
-    useExecutionProcessesContext();
+  const {
+    executionProcessesVisible: executionProcessesRaw,
+    isConnected: streamConnected,
+    isLoading: streamLoading,
+  } = useExecutionProcessesContext();
   const executionProcesses = useRef<ExecutionProcess[]>(executionProcessesRaw);
   const displayedExecutionProcesses = useRef<ExecutionProcessStateStore>({});
   const loadedInitialEntries = useRef(false);
@@ -682,6 +685,19 @@ export const useConversationHistory = ({
     streamingProcessIdsRef.current.clear();
     emitEntries(displayedExecutionProcesses.current, 'initial', true);
   }, [attempt.id, emitEntries]);
+
+  // When stream connects with 0 processes (e.g. fresh project agent), dismiss spinner
+  useEffect(() => {
+    if (
+      !streamLoading &&
+      streamConnected &&
+      executionProcessesRaw.length === 0 &&
+      !loadedInitialEntries.current
+    ) {
+      loadedInitialEntries.current = true;
+      emitEntries(displayedExecutionProcesses.current, 'initial', false);
+    }
+  }, [streamConnected, streamLoading, executionProcessesRaw.length, emitEntries]);
 
   return {};
 };
