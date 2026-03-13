@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                s.id as \"id!: Uuid\",\n                s.name,\n                s.description,\n                s.content,\n                s.created_at as \"created_at!: DateTime<Utc>\",\n                s.updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM skills s\n               JOIN agent_skills ags ON ags.skill_id = s.id\n               WHERE ags.agent_id = $1\n               ORDER BY s.name ASC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2535faab4e0284e6ffdb0569cc4164f3c90cd35c9d10e18cfcd227bde5b0026d"
+}

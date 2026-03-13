@@ -1,0 +1,12 @@
+-- Add ready_locked flag to projects.
+--
+-- The lock is SET when any of these are created:
+--   - brief artifact (signals a gap that needs planning)
+--   - iplan artifact (signals a new plan that needs a group)
+--   - non-backlog task_group (signals new work entering the pipeline)
+--
+-- The lock is CLEARED by the Group Evaluator after it has processed all
+-- analyzing groups and verified the project is stable (all groups in ready/executing/done).
+-- While locked, advance_project_dag() skips advancement so no group races
+-- ahead before the full picture is assembled.
+ALTER TABLE projects ADD COLUMN ready_locked BOOLEAN NOT NULL DEFAULT FALSE;

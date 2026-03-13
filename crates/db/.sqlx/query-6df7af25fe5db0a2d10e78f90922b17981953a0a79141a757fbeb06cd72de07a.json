@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                title,\n                description,\n                status as \"status!: TaskStatus\",\n                column_id as \"column_id: Uuid\",\n                parent_workspace_id as \"parent_workspace_id: Uuid\",\n                shared_task_id as \"shared_task_id: Uuid\",\n                task_group_id as \"task_group_id: Uuid\",\n                task_state as \"task_state!: TaskState\",\n                workflow_decisions as \"workflow_decisions: JsonValue\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM tasks\n               WHERE project_id = $1 AND task_group_id IS NULL\n               ORDER BY created_at ASC",
+  "query": "SELECT\n                id as \"id!: Uuid\",\n                project_id as \"project_id!: Uuid\",\n                title,\n                description,\n                status as \"status!: TaskStatus\",\n                column_id as \"column_id: Uuid\",\n                parent_workspace_id as \"parent_workspace_id: Uuid\",\n                shared_task_id as \"shared_task_id: Uuid\",\n                task_group_id as \"task_group_id: Uuid\",\n                task_state as \"task_state!: TaskState\",\n                workflow_decisions as \"workflow_decisions: JsonValue\",\n                created_at as \"created_at!: DateTime<Utc>\",\n                updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM tasks\n               WHERE project_id = $1\n                 AND task_group_id IS NULL\n                 AND NOT (title ~* '^Group [0-9]+ ungrouped tasks$')\n               ORDER BY created_at ASC",
   "describe": {
     "columns": [
       {
@@ -102,5 +102,5 @@
       false
     ]
   },
-  "hash": "2bc12ba648f51a5dbb79c09e47752346ca072f787ac72a872ae935996b456ded"
+  "hash": "6df7af25fe5db0a2d10e78f90922b17981953a0a79141a757fbeb06cd72de07a"
 }

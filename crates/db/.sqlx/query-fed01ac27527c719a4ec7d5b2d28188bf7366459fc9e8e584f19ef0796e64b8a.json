@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE task_groups\n               SET state = $2\n               WHERE id = $1 AND state = $3\n               RETURNING id as \"id!: Uuid\",\n                         project_id as \"project_id!: Uuid\",\n                         name,\n                         color as \"color: String\",\n                         position as \"position!: i32\",\n                         started_at as \"started_at: DateTime<Utc>\",\n                         created_at as \"created_at!: DateTime<Utc>\",\n                         state,\n                         is_backlog as \"is_backlog!: bool\",\n                         execution_dag as \"execution_dag: String\",\n                         workspace_id as \"workspace_id: Uuid\"",
+  "query": "INSERT INTO task_groups (id, project_id, name, color, position, is_backlog, artifact_id)\n               VALUES ($1, $2, $3, $4,\n                       COALESCE((SELECT MAX(position) FROM task_groups WHERE project_id = $2), -1) + 1, $5, $6)\n               RETURNING id as \"id!: Uuid\",\n                         project_id as \"project_id!: Uuid\",\n                         name,\n                         color as \"color: String\",\n                         position as \"position!: i32\",\n                         started_at as \"started_at: DateTime<Utc>\",\n                         created_at as \"created_at!: DateTime<Utc>\",\n                         state,\n                         is_backlog as \"is_backlog!: bool\",\n                         execution_dag as \"execution_dag: String\",\n                         workspace_id as \"workspace_id: Uuid\",\n                         artifact_id as \"artifact_id: Uuid\"",
   "describe": {
     "columns": [
       {
@@ -57,13 +57,21 @@
         "ordinal": 10,
         "name": "workspace_id: Uuid",
         "type_info": "Uuid"
+      },
+      {
+        "ordinal": 11,
+        "name": "artifact_id: Uuid",
+        "type_info": "Uuid"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
+        "Uuid",
         "Text",
-        "Text"
+        "Text",
+        "Bool",
+        "Uuid"
       ]
     },
     "nullable": [
@@ -77,8 +85,9 @@
       false,
       false,
       true,
+      true,
       true
     ]
   },
-  "hash": "c67311fb4306ab6ac7b8d63f43c5c8b29f7585f8ab0e5833fec0d55baf1e0748"
+  "hash": "fed01ac27527c719a4ec7d5b2d28188bf7366459fc9e8e584f19ef0796e64b8a"
 }

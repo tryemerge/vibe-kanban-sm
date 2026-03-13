@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id as \"id!: Uuid\",\n                      project_id as \"project_id!: Uuid\",\n                      name,\n                      color as \"color: String\",\n                      position as \"position!: i32\",\n                      started_at as \"started_at: DateTime<Utc>\",\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      state,\n                      is_backlog as \"is_backlog!: bool\",\n                      execution_dag as \"execution_dag: String\",\n                      workspace_id as \"workspace_id: Uuid\"\n               FROM task_groups\n               WHERE project_id = $1\n               ORDER BY position",
+  "query": "SELECT tg.id as \"id!: Uuid\",\n                      tg.project_id as \"project_id!: Uuid\",\n                      tg.name,\n                      tg.color as \"color: String\",\n                      tg.position as \"position!: i32\",\n                      tg.started_at as \"started_at: DateTime<Utc>\",\n                      tg.created_at as \"created_at!: DateTime<Utc>\",\n                      tg.state,\n                      tg.is_backlog as \"is_backlog!: bool\",\n                      tg.execution_dag as \"execution_dag: String\",\n                      tg.workspace_id as \"workspace_id: Uuid\",\n                      tg.artifact_id as \"artifact_id: Uuid\"\n               FROM task_groups tg\n               WHERE tg.project_id = $1\n                 AND tg.is_backlog = TRUE\n                 AND tg.state = 'draft'\n                 AND NOT EXISTS (\n                   SELECT 1 FROM task_group_dependencies tgd\n                   WHERE tgd.task_group_id = tg.id\n                     AND tgd.satisfied_at IS NULL\n                 )",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,11 @@
         "ordinal": 10,
         "name": "workspace_id: Uuid",
         "type_info": "Uuid"
+      },
+      {
+        "ordinal": 11,
+        "name": "artifact_id: Uuid",
+        "type_info": "Uuid"
       }
     ],
     "parameters": {
@@ -75,8 +80,9 @@
       false,
       false,
       true,
+      true,
       true
     ]
   },
-  "hash": "df21f90089db3885efa4a2765051969e2512baedcb1210650cb031bbbcf67625"
+  "hash": "e07c799c4550646691b3e31e1e7995ffba7bfd0c7e8d7c38ff27e5708a29499b"
 }
