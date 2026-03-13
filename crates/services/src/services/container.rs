@@ -27,12 +27,13 @@ use db::{
         session::{CreateSession, Session, SessionError},
         state_transition::StateTransition,
         tag::Tag,
-        task::{Task, TaskState, TaskStatus},
+        task::{CreateTask, Task, TaskState, TaskStatus},
         task_dependency::TaskDependency,
         task_event::{ActorType, CreateTaskEvent, EventTriggerType, TaskEvent},
         task_group::TaskGroup,
         group_event::{CreateGroupEvent, GroupEvent},
-        workspace::{Workspace, WorkspaceError},
+        skill::Skill,
+        workspace::{CreateWorkspace, Workspace, WorkspaceError},
         workspace_repo::WorkspaceRepo,
     },
 };
@@ -42,12 +43,13 @@ use executors::{
         coding_agent_initial::CodingAgentInitialRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
-    executors::{ExecutorError, StandardCodingAgentExecutor},
+    executors::{BaseCodingAgent, ExecutorError, StandardCodingAgentExecutor},
     logs::{NormalizedEntry, NormalizedEntryError, NormalizedEntryType, utils::ConversationPatch},
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
 use futures::{StreamExt, future};
 use sqlx::Error as SqlxError;
+use std::str::FromStr;
 use thiserror::Error;
 use tokio::{sync::RwLock, task::JoinHandle};
 use utils::{
@@ -58,9 +60,11 @@ use utils::{
 use uuid::Uuid;
 
 use crate::services::{
+    events::{execution_process_patch, group_event_patch, group_patch, project_patch},
     git::{GitService, GitServiceError},
     group_analyzer::GroupAnalyzer,
     notification::NotificationService,
+    prereq_evaluator::{self, PREREQ_EVALUATOR_AGENT_ID},
     share::SharePublisher,
     workspace_manager::WorkspaceError as WorkspaceManagerError,
     worktree_manager::WorktreeError,
@@ -102,6 +106,10 @@ pub struct AgentContext {
     pub column_name: String,
     /// Project-level context from context artifacts (module memories, ADRs, patterns)
     pub project_context: Option<String>,
+    /// Override the task ID used for state updates and prompt building.
+    /// Required when the workspace's `task_id` (tasks[0] in group workspaces)
+    /// differs from the actual task being dispatched.
+    pub task_id_override: Option<uuid::Uuid>,
 }
 
 /// Read the decision file (.vibe/decision.json) from a workspace.
@@ -518,6 +526,9 @@ pub trait ContainerService {
 
     fn notification_service(&self) -> &NotificationService;
 
+    /// Global events msg_store used for broadcasting state changes to connected clients.
+    fn events_msg_store(&self) -> &Arc<MsgStore>;
+
     fn workspace_to_current_dir(&self, workspace: &Workspace) -> PathBuf;
 
     async fn create(&self, workspace: &Workspace) -> Result<ContainerRef, ContainerError>;
@@ -525,6 +536,206 @@ pub trait ContainerService {
     async fn kill_all_running_processes(&self) -> Result<(), ContainerError>;
 
     async fn delete(&self, workspace: &Workspace) -> Result<(), ContainerError>;
+
+    /// Project-level DAG builder.
+    ///
+    /// Fires when a group enters `ready`, when a prereq evaluation finishes, or when a group
+    /// completes execution. Ensures strict sequential prereq evaluation:
+    ///
+    /// 1. Skip if any groups are in `analyzing` (don't have the full picture yet)
+    /// 2. Skip if a prereq evaluation is already in progress (one at a time)
+    /// 3. Find the first unblocked `ready` group (all group-level deps satisfied)
+    /// 4. Advance it to `prereq_eval` and launch the PreReq Evaluator
+    async fn advance_project_dag(&self, project_id: Uuid) -> Result<(), anyhow::Error> {
+        let pool = &self.db().pool;
+
+        // Respect the ready lock: while any brief/plan/group is still being assembled,
+        // nothing advances. The Group Evaluator clears the lock when the project stabilizes.
+        let project = Project::find_by_id(pool, project_id)
+            .await?
+            .ok_or_else(|| anyhow!("Project not found"))?;
+        if project.ready_locked {
+            tracing::debug!("Project DAG builder: project is ready-locked, waiting");
+            return Ok(());
+        }
+
+        let analyzing = TaskGroup::count_non_backlog_by_state(pool, project_id, "analyzing").await?;
+        if analyzing > 0 {
+            tracing::debug!("Project DAG builder: {} group(s) still analyzing, waiting", analyzing);
+            return Ok(());
+        }
+
+        let in_prereq = TaskGroup::count_non_backlog_by_state(pool, project_id, "prereq_eval").await?;
+        if in_prereq > 0 {
+            tracing::debug!("Project DAG builder: prereq_eval in progress, waiting");
+            return Ok(());
+        }
+
+        let Some(group) = TaskGroup::find_first_ready_unblocked(pool, project_id).await? else {
+            tracing::debug!("Project DAG builder: no unblocked ready groups");
+            return Ok(());
+        };
+
+        let Some(prereq_group) = TaskGroup::transition_state(pool, group.id, "ready", "prereq_eval").await? else {
+            tracing::warn!("Project DAG builder: failed to advance group {} to prereq_eval", group.id);
+            return Ok(());
+        };
+
+        tracing::info!(
+            "Project DAG builder: advancing group '{}' ({}) ready → prereq_eval",
+            prereq_group.name, prereq_group.id
+        );
+
+        let event = CreateGroupEvent {
+            task_group_id: prereq_group.id,
+            task_id: None,
+            event_type: "group_state_change".to_string(),
+            actor_type: "system".to_string(),
+            summary: format!("Project DAG builder: '{}' ready → prereq_eval", prereq_group.name),
+            payload: Some(serde_json::json!({"from": "ready", "to": "prereq_eval"}).to_string()),
+        };
+        if let Ok(evt) = GroupEvent::create(pool, &event).await {
+            self.events_msg_store().push_patch(group_event_patch::add(&evt));
+        }
+        self.events_msg_store().push_patch(group_patch::replace(&prereq_group));
+
+        // Launch the PreReq Evaluator column worker
+        let agent = Agent::find_by_id(pool, PREREQ_EVALUATOR_AGENT_ID)
+            .await?
+            .ok_or_else(|| anyhow!("PreReq Evaluator agent not found"))?;
+
+        let prompt = prereq_evaluator::build_prereq_eval_prompt(&project);
+
+        let project_context = match ContextArtifact::build_full_context(pool, project_id, None, &[]).await {
+            Ok(ctx) if !ctx.is_empty() => Some(ctx),
+            Ok(_) => None,
+            Err(e) => {
+                tracing::warn!("Failed to build project context for PreReq Evaluator: {}", e);
+                None
+            }
+        };
+
+        let workspace = self
+            .get_or_create_column_agent_workspace(
+                pool,
+                &project,
+                project.prereq_eval_workspace_id,
+                &agent.executor,
+                &format!("PreReq Evaluator — {}", project.name),
+                "prereq-evaluator",
+            )
+            .await?;
+
+        let base_agent = BaseCodingAgent::from_str(&agent.executor)
+            .map_err(|e| anyhow!("Failed to parse executor '{}': {}", agent.executor, e))?;
+        let executor_profile_id = ExecutorProfileId::new(base_agent);
+
+        let agent_context = AgentContext {
+            system_prompt: Some(agent.system_prompt.clone()),
+            workflow_history: None,
+            start_command: Some(prompt),
+            deliverable: None,
+            name: agent.name.clone(),
+            color: agent.color.clone(),
+            column_name: "Prerequisite Evaluation".to_string(),
+            project_context,
+            task_id_override: None,
+        };
+
+        self.launch_agent_in_workspace(&workspace, executor_profile_id, agent_context)
+            .await
+            .map_err(|e| anyhow!("Failed to launch prereq evaluator agent: {}", e))?;
+
+        tracing::info!(
+            "PreReq Evaluator column worker launched for project {} in workspace {}",
+            project_id, workspace.id
+        );
+
+        Ok(())
+    }
+
+    /// Get or create the project's persistent lightweight workspace for a column-level agent.
+    /// Returns the workspace (creating it on first use and storing the ID on the project).
+    async fn get_or_create_column_agent_workspace(
+        &self,
+        pool: &sqlx::PgPool,
+        project: &Project,
+        existing_workspace_id: Option<Uuid>,
+        agent_executor: &str,
+        task_title: &str,
+        branch_prefix: &str,
+    ) -> Result<Workspace, anyhow::Error> {
+        // If workspace already exists and is valid, return it
+        if let Some(ws_id) = existing_workspace_id {
+            if let Some(ws) = Workspace::find_by_id(pool, ws_id).await? {
+                return Ok(ws);
+            }
+        }
+
+        // Get the project repo path for container_ref
+        let repos = ProjectRepo::find_repos_for_project(pool, project.id).await?;
+        let repo_path = repos
+            .first()
+            .map(|r| r.path.to_string_lossy().to_string())
+            .unwrap_or_else(|| ".".to_string());
+
+        // Create a hidden system task to anchor the workspace
+        let task = Task::create(
+            pool,
+            &CreateTask {
+                project_id: project.id,
+                title: task_title.to_string(),
+                description: Some("System workspace for column-level agent".to_string()),
+                status: None,
+                column_id: None,
+                parent_workspace_id: None,
+                image_ids: None,
+                shared_task_id: None,
+                task_group_id: None,
+            },
+            Uuid::new_v4(),
+        )
+        .await
+        .map_err(|e| anyhow!("Failed to create system task: {}", e))?;
+
+        let workspace_id = Uuid::new_v4();
+        let short_id = short_uuid(&workspace_id);
+        let branch_name = format!("{}/{}", branch_prefix, short_id);
+        let create_data = CreateWorkspace {
+            branch: branch_name,
+            agent_working_dir: None,
+        };
+        Workspace::create(pool, &create_data, workspace_id, task.id)
+            .await
+            .map_err(|e| anyhow!("Failed to create workspace: {}", e))?;
+
+        Workspace::update_container_ref(pool, workspace_id, &repo_path).await?;
+
+        Session::create(
+            pool,
+            &CreateSession {
+                executor: Some(agent_executor.to_string()),
+            },
+            Uuid::new_v4(),
+            workspace_id,
+        )
+        .await
+        .map_err(|e| anyhow!("Failed to create session: {}", e))?;
+
+        let workspace = Workspace::find_by_id(pool, workspace_id)
+            .await?
+            .ok_or_else(|| anyhow!("Workspace not found after creation"))?;
+
+        // Store the new workspace ID on the project for future reuse
+        if let Err(e) = Project::set_prereq_eval_workspace_id(pool, project.id, workspace_id).await {
+            tracing::warn!("Failed to store prereq_eval_workspace_id on project: {}", e);
+        }
+        if let Ok(Some(updated_project)) = Project::find_by_id(pool, project.id).await {
+            self.events_msg_store().push_patch(project_patch::replace(&updated_project));
+        }
+
+        Ok(workspace)
+    }
 
     /// Check if a task has any running execution processes
     async fn has_running_processes(&self, task_id: Uuid) -> Result<bool, ContainerError> {
@@ -663,32 +874,6 @@ pub trait ContainerService {
             }
         }
 
-        // Skip notification if:
-        // - process was intentionally killed by user
-        // - task auto-transitioned to next column (it's not done, just moving on)
-        if matches!(ctx.execution_process.status, ExecutionProcessStatus::Killed) || transitioned {
-            return;
-        }
-
-        let title = format!("Task Complete: {}", ctx.task.title);
-        let message = match ctx.execution_process.status {
-            ExecutionProcessStatus::Completed => format!(
-                "✅ '{}' completed successfully\nBranch: {:?}\nExecutor: {:?}",
-                ctx.task.title, ctx.workspace.branch, ctx.session.executor
-            ),
-            ExecutionProcessStatus::Failed => format!(
-                "❌ '{}' execution failed\nBranch: {:?}\nExecutor: {:?}",
-                ctx.task.title, ctx.workspace.branch, ctx.session.executor
-            ),
-            _ => {
-                tracing::warn!(
-                    "Tried to notify workspace completion for {} but process is still running!",
-                    ctx.workspace.id
-                );
-                return;
-            }
-        };
-        self.notification_service().notify(&title, &message).await;
     }
 
     /// Try to auto-transition the task to the next column based on state transitions.
@@ -911,6 +1096,11 @@ pub trait ContainerService {
                                         if let Err(e) = GroupEvent::create(pool, &event).await {
                                             tracing::error!("Failed to create group completion event: {}", e);
                                         }
+
+                                        // Unblock groups that were waiting on this one
+                                        if let Err(e) = self.advance_project_dag(task.project_id).await {
+                                            tracing::error!("Failed to advance project DAG after group {} → done: {}", group_id, e);
+                                        }
                                     }
                                     Ok(false) => {
                                         tracing::debug!(
@@ -919,6 +1109,8 @@ pub trait ContainerService {
                                             task.id,
                                             group_id
                                         );
+                                        // Start any newly-unblocked sibling tasks in the DAG
+                                        self.start_next_unblocked_group_tasks(task.id).await;
                                     }
                                     Err(e) => {
                                         tracing::error!("Failed to check group {} completion: {}", group_id, e);
@@ -1223,6 +1415,8 @@ pub trait ContainerService {
             if let Err(e) = TaskDependency::satisfy_by_prerequisite(pool, task.id).await {
                 tracing::error!("Failed to satisfy dependencies for task {}: {}", task.id, e);
             }
+            // Start any newly-unblocked sibling tasks in the group DAG
+            self.start_next_unblocked_group_tasks(task.id).await;
         }
 
         // Record column transition event
@@ -1329,9 +1523,13 @@ pub trait ContainerService {
         let expanded_start_command = Tag::expand_tags_optional(pool, agent.start_command.as_deref()).await;
         let expanded_deliverable = Tag::expand_tags_optional(pool, column.deliverable.as_deref()).await;
 
-        // Get the existing active workspace to reuse for next column's agent
-        // For auto-transition, we continue with the existing workspace
-        let workspace = Workspace::find_active_for_task(pool, task.id).await?;
+        // Get the workspace to use for this task's agent.
+        // For auto-transition: continue with existing workspace.
+        // For group tasks starting fresh: fall back to the group's shared workspace.
+        let workspace = match Workspace::find_active_for_task(pool, task.id).await? {
+            Some(ws) => Some(ws),
+            None => Task::get_workspace_via_group(pool, task.id).await.ok().flatten(),
+        };
 
         if let Some(workspace) = workspace {
             // Parse executor from agent
@@ -1450,16 +1648,42 @@ pub trait ContainerService {
                 );
             }
 
-            tracing::info!(
-                target: "vibe_kanban::agent",
-                "  │  └─ System prompt: {} chars",
-                agent.system_prompt.len()
-            );
+            // Append assigned skills to the agent's system_prompt
+            let effective_system_prompt = match Skill::load_for_agent(pool, agent.id).await {
+                Ok(skills) if !skills.is_empty() => {
+                    let section = Skill::build_skills_section(&skills).unwrap_or_default();
+                    tracing::info!(
+                        target: "vibe_kanban::agent",
+                        "  │  └─ System prompt: {} chars + {} skills ({} chars injected)",
+                        agent.system_prompt.len(),
+                        skills.len(),
+                        section.len()
+                    );
+                    format!("{}\n\n{}", agent.system_prompt, section)
+                }
+                Ok(_) => {
+                    tracing::info!(
+                        target: "vibe_kanban::agent",
+                        "  │  └─ System prompt: {} chars (no skills assigned)",
+                        agent.system_prompt.len()
+                    );
+                    agent.system_prompt.clone()
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "vibe_kanban::agent",
+                        "  │  └─ System prompt: {} chars (skills load error: {})",
+                        agent.system_prompt.len(),
+                        e
+                    );
+                    agent.system_prompt.clone()
+                }
+            };
 
             // Start execution with agent context
             // Deliverable comes from the column (what this stage should produce), with tags expanded
             let agent_context = AgentContext {
-                system_prompt: Some(agent.system_prompt.clone()),
+                system_prompt: Some(effective_system_prompt),
                 workflow_history,
                 start_command,
                 deliverable: expanded_deliverable.clone(),
@@ -1467,6 +1691,7 @@ pub trait ContainerService {
                 color: agent.color.clone(),
                 column_name: column_name.to_string(),
                 project_context,
+                task_id_override: None,
             };
 
             tracing::info!(
@@ -1517,6 +1742,131 @@ pub trait ContainerService {
         }
 
         Ok(())
+    }
+
+    /// After a task completes in an executing group, start any newly-unblocked tasks in the DAG.
+    /// Called from the self-complete and terminal-column-transition paths.
+    async fn start_next_unblocked_group_tasks(&self, completed_task_id: Uuid) {
+        let pool = &self.db().pool;
+
+        // Find the completed task
+        let task = match Task::find_by_id(pool, completed_task_id).await {
+            Ok(Some(t)) => t,
+            _ => return,
+        };
+
+        let Some(group_id) = task.task_group_id else { return; };
+
+        let group = match TaskGroup::find_by_id(pool, group_id).await {
+            Ok(Some(g)) => g,
+            _ => return,
+        };
+
+        if group.state != "executing" { return; }
+
+        let Some(dag_str) = &group.execution_dag else { return; };
+
+        #[derive(serde::Deserialize)]
+        struct Dag { parallel_sets: Vec<Vec<String>> }
+        let dag: Dag = match serde_json::from_str(dag_str) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!("Failed to parse group {} DAG: {}", group_id, e);
+                return;
+            }
+        };
+
+        // Find workflow start column + agent
+        let project = match Project::find_by_id(pool, task.project_id).await {
+            Ok(Some(p)) => p,
+            _ => return,
+        };
+        let Some(board_id) = project.board_id else {
+            tracing::warn!("Project {} has no board, cannot auto-start group tasks", task.project_id);
+            return;
+        };
+        let start_column = match KanbanColumn::find_workflow_start(pool, board_id).await {
+            Ok(Some(c)) => c,
+            _ => {
+                tracing::warn!("No workflow start column for board {}", board_id);
+                return;
+            }
+        };
+        let Some(agent_id) = start_column.agent_id else {
+            tracing::warn!(
+                "No agent on workflow start column '{}' — assign an agent in board settings",
+                start_column.name
+            );
+            return;
+        };
+        let agent = match Agent::find_by_id(pool, agent_id).await {
+            Ok(Some(a)) => a,
+            _ => return,
+        };
+
+        // Iterate over all tasks in the DAG and start any that are now unblocked
+        let all_task_ids: Vec<Uuid> = dag.parallel_sets
+            .iter()
+            .flatten()
+            .filter_map(|s| Uuid::parse_str(s).ok())
+            .collect();
+
+        for next_task_id in all_task_ids {
+            // Skip if still has unsatisfied dependencies
+            if TaskDependency::has_unsatisfied(pool, next_task_id).await.unwrap_or(true) {
+                continue;
+            }
+
+            let next_task = match Task::find_by_id(pool, next_task_id).await {
+                Ok(Some(t)) => t,
+                _ => continue,
+            };
+
+            // Skip done/cancelled/already-running tasks
+            let status_str = next_task.status.to_string();
+            if status_str == "done" || status_str == "cancelled" {
+                continue;
+            }
+            if Task::has_active_attempt(pool, next_task_id).await.unwrap_or(false) {
+                continue;
+            }
+
+            // Move to start column if not already there
+            if next_task.column_id != Some(start_column.id) {
+                let col_status = start_column.status.to_string();
+                if let Err(e) = sqlx::query(
+                    "UPDATE tasks SET column_id = $1, status = $2 WHERE id = $3"
+                )
+                .bind(start_column.id)
+                .bind(&col_status)
+                .bind(next_task_id)
+                .execute(pool)
+                .await
+                {
+                    tracing::error!("Failed to move task {} to start column: {}", next_task_id, e);
+                    continue;
+                }
+            }
+
+            // Re-fetch after column update
+            let next_task = match Task::find_by_id(pool, next_task_id).await {
+                Ok(Some(t)) => t,
+                _ => continue,
+            };
+
+            tracing::info!(
+                target: "vibe_kanban::group",
+                "Auto-starting next group task {} ('{}') in column '{}'",
+                next_task_id, next_task.title, start_column.name
+            );
+
+            if let Err(e) = self.initiate_column_handoff(&next_task, &agent, &start_column).await {
+                tracing::error!(
+                    "Failed to start next group task {} in group {}: {}",
+                    next_task_id, group_id, e
+                );
+            }
+        }
     }
 
     /// Cleanup executions marked as running in the db, call at startup
@@ -2311,9 +2661,9 @@ pub trait ContainerService {
             self.create(workspace).await?;
         }
 
-        // Get parent task
-        let task = workspace
-            .parent_task(&self.db().pool)
+        // Get parent task — use override when provided (group workspaces share task_id = tasks[0])
+        let task_id = agent_context.task_id_override.unwrap_or(workspace.task_id);
+        let task = Task::find_by_id(&self.db().pool, task_id)
             .await?
             .ok_or(SqlxError::RowNotFound)?;
 
@@ -2478,29 +2828,37 @@ pub trait ContainerService {
         // Capture current HEAD per repository as the "before" commit for this execution
         let repositories =
             WorkspaceRepo::find_repos_for_workspace(&self.db().pool, workspace.id).await?;
-        if repositories.is_empty() {
-            return Err(ContainerError::Other(anyhow!(
-                "Workspace has no repositories configured"
-            )));
-        }
 
-        let workspace_root = workspace
-            .container_ref
-            .as_ref()
-            .map(std::path::PathBuf::from)
-            .ok_or_else(|| ContainerError::Other(anyhow!("Container ref not found")))?;
+        // Lightweight workspaces (group-level agents) have no WorkspaceRepo entries —
+        // container_ref is pre-set to the project repo path. Skip repo state tracking.
+        let repo_states = if repositories.is_empty() {
+            if workspace.container_ref.is_none() {
+                return Err(ContainerError::Other(anyhow!(
+                    "Workspace has no repositories configured"
+                )));
+            }
+            Vec::new()
+        } else {
+            let workspace_root = workspace
+                .container_ref
+                .as_ref()
+                .map(std::path::PathBuf::from)
+                .ok_or_else(|| ContainerError::Other(anyhow!("Container ref not found")))?;
 
-        let mut repo_states = Vec::with_capacity(repositories.len());
-        for repo in &repositories {
-            let repo_path = workspace_root.join(&repo.name);
-            let before_head_commit = self.git().get_head_info(&repo_path).ok().map(|h| h.oid);
-            repo_states.push(CreateExecutionProcessRepoState {
-                repo_id: repo.id,
-                before_head_commit,
-                after_head_commit: None,
-                merge_commit: None,
-            });
-        }
+            let mut states = Vec::with_capacity(repositories.len());
+            for repo in &repositories {
+                let repo_path = workspace_root.join(&repo.name);
+                let before_head_commit =
+                    self.git().get_head_info(&repo_path).ok().map(|h| h.oid);
+                states.push(CreateExecutionProcessRepoState {
+                    repo_id: repo.id,
+                    before_head_commit,
+                    after_head_commit: None,
+                    merge_commit: None,
+                });
+            }
+            states
+        };
         let create_execution_process = CreateExecutionProcess {
             session_id: session.id,
             executor_action: executor_action.clone(),
@@ -2514,6 +2872,10 @@ pub trait ContainerService {
             &repo_states,
         )
         .await?;
+
+        // Broadcast the new execution process to all WS subscribers so the UI shows it immediately
+        self.events_msg_store()
+            .push_patch(execution_process_patch::add(&execution_process));
 
         if let Some(prompt) = match executor_action.typ() {
             ExecutorActionType::CodingAgentInitialRequest(coding_agent_request) => {

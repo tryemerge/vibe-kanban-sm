@@ -1,387 +1,91 @@
-use std::time::Duration;
-
-use db::{
-    DBService,
-    models::{
-        agent::Agent,
-        group_event::{CreateGroupEvent, GroupEvent},
-        project::Project,
-        task::{CreateTask, Task},
-        task_group::{CreateTaskGroup, TaskGroup},
-    },
-};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use sqlx::error::Error as SqlxError;
-use thiserror::Error;
-use tokio::time::interval;
-use tracing::{debug, error, info};
+use db::models::project::Project;
 use uuid::Uuid;
 
-use crate::services::analytics::AnalyticsContext;
+/// Well-known UUID for the Task Builder agent (seeded via migration as "Task Grouper")
+pub const TASK_GROUPER_AGENT_ID: Uuid = uuid::uuid!("44444444-0000-0001-0001-000000000001");
 
-#[derive(Debug, Error)]
-pub enum TaskGrouperError {
-    #[error(transparent)]
-    Sqlx(#[from] SqlxError),
-    #[error("Task Grouper agent not found")]
-    AgentNotFound,
-    #[allow(dead_code)]
-    #[error("Claude API error: {0}")]
-    ClaudeApiError(String),
-    #[error("JSON parsing error: {0}")]
-    JsonError(#[from] serde_json::Error),
+/// Build the prompt for the Task Builder column worker.
+///
+/// The Task Builder is a persistent column agent. It scans for groups in "draft"
+/// state that have a linked Plan (artifact_id) but no tasks yet, then reads each
+/// Plan and creates the tasks described in it. Once tasks are created, it calls
+/// finalize_task_group to hand the group off to the Group Evaluator.
+pub fn build_grouper_prompt(project: &Project, _unused_tasks: &[db::models::task::Task], _unused_prompt: Option<&str>) -> String {
+    build_task_builder_prompt(project)
 }
 
-const TASK_GROUPER_AGENT_ID: Uuid = uuid::uuid!("44444444-0000-0001-0001-000000000001");
+/// Build the Task Builder column worker prompt.
+pub fn build_task_builder_prompt(project: &Project) -> String {
+    format!(
+        r#"**Task Builder — {project_name}**
 
-/// Grouping recommendation from Claude
-#[derive(Debug, Serialize, Deserialize)]
-struct GroupingRecommendation {
-    groups: Vec<RecommendedGroup>,
-}
+project_id = {project_id}
 
-#[derive(Debug, Serialize, Deserialize)]
-struct RecommendedGroup {
-    name: String,
-    description: String,
-    color: Option<String>,
-    task_ids: Vec<Uuid>,
-    rationale: String,
-}
+You are the Task Builder for this project. Your job is to read Plans (IMPL docs) and
+turn them into concrete, executable tasks — then hand the group off for evaluation.
 
-/// Service to periodically analyze backlog and group related tasks
-pub struct TaskGrouperService {
-    db: DBService,
-    poll_interval: Duration,
-    analytics: Option<AnalyticsContext>,
-}
+## Workflow
 
-impl TaskGrouperService {
-    /// Create a new service instance for manual use (without background timer)
-    pub fn new(db: DBService, analytics: Option<AnalyticsContext>) -> Self {
-        Self {
-            db,
-            poll_interval: Duration::from_secs(300), // Run every 5 minutes (only used if spawned)
-            analytics,
-        }
-    }
+### Step 1: Find work
+Call `list_task_groups` to find all groups in "draft" state.
+Call `list_tasks` to see which tasks already exist.
 
-    /// Spawn the service as a background task with periodic execution
-    pub async fn spawn(
-        db: DBService,
-        analytics: Option<AnalyticsContext>,
-    ) -> tokio::task::JoinHandle<()> {
-        let service = Self::new(db, analytics);
-        tokio::spawn(async move {
-            service.start().await;
-        })
-    }
+For each draft group with an `artifact_id`:
+- Cross-reference with the task list to check if the group already has tasks
+- Groups with NO tasks need your attention — they are empty shells awaiting task creation
 
-    async fn start(&self) {
-        info!(
-            "Starting Task Grouper service with interval {:?}",
-            self.poll_interval
-        );
+If all draft groups already have tasks (or none exist), say "No groups need task creation" and exit.
 
-        // Verify agent exists
-        if let Err(e) = self.verify_agent().await {
-            error!("Task Grouper agent not found, service will not run: {}", e);
-            return;
-        }
+### Step 2: For each empty draft group (one at a time)
 
-        let mut interval = interval(self.poll_interval);
+1. **Read the Plan**: `get_artifact(artifact_id=<group.artifact_id>)`
+   - The Plan contains what needs to be built, why, and a task breakdown
+   - If there is a linked ADR (`chain_id`), read it too for context: `list_artifacts(artifact_type="adr")`
 
-        loop {
-            interval.tick().await;
-            if let Err(e) = self.analyze_all_backlogs().await {
-                error!("Error analyzing backlogs: {}", e);
-            }
-        }
-    }
+2. **Create tasks from the Plan**:
+   For each concrete task described in the Plan's task list:
+   - `create_task(project_id: {project_id}, title="...", description="...")`
+   - Title: short, verb-first (e.g. "Add artifact_id column to task_groups via migration")
+   - Description: enough detail for a coder to implement without asking questions
+     Include: what to build, acceptance criteria, any constraints from the ADR
 
-    /// Verify the Task Grouper agent exists in the database
-    async fn verify_agent(&self) -> Result<(), TaskGrouperError> {
-        Agent::find_by_id(&self.db.pool, TASK_GROUPER_AGENT_ID)
-            .await?
-            .ok_or(TaskGrouperError::AgentNotFound)?;
-        Ok(())
-    }
+3. **Add tasks to the group**:
+   `add_task_to_group(task_id=<id>, group_id=<group.id>)` for each task created
 
-    /// Analyze backlogs for all projects with ungrouped tasks
-    async fn analyze_all_backlogs(&self) -> Result<(), TaskGrouperError> {
-        // Get all projects
-        let projects = Project::find_all(&self.db.pool).await?;
+4. **Hand off to Group Evaluator**:
+   `finalize_task_group(group_id=<group.id>)`
+   This transitions the group to "analyzing" and triggers the Group Evaluator.
 
-        if projects.is_empty() {
-            debug!("No projects to analyze");
-            return Ok(());
-        }
+### Step 3: Check for late arrivals
+After processing all groups, call `list_task_groups` once more.
+If new empty draft groups arrived while you were working, process them too.
 
-        for project in projects {
-            if let Err(e) = self.analyze_project_backlog(&project).await {
-                error!(
-                    "Error analyzing backlog for project {} ({}): {}",
-                    project.name, project.id, e
-                );
-            }
-        }
+### Step 4: Exit
+Say "Task Builder complete — built N groups with X total tasks" and exit.
 
-        Ok(())
-    }
+---
 
-    /// Analyze backlog for a specific project (public for manual triggering via API)
-    pub async fn analyze_project_backlog(&self, project: &Project) -> Result<(), TaskGrouperError> {
-        // Query ungrouped tasks in this project
-        let ungrouped_tasks = Task::find_ungrouped_by_project(&self.db.pool, project.id).await?;
+## Task Writing Guidelines
 
-        if ungrouped_tasks.is_empty() {
-            debug!("No ungrouped tasks for project {}", project.name);
-            return Ok(());
-        }
+- **Verb-first titles**: "Add X", "Update Y", "Create Z", "Write tests for W"
+- **One concern per task**: don't bundle multiple unrelated changes into one task
+- **Coder-ready descriptions**: include file paths, function names, or schema details where the Plan provides them
+- **No vague tasks**: "Implement authentication" is bad. "Add JWT middleware to API routes in server/src/routes/auth.rs" is good
+- **Stay faithful to the Plan**: don't invent tasks not mentioned in the Plan, don't skip tasks that are listed
 
-        // Skip if too few tasks (need at least 2 to group)
-        if ungrouped_tasks.len() < 2 {
-            debug!(
-                "Only {} ungrouped task in project {}, skipping grouping",
-                ungrouped_tasks.len(),
-                project.name
-            );
-            return Ok(());
-        }
+---
 
-        info!(
-            "Found {} ungrouped tasks in project {}, creating grouping task...",
-            ungrouped_tasks.len(),
-            project.name
-        );
+## MCP Tools
 
-        // Verify Task Grouper agent exists
-        let agent = Agent::find_by_id(&self.db.pool, TASK_GROUPER_AGENT_ID)
-            .await?
-            .ok_or(TaskGrouperError::AgentNotFound)?;
-
-        // Build the task description with all ungrouped tasks
-        let tasks_summary: Vec<String> = ungrouped_tasks
-            .iter()
-            .map(|t| {
-                format!(
-                    "- **{}** ({})\n  {}",
-                    t.title,
-                    t.id,
-                    t.description.as_deref().unwrap_or("No description")
-                )
-            })
-            .collect();
-
-        let description = format!(
-            r#"**Task Grouper Assignment**
-
-Analyze the following {} ungrouped tasks in project "{}" and organize them into task groups.
-
-## Ungrouped Tasks
-
-{}
-
-## Your Mission
-
-Use the available MCP tools to:
-1. Identify patterns and relationships between tasks
-2. Create new task groups OR add to existing draft groups (use simple names like "Auth System", "Payment Flow")
-3. Assign tasks to the appropriate groups using `add_task_to_group`
-4. Set inter-group dependencies when needed using `add_group_dependency`
-5. **Finalize groups** when complete using `finalize_task_group`
-6. Document your grouping rationale using `create_artifact`
-
-## Guidelines
-
-- Groups should have 3-8 related tasks
-- Group by feature/domain, dependency, or purpose commonality
-- Use SIMPLE, descriptive group names
-- Don't force unrelated tasks into groups - leave them ungrouped if they don't fit
-- Only add to existing groups if they're in "draft" state (not started)
-- The Group Evaluator will refine groups later, so focus on clustering similar work
-
-## When to Finalize a Group
-
-Call `finalize_task_group(group_id)` when a group is complete and ready for analysis:
-
-**Finalize when:**
-- ✅ Group has a cohesive set of related tasks (3-8 tasks is ideal)
-- ✅ No more ungrouped tasks fit this group's purpose
-- ✅ Group dependencies are set correctly
-- ✅ You're confident this is a well-organized unit of work
-
-**Don't finalize when:**
-- ❌ You expect more related tasks to arrive soon
-- ❌ Group is too small (<3 tasks) and might grow
-- ❌ Group purpose is unclear or might change
-- ❌ You're unsure about task assignments
-
-**What finalization does:**
-- Transitions group from "draft" → "pending" state
-- Group becomes immutable (no more tasks can be added)
-- Group waits for dependencies to clear
-- When dependencies satisfied → Group Evaluator analyzes and creates execution plan
-
-**Strategy:**
-- Process all ungrouped tasks first
-- Set up all groups and dependencies
-- Then finalize completed groups at the end
-- Leave incomplete/uncertain groups in "draft" for future grouping passes
-
-## MCP Tools Available
-
-- `list_tasks` - Query tasks and existing groups in the project
-- `get_task` - Get detailed task information
-- `create_task_group` - Create a new group (name, color, project_id)
-- `add_task_to_group` - Assign a task to a group
-- `add_group_dependency` - Set prerequisite between groups (group A depends on group B)
-- `finalize_task_group` - Mark group as complete and ready for analysis (draft → pending)
-- `create_artifact` - Log your grouping decisions and rationale
-
-See your system prompt for complete instructions.
+- `list_task_groups` — find groups by state
+- `list_tasks` — see all tasks in the project (project_id: {project_id})
+- `get_artifact` — read a Plan or ADR in full (pass artifact_id)
+- `list_artifacts` — find linked ADRs (use artifact_type="adr", filter by chain_id)
+- `create_task` — create a task (project_id: {project_id}, title, description)
+- `add_task_to_group` — assign a task to a group
+- `finalize_task_group` — hand the group to the Group Evaluator
 "#,
-            ungrouped_tasks.len(),
-            project.name,
-            tasks_summary.join("\n\n")
-        );
-
-        // Create the grouping task assigned to Task Grouper agent
-        let task_data = CreateTask {
-            project_id: project.id,
-            title: format!("Group {} ungrouped tasks", ungrouped_tasks.len()),
-            description: Some(description),
-            status: None, // Defaults to Todo
-            column_id: None, // Not in workflow columns
-            parent_workspace_id: None,
-            image_ids: None,
-            shared_task_id: None,
-            task_group_id: None, // System task, not in a group
-        };
-
-        let task_id = Uuid::new_v4();
-        let grouping_task = Task::create(&self.db.pool, &task_data, task_id).await?;
-
-        info!(
-            "Created grouping task {} for project {} ({}) - assigned to agent '{}'",
-            grouping_task.id,
-            project.name,
-            project.id,
-            agent.name
-        );
-
-        // Track analytics event if available
-        if let Some(analytics) = &self.analytics {
-            analytics.analytics_service.track_event(
-                &analytics.user_id,
-                "grouping_task_created",
-                Some(json!({
-                    "project_id": project.id.to_string(),
-                    "ungrouped_count": ungrouped_tasks.len(),
-                    "grouping_task_id": grouping_task.id.to_string(),
-                    "agent_id": TASK_GROUPER_AGENT_ID.to_string(),
-                })),
-            );
-        }
-
-        // The task is now ready to be executed by the Task Grouper agent via MCP
-        // The agent will use MCP tools to create groups and assign tasks directly
-        // No need to read results or apply groupings - the agent does it all!
-
-        Ok(())
-    }
-
-    /// Apply grouping recommendations (creates groups and assigns tasks)
-    #[allow(dead_code)]
-    async fn apply_grouping(
-        &self,
-        project_id: Uuid,
-        recommendations: GroupingRecommendation,
-    ) -> Result<(), TaskGrouperError> {
-        for rec_group in recommendations.groups {
-            let task_count = rec_group.task_ids.len();
-
-            // Create the task group
-            let group_data = CreateTaskGroup {
-                project_id,
-                name: rec_group.name.clone(),
-                color: rec_group.color.clone(),
-                is_backlog: Some(false),
-            };
-
-            let group = TaskGroup::create(&self.db.pool, &group_data).await?;
-
-            info!(
-                "Created task group '{}' ({})",
-                group.name, group.id
-            );
-
-            // Log group creation event
-            let create_event = CreateGroupEvent {
-                task_group_id: group.id,
-                task_id: None,
-                event_type: "group_created".to_string(),
-                actor_type: "system".to_string(),
-                summary: format!(
-                    "Task Grouper created group '{}' with {} tasks",
-                    group.name,
-                    task_count
-                ),
-                payload: Some(json!({
-                    "rationale": rec_group.rationale,
-                    "task_count": task_count,
-                }).to_string()),
-            };
-            GroupEvent::create(&self.db.pool, &create_event).await?;
-
-            // Assign tasks to the group
-            for task_id in rec_group.task_ids {
-                if let Err(e) = sqlx::query(
-                    "UPDATE tasks SET task_group_id = $1 WHERE id = $2"
-                )
-                .bind(group.id)
-                .bind(task_id)
-                .execute(&self.db.pool)
-                .await
-                {
-                    error!("Failed to assign task {} to group {}: {}", task_id, group.id, e);
-                    continue;
-                }
-
-                // Log task assignment event
-                let assign_event = CreateGroupEvent {
-                    task_group_id: group.id,
-                    task_id: Some(task_id),
-                    event_type: "task_added".to_string(),
-                    actor_type: "system".to_string(),
-                    summary: format!("Task assigned to group '{}'", group.name),
-                    payload: None,
-                };
-                GroupEvent::create(&self.db.pool, &assign_event).await?;
-            }
-
-            info!(
-                "Assigned {} tasks to group '{}'",
-                task_count,
-                group.name
-            );
-        }
-
-        Ok(())
-    }
-
-    /// Manually trigger analysis for a specific project ID (for on-demand API calls)
-    pub async fn analyze_project_by_id(
-        &self,
-        project_id: Uuid,
-    ) -> Result<(), TaskGrouperError> {
-        let project = Project::find_by_id(&self.db.pool, project_id)
-            .await?
-            .ok_or_else(|| {
-                TaskGrouperError::Sqlx(SqlxError::RowNotFound)
-            })?;
-
-        self.analyze_project_backlog(&project).await
-    }
+        project_name = project.name,
+        project_id = project.id,
+    )
 }

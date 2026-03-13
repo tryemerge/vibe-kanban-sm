@@ -1,9 +1,11 @@
 use db::models::{
     execution_process::ExecutionProcess,
+    group_event::GroupEvent,
     project::Project,
     scratch::Scratch,
     session::Session,
     task::{Task, TaskWithAttemptStatus},
+    task_group::TaskGroup,
 };
 use futures::StreamExt;
 use serde_json::json;
@@ -437,6 +439,195 @@ impl EventService {
                         }
                         Ok(other) => Some(Ok(other)),
                         Err(_) => None,
+                    }
+                }
+            });
+
+        let initial_stream = futures::stream::once(async move { Ok(initial_msg) });
+        let combined_stream = initial_stream.chain(filtered_stream).boxed();
+        Ok(combined_stream)
+    }
+
+    /// Stream task groups for a specific project with initial snapshot
+    pub async fn stream_task_groups_raw(
+        &self,
+        project_id: Uuid,
+    ) -> Result<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>, EventError>
+    {
+        fn build_groups_snapshot(groups: Vec<TaskGroup>) -> LogMsg {
+            let groups_map: serde_json::Map<String, serde_json::Value> = groups
+                .into_iter()
+                .map(|g| (g.id.to_string(), serde_json::to_value(g).unwrap()))
+                .collect();
+            let patch = json!([{
+                "op": "replace",
+                "path": "/task_groups",
+                "value": groups_map
+            }]);
+            LogMsg::JsonPatch(serde_json::from_value(patch).unwrap())
+        }
+
+        let groups = TaskGroup::find_by_project(&self.db.pool, project_id).await?;
+        let initial_msg = build_groups_snapshot(groups);
+
+        let db_pool = self.db.pool.clone();
+
+        let filtered_stream =
+            BroadcastStream::new(self.msg_store.get_receiver()).filter_map(move |msg_result| {
+                let db_pool = db_pool.clone();
+                async move {
+                    match msg_result {
+                        Ok(LogMsg::JsonPatch(patch)) => {
+                            if let Some(patch_op) = patch.0.first()
+                                && patch_op.path().starts_with("/task_groups/")
+                            {
+                                match patch_op {
+                                    json_patch::PatchOperation::Add(op) => {
+                                        if let Ok(group) =
+                                            serde_json::from_value::<TaskGroup>(op.value.clone())
+                                            && group.project_id == project_id
+                                        {
+                                            return Some(Ok(LogMsg::JsonPatch(patch)));
+                                        }
+                                    }
+                                    json_patch::PatchOperation::Replace(op) => {
+                                        if let Ok(group) =
+                                            serde_json::from_value::<TaskGroup>(op.value.clone())
+                                            && group.project_id == project_id
+                                        {
+                                            return Some(Ok(LogMsg::JsonPatch(patch)));
+                                        }
+                                    }
+                                    json_patch::PatchOperation::Remove(_) => {
+                                        return Some(Ok(LogMsg::JsonPatch(patch)));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            None
+                        }
+                        Ok(other) => Some(Ok(other)),
+                        Err(BroadcastStreamRecvError::Lagged(skipped)) => {
+                            tracing::warn!(
+                                skipped = skipped,
+                                "task_groups stream lagged; resyncing snapshot"
+                            );
+                            match TaskGroup::find_by_project(&db_pool, project_id).await {
+                                Ok(groups) => Some(Ok(build_groups_snapshot(groups))),
+                                Err(err) => {
+                                    tracing::error!(
+                                        error = %err,
+                                        "failed to resync task_groups after lag"
+                                    );
+                                    Some(Err(std::io::Error::other(format!(
+                                        "failed to resync task_groups after lag: {err}"
+                                    ))))
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+        let initial_stream = futures::stream::once(async move { Ok(initial_msg) });
+        let combined_stream = initial_stream.chain(filtered_stream).boxed();
+        Ok(combined_stream)
+    }
+
+    /// Stream group events for a specific project with initial snapshot
+    pub async fn stream_group_events_raw(
+        &self,
+        project_id: Uuid,
+    ) -> Result<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>, EventError>
+    {
+        fn build_events_snapshot(events: Vec<GroupEvent>) -> LogMsg {
+            let events_map: serde_json::Map<String, serde_json::Value> = events
+                .into_iter()
+                .map(|e| (e.id.to_string(), serde_json::to_value(e).unwrap()))
+                .collect();
+            let patch = json!([{
+                "op": "replace",
+                "path": "/group_events",
+                "value": events_map
+            }]);
+            LogMsg::JsonPatch(serde_json::from_value(patch).unwrap())
+        }
+
+        let events = GroupEvent::find_by_project(&self.db.pool, project_id, 200, 0).await?;
+        let initial_msg = build_events_snapshot(events);
+
+        let db_pool = self.db.pool.clone();
+
+        // Collect group IDs for this project to filter events
+        let project_group_ids: std::collections::HashSet<Uuid> =
+            TaskGroup::find_by_project(&self.db.pool, project_id)
+                .await?
+                .into_iter()
+                .map(|g| g.id)
+                .collect();
+        let project_group_ids = std::sync::Arc::new(tokio::sync::RwLock::new(project_group_ids));
+
+        let filtered_stream =
+            BroadcastStream::new(self.msg_store.get_receiver()).filter_map(move |msg_result| {
+                let db_pool = db_pool.clone();
+                let project_group_ids = project_group_ids.clone();
+                async move {
+                    match msg_result {
+                        Ok(LogMsg::JsonPatch(patch)) => {
+                            if let Some(patch_op) = patch.0.first()
+                                && patch_op.path().starts_with("/group_events/")
+                            {
+                                if let json_patch::PatchOperation::Add(op) = patch_op {
+                                    if let Ok(event) =
+                                        serde_json::from_value::<GroupEvent>(op.value.clone())
+                                    {
+                                        let ids = project_group_ids.read().await;
+                                        if ids.contains(&event.task_group_id) {
+                                            return Some(Ok(LogMsg::JsonPatch(patch)));
+                                        }
+                                    }
+                                }
+                            }
+                            // Also pick up new task_groups to update our filter set
+                            if let Some(patch_op) = patch.0.first()
+                                && patch_op.path().starts_with("/task_groups/")
+                            {
+                                let value = match patch_op {
+                                    json_patch::PatchOperation::Add(op) => Some(&op.value),
+                                    json_patch::PatchOperation::Replace(op) => Some(&op.value),
+                                    _ => None,
+                                };
+                                if let Some(val) = value {
+                                    if let Ok(group) =
+                                        serde_json::from_value::<TaskGroup>(val.clone())
+                                        && group.project_id == project_id
+                                    {
+                                        let mut ids = project_group_ids.write().await;
+                                        ids.insert(group.id);
+                                    }
+                                }
+                            }
+                            None
+                        }
+                        Ok(other) => Some(Ok(other)),
+                        Err(BroadcastStreamRecvError::Lagged(skipped)) => {
+                            tracing::warn!(
+                                skipped = skipped,
+                                "group_events stream lagged; resyncing snapshot"
+                            );
+                            match GroupEvent::find_by_project(&db_pool, project_id, 200, 0).await {
+                                Ok(events) => Some(Ok(build_events_snapshot(events))),
+                                Err(err) => {
+                                    tracing::error!(
+                                        error = %err,
+                                        "failed to resync group_events after lag"
+                                    );
+                                    Some(Err(std::io::Error::other(format!(
+                                        "failed to resync group_events after lag: {err}"
+                                    ))))
+                                }
+                            }
+                        }
                     }
                 }
             });

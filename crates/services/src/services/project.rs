@@ -135,11 +135,8 @@ impl ProjectService {
             None
         };
 
-        // Apply the Setup Board template to create a board for this project
-        let board_id = self
-            .apply_setup_board_template(pool, &payload.name)
-            .await
-            .ok();
+        // Use the provided board_id directly — boards are shared, not cloned per project
+        let board_id = payload.board_id;
 
         // Update project with board_id and default_agent_working_dir
         if board_id.is_some() || default_agent_working_dir.is_some() {

@@ -19,8 +19,9 @@ use db::models::{
 };
 use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use services::services::{
+    container::ContainerService,
     events::project_patch,
     file_search_cache::SearchQuery, project::ProjectServiceError,
     remote_client::CreateRemoteProjectPayload,
@@ -616,6 +617,264 @@ pub async fn update_project_repository(
     }
 }
 
+/// POST /projects/{id}/grouper/start — idempotent
+pub async fn start_grouper_agent(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<StartAgentResponse>>, ApiError> {
+    use services::services::task_grouper::TASK_GROUPER_AGENT_ID;
+    let pool = &deployment.db().pool;
+    if let Some(ws_id) = project.grouper_workspace_id {
+        return Ok(ResponseJson(ApiResponse::success(StartAgentResponse { workspace_id: ws_id, created: false })));
+    }
+    let (workspace_id, _) = create_column_agent_workspace(pool, &project, TASK_GROUPER_AGENT_ID, "Task Grouper", "grouper").await?;
+    Project::set_grouper_workspace_id(pool, project.id, workspace_id).await?;
+    broadcast_project_update(pool, &deployment, project.id).await;
+    Ok(ResponseJson(ApiResponse::success(StartAgentResponse { workspace_id, created: true })))
+}
+
+/// POST /projects/{id}/group-evaluator/start — idempotent
+pub async fn start_group_evaluator_agent(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<StartAgentResponse>>, ApiError> {
+    use services::services::group_evaluator::GROUP_EVALUATOR_AGENT_ID;
+    let pool = &deployment.db().pool;
+    if let Some(ws_id) = project.group_evaluator_workspace_id {
+        return Ok(ResponseJson(ApiResponse::success(StartAgentResponse { workspace_id: ws_id, created: false })));
+    }
+    let (workspace_id, _) = create_column_agent_workspace(pool, &project, GROUP_EVALUATOR_AGENT_ID, "Group Evaluator", "group-evaluator").await?;
+    Project::set_group_evaluator_workspace_id(pool, project.id, workspace_id).await?;
+    broadcast_project_update(pool, &deployment, project.id).await;
+    Ok(ResponseJson(ApiResponse::success(StartAgentResponse { workspace_id, created: true })))
+}
+
+/// POST /projects/{id}/prereq-eval/start — idempotent
+pub async fn start_prereq_eval_agent(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<StartAgentResponse>>, ApiError> {
+    use services::services::prereq_evaluator::PREREQ_EVALUATOR_AGENT_ID;
+    let pool = &deployment.db().pool;
+    if let Some(ws_id) = project.prereq_eval_workspace_id {
+        return Ok(ResponseJson(ApiResponse::success(StartAgentResponse { workspace_id: ws_id, created: false })));
+    }
+    let (workspace_id, _) = create_column_agent_workspace(pool, &project, PREREQ_EVALUATOR_AGENT_ID, "PreReq Evaluator", "prereq-evaluator").await?;
+    Project::set_prereq_eval_workspace_id(pool, project.id, workspace_id).await?;
+    broadcast_project_update(pool, &deployment, project.id).await;
+    Ok(ResponseJson(ApiResponse::success(StartAgentResponse { workspace_id, created: true })))
+}
+
+/// Create a persistent lightweight workspace for a column-level agent.
+/// Returns (workspace_id, executor) — caller stores the ID on the project.
+async fn create_column_agent_workspace(
+    pool: &sqlx::PgPool,
+    project: &Project,
+    agent_id: Uuid,
+    agent_label: &str,
+    branch_prefix: &str,
+) -> Result<(Uuid, String), ApiError> {
+    use db::models::agent::Agent;
+    use db::models::session::{CreateSession, Session};
+    use db::models::workspace::{CreateWorkspace, Workspace};
+
+    let agent = Agent::find_by_id(pool, agent_id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest(format!("{} agent not seeded", agent_label)))?;
+
+    // Create a hidden system task to anchor the workspace (filtered from UI)
+    let task = db::models::task::Task::create(
+        pool,
+        &db::models::task::CreateTask {
+            project_id: project.id,
+            title: format!("{} — {}", agent_label, project.name),
+            description: None,
+            status: None,
+            column_id: None,
+            parent_workspace_id: None,
+            image_ids: None,
+            shared_task_id: None,
+            task_group_id: None,
+        },
+        Uuid::new_v4(),
+    )
+    .await?;
+
+    let repos = ProjectRepo::find_repos_for_project(pool, project.id).await?;
+    let repo_path = repos
+        .first()
+        .map(|r| r.path.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+
+    let workspace_id = Uuid::new_v4();
+    let short_id = utils::text::short_uuid(&workspace_id);
+    Workspace::create(
+        pool,
+        &CreateWorkspace { branch: format!("{}/{}", branch_prefix, short_id), agent_working_dir: None },
+        workspace_id,
+        task.id,
+    )
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("Failed to create workspace: {}", e)))?;
+
+    Workspace::update_container_ref(pool, workspace_id, &repo_path).await?;
+
+    // Create session so the panel can open before any execution has run
+    Session::create(
+        pool,
+        &CreateSession { executor: Some(agent.executor.clone()) },
+        Uuid::new_v4(),
+        workspace_id,
+    )
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("Failed to create session: {}", e)))?;
+
+    Ok((workspace_id, agent.executor))
+}
+
+async fn broadcast_project_update(pool: &sqlx::PgPool, deployment: &DeploymentImpl, project_id: Uuid) {
+    if let Ok(Some(updated)) = Project::find_by_id(pool, project_id).await {
+        deployment
+            .events()
+            .msg_store()
+            .push_patch(services::services::events::project_patch::replace(&updated));
+    }
+}
+
+/// POST /projects/{id}/agent/start — idempotent
+///
+/// If the project already has an agent workspace, returns it.
+/// Otherwise, creates a lightweight workspace + session ready for the first user message.
+/// No initial execution is run — the first follow-up creates the initial Claude session.
+pub async fn start_project_agent(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<StartAgentResponse>>, ApiError> {
+    use db::models::agent::Agent;
+    use db::models::session::{CreateSession, Session};
+    use db::models::workspace::{CreateWorkspace, Workspace};
+    use services::services::project_agent::PROJECT_AGENT_ID;
+
+    let pool = &deployment.db().pool;
+
+    // Idempotent: if workspace already exists, return it
+    if let Some(workspace_id) = project.agent_workspace_id {
+        return Ok(ResponseJson(ApiResponse::success(StartAgentResponse {
+            workspace_id,
+            created: false,
+        })));
+    }
+
+    // Load the Project Agent definition to get executor type
+    let agent = Agent::find_by_id(pool, PROJECT_AGENT_ID)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Project Agent not seeded".to_string()))?;
+
+    // Create a hidden system task (filtered from UI by title regex)
+    let task_title = format!("Project Agent — {}", project.name);
+    let task = db::models::task::Task::create(
+        pool,
+        &db::models::task::CreateTask {
+            project_id: project.id,
+            title: task_title,
+            description: None,
+            status: None,
+            column_id: None,
+            parent_workspace_id: None,
+            image_ids: None,
+            shared_task_id: None,
+            task_group_id: None,
+        },
+        Uuid::new_v4(),
+    )
+    .await?;
+
+    // Get the project repo path for container_ref
+    let repos = ProjectRepo::find_repos_for_project(pool, project.id).await?;
+    let repo_path = repos
+        .first()
+        .map(|r| r.path.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+
+    // Create lightweight workspace (no git worktree)
+    let workspace_id = Uuid::new_v4();
+    let short_id = utils::text::short_uuid(&workspace_id);
+    let branch_name = format!("project-agent/{}", short_id);
+    let create_data = CreateWorkspace {
+        branch: branch_name,
+        agent_working_dir: None,
+    };
+    Workspace::create(pool, &create_data, workspace_id, task.id)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to create workspace: {}", e)))?;
+
+    // Pre-set container_ref (prevents worktree creation)
+    Workspace::update_container_ref(pool, workspace_id, &repo_path).await?;
+
+    // Create a session so follow-up can be sent immediately
+    // The executor is stored so the follow_up handler can use it for the first request
+    Session::create(
+        pool,
+        &CreateSession {
+            executor: Some(agent.executor.clone()),
+        },
+        Uuid::new_v4(),
+        workspace_id,
+    )
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("Failed to create session: {}", e)))?;
+
+    // Link project to workspace
+    Project::set_agent_workspace_id(pool, project.id, workspace_id).await?;
+
+    // Broadcast project update (now has agent_workspace_id)
+    if let Ok(Some(updated)) = Project::find_by_id(pool, project.id).await {
+        deployment
+            .events()
+            .msg_store()
+            .push_patch(project_patch::replace(&updated));
+    }
+
+    tracing::info!(
+        "Project Agent workspace created for '{}' ({}) — workspace {}",
+        project.name,
+        project.id,
+        workspace_id
+    );
+
+    Ok(ResponseJson(ApiResponse::success(StartAgentResponse {
+        workspace_id,
+        created: true,
+    })))
+}
+
+#[derive(Debug, Serialize, TS)]
+pub struct StartAgentResponse {
+    pub workspace_id: Uuid,
+    pub created: bool,
+}
+
+/// Clear the ready_locked flag on a project.
+///
+/// Called by the Group Evaluator after it has processed all analyzing groups
+/// and verified the project is stable (all groups in ready/executing/done).
+/// Clearing the lock allows advance_project_dag() to advance the next group.
+async fn unlock_project(
+    Extension(project): Extension<Project>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    Project::set_ready_locked(&deployment.db().pool, project.id, false).await?;
+
+    tracing::info!("Project {} unlocked by Group Evaluator", project.id);
+
+    // Immediately try to advance the project DAG now that the lock is cleared
+    if let Err(e) = deployment.container().advance_project_dag(project.id).await {
+        tracing::warn!("advance_project_dag after unlock failed: {}", e);
+    }
+
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let project_id_router = Router::new()
         .route(
@@ -625,6 +884,11 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/remote/members", get(get_project_remote_members))
         .route("/search", get(search_project_files))
         .route("/open-editor", post(open_project_in_editor))
+        .route("/agent/start", post(start_project_agent))
+        .route("/grouper/start", post(start_grouper_agent))
+        .route("/group-evaluator/start", post(start_group_evaluator_agent))
+        .route("/prereq-eval/start", post(start_prereq_eval_agent))
+        .route("/unlock", post(unlock_project))
         .route(
             "/link",
             post(link_project_to_existing_remote).delete(unlink_project),

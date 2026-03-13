@@ -8,10 +8,13 @@ use axum::{
     routing::{get, post},
 };
 use db::models::{
+    agent::Agent,
+    context_artifact::ContextArtifact,
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
     project_repo::ProjectRepo,
     scratch::{Scratch, ScratchType},
     session::{CreateSession, Session},
+    skill::Skill,
     workspace::{Workspace, WorkspaceError},
 };
 use deployment::Deployment;
@@ -19,8 +22,11 @@ use executors::{
     actions::{
         ExecutorAction, ExecutorActionType, coding_agent_follow_up::CodingAgentFollowUpRequest,
     },
+    executors::BaseCodingAgent,
     profile::ExecutorProfileId,
 };
+use services::services::project_agent::PROJECT_AGENT_ID;
+use std::str::FromStr;
 use serde::Deserialize;
 use services::services::container::ContainerService;
 use sqlx::Error as SqlxError;
@@ -115,13 +121,27 @@ pub async fn follow_up(
         .ensure_container_exists(&workspace)
         .await?;
 
-    // Get executor profile data from the latest CodingAgent process in this session
-    let initial_executor_profile_id =
-        ExecutionProcess::latest_executor_profile_for_session(pool, session.id).await?;
-
-    let executor_profile_id = ExecutorProfileId {
-        executor: initial_executor_profile_id.executor,
-        variant: payload.variant,
+    // Get executor profile from the latest CodingAgent process, or fall back to session.executor
+    let executor_profile_id = match ExecutionProcess::latest_executor_profile_for_session(
+        pool,
+        session.id,
+    )
+    .await
+    {
+        Ok(id) => ExecutorProfileId {
+            executor: id.executor,
+            variant: payload.variant,
+        },
+        Err(_) => {
+            // No prior execution (e.g. project agent first message) — use session.executor
+            let executor_str = session.executor.as_deref().unwrap_or("CLAUDE_CODE");
+            let base = BaseCodingAgent::from_str(executor_str)
+                .unwrap_or(BaseCodingAgent::ClaudeCode);
+            ExecutorProfileId {
+                executor: base,
+                variant: payload.variant,
+            }
+        }
     };
 
     // Get parent task
@@ -195,13 +215,43 @@ pub async fn follow_up(
             working_dir: working_dir.clone(),
         })
     } else {
+        // First message in this session — load system prompt for project agent workspaces
+        let (agent_system_prompt, agent_project_context) =
+            if project.agent_workspace_id == Some(workspace.id) {
+                let sys_prompt = if let Ok(Some(agent)) = Agent::find_by_id(pool, PROJECT_AGENT_ID).await {
+                    let base = agent.system_prompt;
+                    // Append assigned skills to the system prompt
+                    match Skill::load_for_agent(pool, PROJECT_AGENT_ID).await {
+                        Ok(skills) if !skills.is_empty() => {
+                            let section = Skill::build_skills_section(&skills).unwrap_or_default();
+                            Some(format!("{}\n\n{}", base, section))
+                        }
+                        _ => Some(base),
+                    }
+                } else {
+                    None
+                };
+                let ctx = ContextArtifact::build_full_context(
+                    pool,
+                    project.id,
+                    Some(task.id),
+                    &[],
+                )
+                .await
+                .ok()
+                .filter(|c| !c.is_empty());
+                (sys_prompt, ctx)
+            } else {
+                (None, None)
+            };
+
         ExecutorActionType::CodingAgentInitialRequest(
             executors::actions::coding_agent_initial::CodingAgentInitialRequest {
                 prompt,
                 executor_profile_id: executor_profile_id.clone(),
                 working_dir,
-                agent_system_prompt: None,
-                agent_project_context: None,
+                agent_system_prompt,
+                agent_project_context,
                 agent_workflow_history: None,
                 agent_start_command: None,
                 agent_deliverable: None,

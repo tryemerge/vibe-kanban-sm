@@ -1,6 +1,6 @@
 use db::models::{
-    execution_process::ExecutionProcess, project::Project, scratch::Scratch,
-    task::TaskWithAttemptStatus, workspace::Workspace,
+    execution_process::ExecutionProcess, group_event::GroupEvent, project::Project,
+    scratch::Scratch, task::TaskWithAttemptStatus, task_group::TaskGroup, workspace::Workspace,
 };
 use json_patch::{AddOperation, Patch, PatchOperation, RemoveOperation, ReplaceOperation};
 use uuid::Uuid;
@@ -214,6 +214,66 @@ pub mod scratch_patch {
                 "payload": { "type": scratch_type_str },
                 "deleted": true
             }),
+        })])
+    }
+}
+
+/// Helper functions for creating task group patches
+pub mod group_patch {
+    use super::*;
+
+    fn group_path(group_id: Uuid) -> String {
+        format!(
+            "/task_groups/{}",
+            escape_pointer_segment(&group_id.to_string())
+        )
+    }
+
+    pub fn add(group: &TaskGroup) -> Patch {
+        Patch(vec![PatchOperation::Add(AddOperation {
+            path: group_path(group.id)
+                .try_into()
+                .expect("Group path should be valid"),
+            value: serde_json::to_value(group).expect("TaskGroup serialization should not fail"),
+        })])
+    }
+
+    pub fn replace(group: &TaskGroup) -> Patch {
+        Patch(vec![PatchOperation::Replace(ReplaceOperation {
+            path: group_path(group.id)
+                .try_into()
+                .expect("Group path should be valid"),
+            value: serde_json::to_value(group).expect("TaskGroup serialization should not fail"),
+        })])
+    }
+
+    pub fn remove(group_id: Uuid) -> Patch {
+        Patch(vec![PatchOperation::Remove(RemoveOperation {
+            path: group_path(group_id)
+                .try_into()
+                .expect("Group path should be valid"),
+        })])
+    }
+}
+
+/// Helper functions for creating group event patches (append-only)
+pub mod group_event_patch {
+    use super::*;
+
+    fn event_path(event_id: Uuid) -> String {
+        format!(
+            "/group_events/{}",
+            escape_pointer_segment(&event_id.to_string())
+        )
+    }
+
+    pub fn add(event: &GroupEvent) -> Patch {
+        Patch(vec![PatchOperation::Add(AddOperation {
+            path: event_path(event.id)
+                .try_into()
+                .expect("GroupEvent path should be valid"),
+            value: serde_json::to_value(event)
+                .expect("GroupEvent serialization should not fail"),
         })])
     }
 }

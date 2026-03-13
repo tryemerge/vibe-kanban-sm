@@ -57,6 +57,14 @@ pub struct CreateTaskGroupMcpRequest {
     pub name: String,
     #[schemars(description = "Optional color for the task group (hex format, e.g., '#3b82f6')")]
     pub color: Option<String>,
+    #[schemars(description = "ID of the iplan artifact that defines this group's feature scope. REQUIRED — call create_artifact(artifact_type='iplan') first and pass the returned id here. The API will reject groups without this.")]
+    pub artifact_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetArtifactRequest {
+    #[schemars(description = "The ID of the artifact to retrieve (use list_artifacts to find IDs)")]
+    pub artifact_id: Uuid,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -84,15 +92,55 @@ pub struct FinalizeTaskGroupRequest {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct StartGroupAnalysisRequest {
-    #[schemars(description = "The ID of the task group to analyze")]
+pub struct MarkAsAnalysisReadyRequest {
+    #[schemars(description = "The ID of the task group to mark as ready for analysis")]
     pub group_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetExecutionDagRequest {
+    #[schemars(description = "The ID of the task group to set the execution DAG for")]
+    pub group_id: Uuid,
+    #[schemars(description = "The execution DAG as an array of parallel sets. Each set is an array of task IDs that can run concurrently. Sets execute sequentially. Example: [[\"task-a\", \"task-b\"], [\"task-c\"]]")]
+    pub parallel_sets: Vec<Vec<String>>,
+    #[schemars(description = "Optional new name for the group")]
+    pub group_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AnalyzeBacklogRequest {
     #[schemars(description = "The ID of the project whose backlog should be analyzed for grouping")]
     pub project_id: Uuid,
+    #[schemars(description = "Optional prompt with additional instructions for the Task Grouper (e.g., 'Group by priority' or 'Keep auth tasks separate')")]
+    pub prompt: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListTaskGroupsRequest {
+    #[schemars(description = "The ID of the project to list task groups from")]
+    pub project_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UnlockProjectRequest {
+    #[schemars(description = "The ID of the project to unlock")]
+    pub project_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetTaskGroupRequest {
+    #[schemars(description = "The ID of the task group to retrieve")]
+    pub group_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TransitionTaskGroupRequest {
+    #[schemars(description = "The ID of the task group to transition")]
+    pub group_id: Uuid,
+    #[schemars(description = "Current state of the group (e.g. 'draft', 'analyzing', 'prereq_eval', 'ready', 'executing')")]
+    pub from: String,
+    #[schemars(description = "Target state. Valid: draft→analyzing, analyzing→ready (DAG stored), ready→prereq_eval (project DAG builder only), prereq_eval→ready (prereqs done or new dep added — route auto-advances to executing if unblocked), ready→executing, executing→done")]
+    pub to: String,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -591,6 +639,8 @@ pub struct CreateArtifactRequest {
     pub path: Option<String>,
     #[schemars(description = "Source task ID that produced this artifact")]
     pub source_task_id: Option<Uuid>,
+    #[schemars(description = "Chain ID to link related artifacts (ADR + iplan pair). Create an ADR first, get its chain_id from the response, then pass the same chain_id when creating the linked iplan so they appear together in the Plans panel.")]
+    pub chain_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -600,13 +650,15 @@ pub struct CreateArtifactResponse {
     pub artifact_type: String,
     pub scope: String,
     pub token_estimate: i32,
+    /// Chain ID assigned to this artifact. Pass this value as chain_id when creating the linked iplan (or ADR) so the pair appears in the Plans panel.
+    pub chain_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListArtifactsRequest {
     #[schemars(description = "The ID of the project to list artifacts from")]
     pub project_id: Uuid,
-    #[schemars(description = "Optional type filter: 'adr', 'pattern', 'module_memory', 'decision', 'dependency', 'iplan', 'changelog_entry'")]
+    #[schemars(description = "Optional type filter: 'adr', 'pattern', 'module_memory', 'decision', 'dependency', 'iplan', 'changelog_entry', 'brief'")]
     pub artifact_type: Option<String>,
 }
 
@@ -1366,7 +1418,7 @@ impl TaskServer {
     // ============================================
 
     #[tool(
-        description = "Create a new task group in a project. Task groups allow grouping related tasks for sequential execution."
+        description = "Create a new task group for a feature. REQUIRED: call create_artifact(artifact_type='iplan') first to create a Plan, then pass the returned artifact id here. The API enforces this — calls without artifact_id will fail."
     )]
     async fn create_task_group(
         &self,
@@ -1374,6 +1426,7 @@ impl TaskServer {
             project_id,
             name,
             color,
+            artifact_id,
         }): Parameters<CreateTaskGroupMcpRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let url = self.url(&format!("/api/projects/{}/task-groups", project_id));
@@ -1381,11 +1434,27 @@ impl TaskServer {
             "project_id": project_id.to_string(),
             "name": name,
             "color": color,
+            "artifact_id": artifact_id,
         });
         let result: serde_json::Value = match self
             .send_json(self.client.post(&url).json(&payload))
             .await
         {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "Get the full content of a context artifact (IMPL doc, ADR, etc.). Use this to read the feature spec before routing tasks or creating a new group. Returns the complete content field, not just the summary."
+    )]
+    async fn get_artifact(
+        &self,
+        Parameters(GetArtifactRequest { artifact_id }): Parameters<GetArtifactRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/context-artifacts/{}", artifact_id));
+        let result: serde_json::Value = match self.send_json(self.client.get(&url)).await {
             Ok(r) => r,
             Err(e) => return Ok(e),
         };
@@ -1440,7 +1509,7 @@ impl TaskServer {
     }
 
     #[tool(
-        description = "Mark a task group as finalized and ready for analysis. Transitions from 'draft' to 'pending' state. The group will move to analysis when its dependencies are satisfied."
+        description = "Mark a task group as finalized and ready for analysis. Transitions from 'draft' to 'analyzing' state. The Group Evaluator will build an execution DAG, then the PreReq Evaluator validates prerequisites before execution."
     )]
     async fn finalize_task_group(
         &self,
@@ -1449,7 +1518,7 @@ impl TaskServer {
         let url = self.url(&format!("/api/task-groups/{}/transition", group_id));
         let payload = serde_json::json!({
             "from": "draft",
-            "to": "pending",
+            "to": "analyzing",
         });
         let result: serde_json::Value = match self
             .send_json(self.client.post(&url).json(&payload))
@@ -1462,13 +1531,12 @@ impl TaskServer {
     }
 
     #[tool(
-        description = "Start analysis for a task group. Transitions the group from draft to analyzing state and creates an analysis task for the Group Evaluator agent."
+        description = "Mark a task group as ready for analysis. The group stays in this state until its dependencies are satisfied, then the Group Evaluator will pick it up. Tasks can still be added to the group while it waits."
     )]
-    async fn start_group_analysis(
+    async fn mark_as_analysis_ready(
         &self,
-        Parameters(StartGroupAnalysisRequest { group_id }): Parameters<StartGroupAnalysisRequest>,
+        Parameters(MarkAsAnalysisReadyRequest { group_id }): Parameters<MarkAsAnalysisReadyRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        // First transition the group to analyzing state
         let url = self.url(&format!("/api/task-groups/{}/transition", group_id));
         let payload = serde_json::json!({
             "from": "draft",
@@ -1485,8 +1553,38 @@ impl TaskServer {
 
         TaskServer::success(&serde_json::json!({
             "group": group,
-            "message": "Group transitioned to analyzing state. Analysis task will be created automatically."
+            "message": "Group marked as ready for analysis. It will be picked up when dependencies are satisfied."
         }))
+    }
+
+    #[tool(
+        description = "Store an execution DAG for a task group and advance it from 'analyzing' to 'ready'. If no dependencies are blocking, it will auto-advance to 'executing'. Each parallel set is an array of task IDs that run concurrently. Sets execute sequentially."
+    )]
+    async fn set_execution_dag(
+        &self,
+        Parameters(SetExecutionDagRequest {
+            group_id,
+            parallel_sets,
+            group_name,
+        }): Parameters<SetExecutionDagRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/task-groups/{}/set-execution-dag", group_id));
+        let mut payload = serde_json::json!({
+            "parallel_sets": parallel_sets,
+        });
+        if let Some(name) = &group_name {
+            payload["group_name"] = serde_json::Value::String(name.clone());
+        }
+
+        let result: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+
+        TaskServer::success(&result)
     }
 
     #[tool(
@@ -1494,11 +1592,84 @@ impl TaskServer {
     )]
     async fn analyze_backlog(
         &self,
-        Parameters(AnalyzeBacklogRequest { project_id }): Parameters<AnalyzeBacklogRequest>,
+        Parameters(AnalyzeBacklogRequest { project_id, prompt }): Parameters<AnalyzeBacklogRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let url = self.url(&format!("/api/projects/{}/analyze-backlog", project_id));
+        let mut req = self.client.post(&url);
+        if let Some(prompt) = prompt {
+            req = req.json(&serde_json::json!({ "prompt": prompt }));
+        }
+        let result: serde_json::Value = match self
+            .send_json(req)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "Clear the ready_locked flag on a project so advance_project_dag can proceed. Call this after processing all analyzing groups and verifying the project is stable (all groups in ready/executing/done state). This triggers immediate advancement of the next unblocked group."
+    )]
+    async fn unlock_project(
+        &self,
+        Parameters(UnlockProjectRequest { project_id }): Parameters<UnlockProjectRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/projects/{}/unlock", project_id));
         let result: serde_json::Value = match self
             .send_json(self.client.post(&url))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "List all task groups for a project with their current workflow states (draft, analyzing, prereq_eval, ready, executing, done). Use this to see what groups exist before transitioning them."
+    )]
+    async fn list_task_groups(
+        &self,
+        Parameters(ListTaskGroupsRequest { project_id }): Parameters<ListTaskGroupsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/projects/{}/task-groups", project_id));
+        let result: serde_json::Value = match self.send_json(self.client.get(&url)).await {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "Get detailed information about a specific task group, including its tasks, dependencies (what it's waiting for), and which other groups are waiting on it."
+    )]
+    async fn get_task_group(
+        &self,
+        Parameters(GetTaskGroupRequest { group_id }): Parameters<GetTaskGroupRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/task-groups/{}", group_id));
+        let result: serde_json::Value = match self.send_json(self.client.get(&url)).await {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+        TaskServer::success(&result)
+    }
+
+    #[tool(
+        description = "Transition a task group between workflow states. Valid transitions: draft→analyzing, analyzing→ready (after storing DAG), prereq_eval→ready (always — server auto-advances to executing if no blockers, or keeps in ready if new deps were added), ready→executing, executing→done. NOTE: ready→prereq_eval is done automatically by the project DAG builder, not by agents."
+    )]
+    async fn transition_task_group(
+        &self,
+        Parameters(TransitionTaskGroupRequest { group_id, from, to }): Parameters<
+            TransitionTaskGroupRequest,
+        >,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url(&format!("/api/task-groups/{}/transition", group_id));
+        let payload = serde_json::json!({ "from": from, "to": to });
+        let result: serde_json::Value = match self
+            .send_json(self.client.post(&url).json(&payload))
             .await
         {
             Ok(r) => r,
@@ -1859,9 +2030,10 @@ impl TaskServer {
             scope,
             path,
             source_task_id,
+            chain_id,
         }): Parameters<CreateArtifactRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let valid_types = ["adr", "pattern", "module_memory", "decision", "dependency", "iplan", "changelog_entry"];
+        let valid_types = ["adr", "pattern", "module_memory", "decision", "dependency", "iplan", "changelog_entry", "brief"];
         if !valid_types.contains(&artifact_type.as_str()) {
             return Self::err(
                 format!("Invalid artifact_type '{}'. Valid types: {}", artifact_type, valid_types.join(", ")),
@@ -1893,6 +2065,9 @@ impl TaskServer {
         if let Some(tid) = source_task_id {
             payload["source_task_id"] = serde_json::Value::String(tid.to_string());
         }
+        if let Some(cid) = chain_id {
+            payload["chain_id"] = serde_json::Value::String(cid.to_string());
+        }
 
         let artifact: serde_json::Value = match self
             .send_json(self.client.post(&url).json(&payload))
@@ -1908,6 +2083,7 @@ impl TaskServer {
             artifact_type: artifact["artifact_type"].as_str().unwrap_or("").to_string(),
             scope: artifact["scope"].as_str().unwrap_or("").to_string(),
             token_estimate: artifact["token_estimate"].as_i64().unwrap_or(0) as i32,
+            chain_id: artifact["chain_id"].as_str().map(|s| s.to_string()),
         })
     }
 

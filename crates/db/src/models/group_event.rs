@@ -51,15 +51,7 @@ impl GroupEvent {
                 created_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING
-                id as "id!: Uuid",
-                task_group_id as "task_group_id!: Uuid",
-                task_id as "task_id: Uuid",
-                event_type as "event_type!: String",
-                actor_type as "actor_type!: String",
-                summary as "summary!: String",
-                payload as "payload: String",
-                created_at as "created_at!: DateTime<Utc>"
+            RETURNING id, task_group_id, task_id, event_type, actor_type, summary, payload, created_at
             "#,
         )
         .bind(id)
@@ -83,15 +75,7 @@ impl GroupEvent {
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             r#"
-            SELECT
-                id as "id!: Uuid",
-                task_group_id as "task_group_id!: Uuid",
-                task_id as "task_id: Uuid",
-                event_type as "event_type!: String",
-                actor_type as "actor_type!: String",
-                summary as "summary!: String",
-                payload as "payload: String",
-                created_at as "created_at!: DateTime<Utc>"
+            SELECT id, task_group_id, task_id, event_type, actor_type, summary, payload, created_at
             FROM group_events
             WHERE task_group_id = $1
             ORDER BY created_at DESC
@@ -114,15 +98,7 @@ impl GroupEvent {
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             r#"
-            SELECT
-                ge.id as "id!: Uuid",
-                ge.task_group_id as "task_group_id!: Uuid",
-                ge.task_id as "task_id: Uuid",
-                ge.event_type as "event_type!: String",
-                ge.actor_type as "actor_type!: String",
-                ge.summary as "summary!: String",
-                ge.payload as "payload: String",
-                ge.created_at as "created_at!: DateTime<Utc>"
+            SELECT ge.id, ge.task_group_id, ge.task_id, ge.event_type, ge.actor_type, ge.summary, ge.payload, ge.created_at
             FROM group_events ge
             INNER JOIN task_groups tg ON ge.task_group_id = tg.id
             WHERE tg.project_id = $1
@@ -145,15 +121,7 @@ impl GroupEvent {
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as::<_, Self>(
             r#"
-            SELECT
-                id as "id!: Uuid",
-                task_group_id as "task_group_id!: Uuid",
-                task_id as "task_id: Uuid",
-                event_type as "event_type!: String",
-                actor_type as "actor_type!: String",
-                summary as "summary!: String",
-                payload as "payload: String",
-                created_at as "created_at!: DateTime<Utc>"
+            SELECT id, task_group_id, task_id, event_type, actor_type, summary, payload, created_at
             FROM group_events
             WHERE task_group_id = $1 AND event_type = $2
             ORDER BY created_at DESC

@@ -24,6 +24,8 @@ pub enum ArtifactType {
     IPlan,
     /// Changelog entry - records completed work for release notes
     ChangelogEntry,
+    /// Brief - conceptual gap report created by PreReq Evaluator for the Project Agent to convert into Plans
+    Brief,
 }
 
 /// Scope determines when an artifact is included in agent context
@@ -68,6 +70,7 @@ impl ArtifactType {
             ArtifactType::Dependency => "dependency",
             ArtifactType::IPlan => "iplan",
             ArtifactType::ChangelogEntry => "changelog_entry",
+            ArtifactType::Brief => "brief",
         }
     }
 
@@ -80,6 +83,7 @@ impl ArtifactType {
             "dependency" => Some(ArtifactType::Dependency),
             "iplan" => Some(ArtifactType::IPlan),
             "changelog_entry" => Some(ArtifactType::ChangelogEntry),
+            "brief" => Some(ArtifactType::Brief),
             _ => None,
         }
     }
@@ -87,6 +91,7 @@ impl ArtifactType {
     /// Priority ordering for context budget allocation (lower = higher priority)
     pub fn priority(&self) -> i32 {
         match self {
+            ArtifactType::Brief => 0,
             ArtifactType::Adr => 1,
             ArtifactType::Pattern => 2,
             ArtifactType::IPlan => 3,

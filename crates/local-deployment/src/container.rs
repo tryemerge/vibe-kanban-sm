@@ -47,7 +47,7 @@ use services::services::{
     config::Config,
     container::{ContainerError, ContainerRef, ContainerService},
     diff_stream::{self, DiffStreamHandle},
-    events::task_patch,
+    events::{execution_process_patch, task_patch},
     git::{Commit, GitCli, GitService},
     image::ImageService,
     notification::NotificationService,
@@ -522,6 +522,13 @@ impl LocalContainerService {
                     ExecutionProcess::update_completion(&db.pool, exec_id, status, exit_code).await
             {
                 tracing::error!("Failed to update execution process completion: {}", e);
+            }
+
+            // Broadcast updated execution process status to WS subscribers
+            if let Ok(Some(updated_process)) = ExecutionProcess::find_by_id(&db.pool, exec_id).await {
+                container
+                    .events_msg_store
+                    .push_patch(execution_process_patch::replace(&updated_process));
             }
 
             if let Ok(ctx) = ExecutionProcess::load_context(&db.pool, exec_id).await {
@@ -1049,6 +1056,10 @@ impl ContainerService for LocalContainerService {
         &self.notification_service
     }
 
+    fn events_msg_store(&self) -> &Arc<MsgStore> {
+        &self.events_msg_store
+    }
+
     async fn git_branch_prefix(&self) -> String {
         self.config.read().await.git_branch_prefix.clone()
     }
@@ -1131,7 +1142,15 @@ impl ContainerService for LocalContainerService {
         let repositories =
             WorkspaceRepo::find_repos_for_workspace(&self.db.pool, workspace.id).await?;
 
+        // Lightweight workspace (group-level agents): container_ref is pre-set to the
+        // project repo path, no WorkspaceRepo entries needed. Just verify the dir exists.
         if repositories.is_empty() {
+            if let Some(container_ref) = &workspace.container_ref {
+                let dir = PathBuf::from(container_ref);
+                if dir.exists() {
+                    return Ok(container_ref.clone());
+                }
+            }
             return Err(ContainerError::Other(anyhow!(
                 "Workspace has no repositories configured"
             )));
@@ -1219,7 +1238,6 @@ impl ContainerService for LocalContainerService {
                 ) => ExecutorApprovalBridge::new(
                     self.approvals.clone(),
                     self.db.clone(),
-                    self.notification_service.clone(),
                     execution_process.id,
                 ),
                 _ => Arc::new(NoopExecutorApprovalService {}),

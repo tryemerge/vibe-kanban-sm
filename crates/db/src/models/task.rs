@@ -182,7 +182,7 @@ impl Task {
         let records = sqlx::query!(
             r#"
 WITH latest_attempts AS (
-  -- Get the most recent session and execution info per task
+  -- Get the most recent session and execution info per task (filtered by project via subquery)
   SELECT DISTINCT ON (w.task_id)
     w.task_id,
     w.id as latest_attempt_id,
@@ -193,10 +193,11 @@ WITH latest_attempts AS (
   LEFT JOIN execution_processes ep ON ep.session_id = s.id
     AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
   WHERE w.cancelled_at IS NULL
+    AND w.task_id IN (SELECT id FROM tasks WHERE project_id = $1)
   ORDER BY w.task_id, w.created_at DESC, s.created_at DESC, ep.created_at DESC
 ),
 running_attempts AS (
-  -- Find tasks with currently running attempts
+  -- Find tasks with currently running attempts (filtered by project via subquery)
   SELECT
     w.task_id,
     bool_or(ep.status = 'running') as has_running
@@ -205,6 +206,7 @@ running_attempts AS (
   JOIN execution_processes ep ON ep.session_id = s.id
   WHERE ep.status = 'running'
     AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+    AND w.task_id IN (SELECT id FROM tasks WHERE project_id = $1)
   GROUP BY w.task_id
 )
 SELECT
@@ -266,6 +268,7 @@ ORDER BY t.created_at DESC"#,
     }
 
     /// Find all ungrouped tasks (task_group_id IS NULL) for a project
+    /// Excludes system/meta tasks created by the Task Grouper agent
     pub async fn find_ungrouped_by_project(
         pool: &PgPool,
         project_id: Uuid,
@@ -287,7 +290,9 @@ ORDER BY t.created_at DESC"#,
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
-               WHERE project_id = $1 AND task_group_id IS NULL
+               WHERE project_id = $1
+                 AND task_group_id IS NULL
+                 AND NOT (title ~* '^Group [0-9]+ ungrouped tasks$')
                ORDER BY created_at ASC"#,
             project_id
         )

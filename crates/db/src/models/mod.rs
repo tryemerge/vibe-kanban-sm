@@ -18,6 +18,7 @@ pub mod project_repo;
 pub mod repo;
 pub mod scratch;
 pub mod session;
+pub mod skill;
 pub mod state_transition;
 pub mod tag;
 pub mod task;

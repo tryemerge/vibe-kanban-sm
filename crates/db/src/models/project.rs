@@ -26,6 +26,14 @@ pub struct Project {
     pub default_agent_working_dir: Option<String>,
     pub remote_project_id: Option<Uuid>,
     pub board_id: Option<Uuid>,
+    pub agent_workspace_id: Option<Uuid>,
+    /// Persistent workspace for the Task Grouper agent (Grouper column)
+    pub grouper_workspace_id: Option<Uuid>,
+    /// Persistent workspace for the Group Evaluator agent (Analyzing column)
+    pub group_evaluator_workspace_id: Option<Uuid>,
+    /// Persistent workspace for the PreReq Evaluator agent (PreReq Eval column)
+    pub prereq_eval_workspace_id: Option<Uuid>,
+    pub ready_locked: bool,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -36,6 +44,7 @@ pub struct Project {
 pub struct CreateProject {
     pub name: String,
     pub repositories: Vec<CreateProjectRepo>,
+    pub board_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -78,6 +87,11 @@ impl Project {
                       default_agent_working_dir,
                       remote_project_id as "remote_project_id: Uuid",
                       board_id as "board_id: Uuid",
+                      agent_workspace_id as "agent_workspace_id: Uuid",
+                      grouper_workspace_id as "grouper_workspace_id: Uuid",
+                      group_evaluator_workspace_id as "group_evaluator_workspace_id: Uuid",
+                      prereq_eval_workspace_id as "prereq_eval_workspace_id: Uuid",
+                      ready_locked as "ready_locked!: bool",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
@@ -96,6 +110,11 @@ impl Project {
                    p.default_agent_working_dir,
                    p.remote_project_id as "remote_project_id: Uuid",
                    p.board_id as "board_id: Uuid",
+                   p.agent_workspace_id as "agent_workspace_id: Uuid",
+                   p.grouper_workspace_id as "grouper_workspace_id: Uuid",
+                   p.group_evaluator_workspace_id as "group_evaluator_workspace_id: Uuid",
+                   p.prereq_eval_workspace_id as "prereq_eval_workspace_id: Uuid",
+                   p.ready_locked as "ready_locked!: bool",
                    p.created_at as "created_at!: DateTime<Utc>", p.updated_at as "updated_at!: DateTime<Utc>"
             FROM projects p
             WHERE p.id IN (
@@ -122,6 +141,11 @@ impl Project {
                       default_agent_working_dir,
                       remote_project_id as "remote_project_id: Uuid",
                       board_id as "board_id: Uuid",
+                      agent_workspace_id as "agent_workspace_id: Uuid",
+                      grouper_workspace_id as "grouper_workspace_id: Uuid",
+                      group_evaluator_workspace_id as "group_evaluator_workspace_id: Uuid",
+                      prereq_eval_workspace_id as "prereq_eval_workspace_id: Uuid",
+                      ready_locked as "ready_locked!: bool",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
@@ -144,6 +168,11 @@ impl Project {
                       default_agent_working_dir,
                       remote_project_id as "remote_project_id: Uuid",
                       board_id as "board_id: Uuid",
+                      agent_workspace_id as "agent_workspace_id: Uuid",
+                      grouper_workspace_id as "grouper_workspace_id: Uuid",
+                      group_evaluator_workspace_id as "group_evaluator_workspace_id: Uuid",
+                      prereq_eval_workspace_id as "prereq_eval_workspace_id: Uuid",
+                      ready_locked as "ready_locked!: bool",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM (
@@ -170,6 +199,11 @@ impl Project {
                       default_agent_working_dir,
                       remote_project_id as "remote_project_id: Uuid",
                       board_id as "board_id: Uuid",
+                      agent_workspace_id as "agent_workspace_id: Uuid",
+                      grouper_workspace_id as "grouper_workspace_id: Uuid",
+                      group_evaluator_workspace_id as "group_evaluator_workspace_id: Uuid",
+                      prereq_eval_workspace_id as "prereq_eval_workspace_id: Uuid",
+                      ready_locked as "ready_locked!: bool",
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
@@ -201,6 +235,11 @@ impl Project {
                           default_agent_working_dir,
                           remote_project_id as "remote_project_id: Uuid",
                           board_id as "board_id: Uuid",
+                          agent_workspace_id as "agent_workspace_id: Uuid",
+                          grouper_workspace_id as "grouper_workspace_id: Uuid",
+                          group_evaluator_workspace_id as "group_evaluator_workspace_id: Uuid",
+                          prereq_eval_workspace_id as "prereq_eval_workspace_id: Uuid",
+                          ready_locked as "ready_locked!: bool",
                           created_at as "created_at!: DateTime<Utc>",
                           updated_at as "updated_at!: DateTime<Utc>""#,
             project_id,
@@ -237,6 +276,11 @@ impl Project {
                          default_agent_working_dir,
                          remote_project_id as "remote_project_id: Uuid",
                          board_id as "board_id: Uuid",
+                         agent_workspace_id as "agent_workspace_id: Uuid",
+                         grouper_workspace_id as "grouper_workspace_id: Uuid",
+                         group_evaluator_workspace_id as "group_evaluator_workspace_id: Uuid",
+                         prereq_eval_workspace_id as "prereq_eval_workspace_id: Uuid",
+                         ready_locked as "ready_locked!: bool",
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -322,6 +366,78 @@ impl Project {
             r#"UPDATE projects SET board_id = $2 WHERE id = $1"#,
             id,
             board_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set the agent workspace ID for the project's persistent agent
+    pub async fn set_agent_workspace_id(
+        pool: &PgPool,
+        id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE projects SET agent_workspace_id = $2 WHERE id = $1"#,
+            id,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_grouper_workspace_id(
+        pool: &PgPool,
+        id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE projects SET grouper_workspace_id = $2 WHERE id = $1"#,
+            id,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_group_evaluator_workspace_id(
+        pool: &PgPool,
+        id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE projects SET group_evaluator_workspace_id = $2 WHERE id = $1"#,
+            id,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_prereq_eval_workspace_id(
+        pool: &PgPool,
+        id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE projects SET prereq_eval_workspace_id = $2 WHERE id = $1"#,
+            id,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_ready_locked(pool: &PgPool, id: Uuid, locked: bool) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE projects SET ready_locked = $1, updated_at = NOW() WHERE id = $2"#,
+            locked,
+            id
         )
         .execute(pool)
         .await?;

@@ -32,7 +32,6 @@ use services::services::{
     queued_message::QueuedMessageService,
     repo::RepoService,
     share::SharePublisher,
-    task_grouper::TaskGrouperService,
     worktree_manager::WorktreeError,
 };
 use sqlx::Error as SqlxError;
@@ -137,18 +136,6 @@ pub trait Deployment: Clone + Send + Sync + 'static {
         PrMonitorService::spawn(db, analytics, publisher).await
     }
 
-    async fn spawn_task_grouper_service(&self) -> tokio::task::JoinHandle<()> {
-        let db = self.db().clone();
-        let analytics = self
-            .analytics()
-            .as_ref()
-            .map(|analytics_service| AnalyticsContext {
-                user_id: self.user_id().to_string(),
-                analytics_service: analytics_service.clone(),
-            });
-        TaskGrouperService::spawn(db, analytics).await
-    }
-
     async fn track_if_analytics_allowed(&self, event_name: &str, properties: Value) {
         let analytics_enabled = self.config().read().await.analytics_enabled;
         // Track events unless user has explicitly opted out
@@ -185,6 +172,7 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                             display_name: repo.name,
                             git_repo_path: repo_path.clone(),
                         }],
+                        board_id: None,
                     };
 
                     match self

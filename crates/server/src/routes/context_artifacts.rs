@@ -8,6 +8,7 @@ use axum::{
 use db::models::context_artifact::{
     ArtifactType, ContextArtifact, ContextPreviewStats, CreateContextArtifact, UpdateContextArtifact,
 };
+use db::models::project::Project;
 use deployment::Deployment;
 use serde::Deserialize;
 use ts_rs::TS;
@@ -61,9 +62,19 @@ pub async fn create_context_artifact(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateContextArtifact>,
 ) -> Result<ResponseJson<ApiResponse<ContextArtifact>>, ApiError> {
+    let pool = &deployment.db().pool;
     let artifact_id = Uuid::new_v4();
-    let artifact =
-        ContextArtifact::create(&deployment.db().pool, payload, artifact_id).await?;
+
+    // Lock the project when a brief or iplan is created — signals that new planning
+    // work has entered the pipeline and the project needs re-stabilization before
+    // any group can advance to execution.
+    if matches!(payload.artifact_type.as_str(), "brief" | "iplan") {
+        if let Err(e) = Project::set_ready_locked(pool, payload.project_id, true).await {
+            tracing::warn!("Failed to set ready_locked on artifact creation: {}", e);
+        }
+    }
+
+    let artifact = ContextArtifact::create(pool, payload, artifact_id).await?;
 
     deployment
         .track_if_analytics_allowed(

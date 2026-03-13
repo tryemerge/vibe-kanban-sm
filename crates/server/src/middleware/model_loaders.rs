@@ -8,7 +8,7 @@ use db::models::{
     agent::Agent, automation_rule::AutomationRule, board::Board,
     context_artifact::ContextArtifact, execution_process::ExecutionProcess,
     kanban_column::KanbanColumn, project::Project, session::Session,
-    state_transition::StateTransition, tag::Tag, task::Task, workspace::Workspace,
+    skill::Skill, state_transition::StateTransition, tag::Tag, task::Task, workspace::Workspace,
 };
 use deployment::Deployment;
 use uuid::Uuid;
@@ -319,5 +319,27 @@ pub async fn load_context_artifact_middleware(
     };
 
     request.extensions_mut().insert(artifact);
+    Ok(next.run(request).await)
+}
+
+pub async fn load_skill_middleware(
+    State(deployment): State<DeploymentImpl>,
+    Path(skill_id): Path<Uuid>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let skill = match Skill::find_by_id(&deployment.db().pool, skill_id).await {
+        Ok(Some(skill)) => skill,
+        Ok(None) => {
+            tracing::warn!("Skill {} not found", skill_id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch skill {}: {}", skill_id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    request.extensions_mut().insert(skill);
     Ok(next.run(request).await)
 }

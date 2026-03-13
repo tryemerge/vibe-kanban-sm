@@ -554,6 +554,17 @@ pub async fn update_task(
                     if let Err(e) = TaskDependency::satisfy_by_prerequisite(pool, task.id).await {
                         tracing::error!("Failed to satisfy dependencies for task {}: {}", task.id, e);
                     }
+                    // Auto-start any newly unblocked group tasks
+                    if let Err(e) = super::task_groups::check_and_start_next_group_tasks(
+                        pool,
+                        deployment.clone(),
+                        task.id,
+                    ).await {
+                        tracing::error!(
+                            "Failed to check/start next group tasks after {} completed: {}",
+                            task.id, e
+                        );
+                    }
                 } else if !target_col.is_terminal {
                     // Task moved back from terminal — reset satisfaction
                     // Only reset if the task was previously in a done terminal column
@@ -908,7 +919,7 @@ pub async fn share_task(
 }
 
 /// Spawn agent execution for a task when entering a column with an assigned agent
-async fn spawn_agent_execution(
+pub async fn spawn_agent_execution(
     deployment: DeploymentImpl,
     task: Task,
     agent: Agent,
@@ -1127,6 +1138,8 @@ async fn spawn_agent_execution(
         color: agent.color.clone(),
         column_name: column_name.clone(),
         project_context,
+        // Always use the dispatched task — handles group workspaces where workspace.task_id = tasks[0]
+        task_id_override: Some(task.id),
     };
     deployment
         .container()

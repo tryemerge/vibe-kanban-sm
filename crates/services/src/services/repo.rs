@@ -117,7 +117,12 @@ impl RepoService {
 
         let repo_path = normalized_parent.join(folder_name);
         if repo_path.exists() {
-            return Err(RepoError::DirectoryAlreadyExists(repo_path));
+            // If it already exists and is a git repo, just register it
+            if repo_path.join(".git").exists() {
+                let repo = RepoModel::find_or_create(pool, &repo_path, folder_name).await?;
+                return Ok(repo);
+            }
+            // If it exists but isn't a git repo, initialize git in it
         }
 
         git.initialize_repo_with_main_branch(&repo_path)?;

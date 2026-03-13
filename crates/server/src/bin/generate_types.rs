@@ -55,6 +55,8 @@ fn generate_types_content() -> String {
         db::models::task_group::CreateTaskGroup::decl(),
         db::models::task_group::UpdateTaskGroup::decl(),
         db::models::task_group_dependency::TaskGroupDependency::decl(),
+        db::models::group_event::GroupEvent::decl(),
+        db::models::group_event::CreateGroupEvent::decl(),
         db::models::task_label::TaskLabel::decl(),
         db::models::task_label::CreateTaskLabel::decl(),
         db::models::task_label::UpdateTaskLabel::decl(),
@@ -239,6 +241,10 @@ fn generate_types_content() -> String {
         db::models::agent::CreateAgent::decl(),
         db::models::agent::UpdateAgent::decl(),
         db::models::agent::ContextFile::decl(),
+        // Skill types
+        db::models::skill::Skill::decl(),
+        db::models::skill::CreateSkill::decl(),
+        db::models::skill::UpdateSkill::decl(),
         // Automation rule types
         db::models::automation_rule::AutomationRule::decl(),
         db::models::automation_rule::AutomationRuleWithColumn::decl(),

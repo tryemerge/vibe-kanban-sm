@@ -4,6 +4,26 @@ use sqlx::{FromRow, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
+/// Default Uuid for serde — used so project_id can be omitted from request bodies
+/// when it's already provided as a URL path parameter.
+fn default_uuid() -> Uuid {
+    Uuid::nil()
+}
+
+/// Generate a random pastel color in hex format
+fn generate_random_color() -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+
+    // Generate pastel colors by using higher base values (150-255 range)
+    // This ensures colors are vibrant but not too dark
+    let r = rng.gen_range(100..230);
+    let g = rng.gen_range(100..230);
+    let b = rng.gen_range(100..230);
+
+    format!("#{:02x}{:02x}{:02x}", r, g, b)
+}
+
 /// A named group of tasks within a project (e.g., sprint, epic, milestone).
 /// Groups are ordered by position and can optionally track when work started.
 /// As of ADR-015, groups own the workspace/worktree that all tasks in the group share.
@@ -24,14 +44,19 @@ pub struct TaskGroup {
     pub execution_dag: Option<String>,
     /// The workspace/worktree for this group (all tasks share it)
     pub workspace_id: Option<Uuid>,
+    /// The defining IMPL doc (iplan artifact) for this group. Links the group to its feature spec.
+    pub artifact_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
 pub struct CreateTaskGroup {
+    #[serde(default = "default_uuid")]
     pub project_id: Uuid,
     pub name: String,
     pub color: Option<String>,
     pub is_backlog: Option<bool>,
+    /// Optional IMPL doc (iplan artifact) to link this group to its feature spec.
+    pub artifact_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -58,7 +83,8 @@ impl TaskGroup {
                       state,
                       is_backlog as "is_backlog!: bool",
                       execution_dag as "execution_dag: String",
-                      workspace_id as "workspace_id: Uuid"
+                      workspace_id as "workspace_id: Uuid",
+                      artifact_id as "artifact_id: Uuid"
                FROM task_groups
                WHERE project_id = $1
                ORDER BY position"#,
@@ -82,7 +108,8 @@ impl TaskGroup {
                       state,
                       is_backlog as "is_backlog!: bool",
                       execution_dag as "execution_dag: String",
-                      workspace_id as "workspace_id: Uuid"
+                      workspace_id as "workspace_id: Uuid",
+                      artifact_id as "artifact_id: Uuid"
                FROM task_groups
                WHERE id = $1"#,
             id
@@ -92,14 +119,18 @@ impl TaskGroup {
     }
 
     /// Create a new group with position auto-assigned as max+1
+    /// Automatically generates a random color if none is provided
     pub async fn create(pool: &PgPool, data: &CreateTaskGroup) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         let is_backlog = data.is_backlog.unwrap_or(false);
+        // Generate a random color if none provided
+        let color = data.color.clone().unwrap_or_else(generate_random_color);
+
         sqlx::query_as!(
             TaskGroup,
-            r#"INSERT INTO task_groups (id, project_id, name, color, position, is_backlog)
+            r#"INSERT INTO task_groups (id, project_id, name, color, position, is_backlog, artifact_id)
                VALUES ($1, $2, $3, $4,
-                       COALESCE((SELECT MAX(position) FROM task_groups WHERE project_id = $2), -1) + 1, $5)
+                       COALESCE((SELECT MAX(position) FROM task_groups WHERE project_id = $2), -1) + 1, $5, $6)
                RETURNING id as "id!: Uuid",
                          project_id as "project_id!: Uuid",
                          name,
@@ -110,12 +141,14 @@ impl TaskGroup {
                          state,
                          is_backlog as "is_backlog!: bool",
                          execution_dag as "execution_dag: String",
-                         workspace_id as "workspace_id: Uuid""#,
+                         workspace_id as "workspace_id: Uuid",
+                         artifact_id as "artifact_id: Uuid""#,
             id,
             data.project_id,
             data.name,
-            data.color,
+            color,
             is_backlog,
+            data.artifact_id,
         )
         .fetch_one(pool)
         .await
@@ -143,7 +176,8 @@ impl TaskGroup {
                          state,
                          is_backlog as "is_backlog!: bool",
                          execution_dag as "execution_dag: String",
-                         workspace_id as "workspace_id: Uuid""#,
+                         workspace_id as "workspace_id: Uuid",
+                         artifact_id as "artifact_id: Uuid""#,
             id,
             data.name,
             data.color,
@@ -206,8 +240,12 @@ impl TaskGroup {
     }
 
     /// Transition a group's state. Validates the transition is legal.
-    /// Valid transitions: draft→analyzing, analyzing→ready/failed, ready→executing,
-    /// executing→done/failed, failed→draft
+    ///
+    /// New pipeline (project-level DAG builder pattern):
+    ///   draft → analyzing → ready → [project DAG builder] → prereq_eval (one at a time)
+    ///     → executing → done
+    ///   prereq_eval → ready  (prereq satisfied; server auto-advances to executing if unblocked)
+    ///   prereq_eval → ready  (prereq created new dep; group stays in ready waiting for dep)
     pub async fn transition_state(
         pool: &PgPool,
         id: Uuid,
@@ -216,10 +254,13 @@ impl TaskGroup {
     ) -> Result<Option<Self>, sqlx::Error> {
         // Validate transition
         let is_valid = matches!((from, to),
-            ("draft", "analyzing") |
-            ("analyzing", "ready") |
+            ("draft", "analyzing") |         // Task Builder done → Group Evaluator builds internal DAG
+            ("analyzing", "ready") |         // DAG built → enter ready pool (project DAG builder decides what goes next)
             ("analyzing", "failed") |
-            ("ready", "executing") |
+            ("ready", "prereq_eval") |       // Project DAG builder: first unblocked group enters prereq (one at a time)
+            ("prereq_eval", "ready") |       // PreReq eval done → back to ready (auto-advances to executing if unblocked)
+            ("ready", "analyzing") |         // Re-analyze when tasks added while waiting on dependencies
+            ("ready", "executing") |         // Auto-advance when group deps are satisfied (no prereq required)
             ("executing", "done") |
             ("executing", "failed") |
             ("failed", "draft")
@@ -244,7 +285,8 @@ impl TaskGroup {
                          state,
                          is_backlog as "is_backlog!: bool",
                          execution_dag as "execution_dag: String",
-                         workspace_id as "workspace_id: Uuid""#,
+                         workspace_id as "workspace_id: Uuid",
+                         artifact_id as "artifact_id: Uuid""#,
             id, to, from
         )
         .fetch_optional(pool)
@@ -268,7 +310,8 @@ impl TaskGroup {
                       tg.state,
                       tg.is_backlog as "is_backlog!: bool",
                       tg.execution_dag as "execution_dag: String",
-                      tg.workspace_id as "workspace_id: Uuid"
+                      tg.workspace_id as "workspace_id: Uuid",
+                      tg.artifact_id as "artifact_id: Uuid"
                FROM task_groups tg
                WHERE tg.project_id = $1
                  AND tg.is_backlog = TRUE
@@ -281,6 +324,62 @@ impl TaskGroup {
             project_id
         )
         .fetch_all(pool)
+        .await
+    }
+
+    /// Count non-backlog groups in a given state for a project.
+    /// Used by the project DAG builder to decide when it's safe to advance.
+    pub async fn count_non_backlog_by_state(
+        pool: &PgPool,
+        project_id: Uuid,
+        state: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let row = sqlx::query!(
+            r#"SELECT COUNT(*) as "count!" FROM task_groups
+               WHERE project_id = $1 AND state = $2 AND is_backlog = FALSE"#,
+            project_id, state
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(row.count)
+    }
+
+    /// Find the first `ready` non-backlog group whose inter-group dependencies are all satisfied
+    /// (i.e. every depended-on group is in `done` state).
+    /// Ordered by creation time so older groups proceed first.
+    pub async fn find_first_ready_unblocked(
+        pool: &PgPool,
+        project_id: Uuid,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            TaskGroup,
+            r#"SELECT tg.id as "id!: Uuid",
+                      tg.project_id as "project_id!: Uuid",
+                      tg.name,
+                      tg.color as "color: String",
+                      tg.position as "position!: i32",
+                      tg.started_at as "started_at: DateTime<Utc>",
+                      tg.created_at as "created_at!: DateTime<Utc>",
+                      tg.state,
+                      tg.is_backlog as "is_backlog!: bool",
+                      tg.execution_dag as "execution_dag: String",
+                      tg.workspace_id as "workspace_id: Uuid",
+                      tg.artifact_id as "artifact_id: Uuid"
+               FROM task_groups tg
+               WHERE tg.project_id = $1
+                 AND tg.state = 'ready'
+                 AND tg.is_backlog = FALSE
+                 AND NOT EXISTS (
+                   SELECT 1 FROM task_group_dependencies tgd
+                   JOIN task_groups dep ON dep.id = tgd.depends_on_group_id
+                   WHERE tgd.task_group_id = tg.id
+                     AND dep.state != 'done'
+                 )
+               ORDER BY tg.created_at ASC
+               LIMIT 1"#,
+            project_id
+        )
+        .fetch_optional(pool)
         .await
     }
 
@@ -305,7 +404,8 @@ impl TaskGroup {
                          state,
                          is_backlog as "is_backlog!: bool",
                          execution_dag as "execution_dag: String",
-                         workspace_id as "workspace_id: Uuid""#,
+                         workspace_id as "workspace_id: Uuid",
+                         artifact_id as "artifact_id: Uuid""#,
             id, dag
         )
         .fetch_optional(pool)

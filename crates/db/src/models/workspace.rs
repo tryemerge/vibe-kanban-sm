@@ -163,6 +163,105 @@ impl Workspace {
         Ok(workspaces)
     }
 
+    /// Fetch all workspaces for a given task group, newest first.
+    /// Used by the frontend to find column-level agent workspaces.
+    pub async fn find_by_task_group(
+        pool: &PgPool,
+        task_group_id: Uuid,
+    ) -> Result<Vec<Self>, WorkspaceError> {
+        sqlx::query_as!(
+            Workspace,
+            r#"SELECT id AS "id!: Uuid",
+                      task_id AS "task_id!: Uuid",
+                      container_ref,
+                      branch,
+                      agent_working_dir,
+                      setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                      cancelled_at AS "cancelled_at: DateTime<Utc>",
+                      final_context,
+                      completion_summary,
+                      created_at AS "created_at!: DateTime<Utc>",
+                      updated_at AS "updated_at!: DateTime<Utc>",
+                      task_group_id AS "task_group_id: Uuid"
+               FROM workspaces
+               WHERE task_group_id = $1
+               ORDER BY created_at DESC"#,
+            task_group_id
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(WorkspaceError::Database)
+    }
+
+    /// Find the most recent evaluator workspace for a project matching a branch prefix.
+    /// Used to let users view Group Evaluator / PreReq Evaluator output at any time,
+    /// even after the group has moved past those states.
+    pub async fn find_latest_evaluator_for_project(
+        pool: &PgPool,
+        project_id: Uuid,
+        branch_like: &str,
+    ) -> Result<Option<Self>, WorkspaceError> {
+        sqlx::query_as!(
+            Workspace,
+            r#"SELECT w.id AS "id!: Uuid",
+                      w.task_id AS "task_id!: Uuid",
+                      w.container_ref,
+                      w.branch,
+                      w.agent_working_dir,
+                      w.setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                      w.cancelled_at AS "cancelled_at: DateTime<Utc>",
+                      w.final_context,
+                      w.completion_summary,
+                      w.created_at AS "created_at!: DateTime<Utc>",
+                      w.updated_at AS "updated_at!: DateTime<Utc>",
+                      w.task_group_id AS "task_group_id: Uuid"
+               FROM workspaces w
+               JOIN task_groups tg ON w.task_group_id = tg.id
+               WHERE tg.project_id = $1
+                 AND w.branch LIKE $2
+               ORDER BY w.created_at DESC
+               LIMIT 1"#,
+            project_id,
+            branch_like
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(WorkspaceError::Database)
+    }
+
+    /// Find the most recent Task Grouper workspace for a project.
+    /// Grouper workspaces use task_id (not task_group_id) since they run before groups exist.
+    pub async fn find_latest_grouper_for_project(
+        pool: &PgPool,
+        project_id: Uuid,
+    ) -> Result<Option<Self>, WorkspaceError> {
+        sqlx::query_as!(
+            Workspace,
+            r#"SELECT w.id AS "id!: Uuid",
+                      w.task_id AS "task_id!: Uuid",
+                      w.container_ref,
+                      w.branch,
+                      w.agent_working_dir,
+                      w.setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                      w.cancelled_at AS "cancelled_at: DateTime<Utc>",
+                      w.final_context,
+                      w.completion_summary,
+                      w.created_at AS "created_at!: DateTime<Utc>",
+                      w.updated_at AS "updated_at!: DateTime<Utc>",
+                      w.task_group_id AS "task_group_id: Uuid"
+               FROM workspaces w
+               JOIN tasks t ON w.task_id = t.id
+               WHERE t.project_id = $1
+                 AND w.branch LIKE 'grouper/%'
+               ORDER BY w.created_at DESC
+               LIMIT 1"#,
+            project_id
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(WorkspaceError::Database)
+    }
+
     /// Load workspace with full validation - ensures workspace belongs to task and task belongs to project
     pub async fn load_context(
         pool: &PgPool,
@@ -222,6 +321,22 @@ impl Workspace {
             workspace_repos,
             column,
         })
+    }
+
+    /// Link this workspace to a task group (without overwriting group.workspace_id)
+    pub async fn update_task_group_id(
+        pool: &PgPool,
+        workspace_id: Uuid,
+        task_group_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            "UPDATE workspaces SET task_group_id = $1, updated_at = NOW() WHERE id = $2",
+            task_group_id,
+            workspace_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     /// Update container reference
@@ -379,6 +494,15 @@ impl Workspace {
                     FROM sessions s2
                     JOIN execution_processes ep2 ON s2.id = ep2.session_id
                     WHERE ep2.completed_at IS NULL
+                )
+                AND w.id NOT IN (
+                    SELECT agent_workspace_id FROM projects WHERE agent_workspace_id IS NOT NULL
+                    UNION ALL
+                    SELECT grouper_workspace_id FROM projects WHERE grouper_workspace_id IS NOT NULL
+                    UNION ALL
+                    SELECT group_evaluator_workspace_id FROM projects WHERE group_evaluator_workspace_id IS NOT NULL
+                    UNION ALL
+                    SELECT prereq_eval_workspace_id FROM projects WHERE prereq_eval_workspace_id IS NOT NULL
                 )
             GROUP BY w.id, w.task_id, w.container_ref, w.branch, w.agent_working_dir,
                      w.setup_completed_at, w.cancelled_at, w.final_context, w.completion_summary,

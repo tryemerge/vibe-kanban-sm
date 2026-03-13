@@ -60,7 +60,10 @@ use uuid::Uuid;
 
 use crate::{
     DeploymentImpl, error::ApiError, middleware::load_workspace_middleware,
-    routes::task_attempts::gh_cli_setup::GhCliSetupError,
+    routes::{
+        task_attempts::gh_cli_setup::GhCliSetupError,
+        task_groups::check_and_start_next_group_tasks,
+    },
 };
 
 #[derive(Debug, Deserialize, Serialize, TS)]
@@ -416,6 +419,11 @@ pub async fn merge_task_attempt(
     // Satisfy all dependencies waiting on this task
     if let Err(e) = TaskDependency::satisfy_by_prerequisite(pool, task.id).await {
         tracing::error!("Failed to satisfy dependencies for task {}: {}", task.id, e);
+    }
+
+    // Start any newly-unblocked group tasks in the DAG
+    if let Err(e) = check_and_start_next_group_tasks(pool, deployment.clone(), task.id).await {
+        tracing::error!("Failed to start next group tasks after merge for task {}: {}", task.id, e);
     }
 
     // Stop any running dev servers for this workspace
