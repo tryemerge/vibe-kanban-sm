@@ -1,0 +1,140 @@
+{
+  "name": "Kanban Board App — IMPL-Doc-First Groups",
+  "description": "Seeds a kanban board app project with 4 Plans (ADR + IMPL doc pairs). Three Plans have task groups ready for the execution pipeline (Base Setup, Drag & Drop, Persistence). One Plan is pending in the Plans panel awaiting implementation (Docs & Accessibility).",
+
+  "steps": [
+    {
+      "action": "create_artifact",
+      "artifact_ref": "adr-base-setup",
+      "artifact_type": "adr",
+      "title": "ADR: Project Foundation & Component Architecture",
+      "scope": "global",
+      "content": "## Context\nWe need to build a kanban board app from scratch. Key decisions: framework, build tool, state management pattern, and component decomposition.\n\n## Decision\nVite + React + TypeScript. Component tree: App → Board → Column[] → Card[]. Board owns all state via useReducer. Columns and Cards are stateless presentational components that receive data and callbacks as props. No external state library for MVP — the data shape is simple enough that a single reducer handles all mutations cleanly.\n\n## Consequences\n- Vite gives fast dev server and optimized production builds without config\n- useReducer makes all state transitions explicit and testable\n- Stateless columns/cards are easy to unit-test and visually predictable\n- Adding features later (drag-and-drop, persistence) only requires extending the reducer\n- TypeScript catches column/card ID mismatches at compile time"
+    },
+
+    {
+      "action": "create_artifact",
+      "artifact_ref": "impl-base-setup",
+      "artifact_type": "iplan",
+      "title": "Base Kanban Board Setup",
+      "scope": "global",
+      "chain_id_ref": "adr-base-setup",
+      "content": "## What\nBootstrap a Vite + React + TypeScript project and implement the core Board, Column, and Card components with static layout.\n\n## Why\nEvery subsequent feature (drag-and-drop, persistence, keyboard nav) builds on this foundation. Nothing else can be implemented until these components exist.\n\n## Key Decisions\n- Vite + React + TypeScript (see ADR: Project Foundation & Component Architecture)\n- Board state lives in useReducer; columns and cards are stateless\n- Initial board has 3 columns (To Do, In Progress, Done) with 2 sample cards each\n\n## Tasks\n1. Initialize Vite React TypeScript project (`npm create vite@latest . -- --template react-ts`)\n2. Define TypeScript types: `Card`, `Column`, `BoardState` in `src/types.ts`\n3. Implement `Card` component — renders title, accepts onClick\n4. Implement `Column` component — renders header + card list, accepts cards array\n5. Implement `Board` component with `useReducer` — manages columns/cards state, renders columns\n6. Add base CSS for board layout: flex row of columns, scrollable column body, card styling\n7. Wire up `App.tsx` to render `<Board />` with initial seed data\n\n## Definition of Done\n- `npm run dev` shows a kanban board with 3 columns and sample cards\n- TypeScript compiles without errors\n- Components are cleanly separated into their own files"
+    },
+
+    {
+      "action": "create_artifact",
+      "artifact_ref": "adr-drag-drop",
+      "artifact_type": "adr",
+      "title": "ADR: Card Interaction Model",
+      "scope": "global",
+      "content": "## Context\nThe kanban board needs a way for users to move cards between columns. We evaluated mouse-event-based drag-and-drop (HTML5 DnD API, pointer events) vs. click-to-select + click-to-place.\n\n## Decision\nUse the HTML5 Drag and Drop API with pointer-events fallback for touch devices. Cards have a draggable attribute; columns are drop targets. State is managed in a single reducer so drag state is never out of sync with column order.\n\n## Consequences\n- Works natively in all modern browsers without a library\n- Touch support requires pointer-events shim or a small library (dnd-kit)\n- Drag state must be lifted to the board level — column components are stateless receivers\n- Animations (ghost card, drop indicator) are CSS-only for performance"
+    },
+
+    {
+      "action": "create_artifact",
+      "artifact_ref": "impl-drag-drop",
+      "artifact_type": "iplan",
+      "title": "Card Drag & Drop",
+      "scope": "global",
+      "chain_id_ref": "adr-drag-drop",
+      "content": "## What\nImplement drag-and-drop card movement between columns on the kanban board.\n\n## Why\nCore interaction model — without it the board is read-only.\n\n## Key Decisions\n- HTML5 DnD API (see ADR: Card Interaction Model)\n- Board-level drag state reducer; columns receive onDrop callbacks\n- Ghost card rendered at drag position; drop zone highlighted on dragover\n\n## Tasks\n1. Add draggable attribute and dragstart/dragend handlers to Card component\n2. Add dragover/drop handlers to Column component  \n3. Implement board-level drag reducer (DRAG_START, DRAG_OVER, DROP, DRAG_CANCEL)\n4. Add CSS: ghost card opacity, drop zone highlight, smooth position transition\n\n## Definition of Done\n- Cards can be dragged between any two columns\n- Drop target highlights on hover\n- Card snaps into correct position on drop\n- Touch devices work via pointer-events fallback"
+    },
+
+    {
+      "action": "create_artifact",
+      "artifact_ref": "adr-persistence",
+      "artifact_type": "adr",
+      "title": "ADR: Board State Persistence Strategy",
+      "scope": "global",
+      "content": "## Context\nBoard state (columns, card order, card content) needs to persist across page reloads. Options: localStorage, IndexedDB, remote API.\n\n## Decision\nLocalStorage for MVP. Each board is serialized as a single JSON blob keyed by board ID. On load, the board hydrates from localStorage; on any state change, it debounces a write (200ms). Remote sync is deferred to v2.\n\n## Consequences\n- Zero backend required for MVP\n- localStorage has a ~5MB limit — sufficient for typical boards (100s of cards)\n- No multi-device sync in v1; users who open two tabs see independent state\n- Migration path: when remote API is added, localStorage becomes the offline cache"
+    },
+
+    {
+      "action": "create_artifact",
+      "artifact_ref": "impl-persistence",
+      "artifact_type": "iplan",
+      "title": "Board State Persistence",
+      "scope": "global",
+      "chain_id_ref": "adr-persistence",
+      "content": "## What\nPersist board state to localStorage so the board survives page reloads.\n\n## Why\nWithout persistence, every reload starts from scratch — makes the app unusable.\n\n## Key Decisions\n- localStorage with debounced writes (see ADR: Board State Persistence Strategy)\n- Single JSON blob per board keyed as `kanban_board_{id}`\n- Hydration on mount; writes on every state change (debounced 200ms)\n\n## Tasks\n1. Write useBoardPersistence hook: load() reads localStorage, save() writes debounced\n2. Integrate hook into Board component: hydrate on mount, subscribe to state changes\n3. Add a Reset button that clears localStorage and resets to initial board state\n4. Handle migration: if stored schema version differs, clear and start fresh\n\n## Definition of Done\n- Board state survives page reload\n- Card positions and column order preserved\n- Reset button works and prompts for confirmation\n- No data loss on rapid card moves (debounce handles burst writes)"
+    },
+
+    {
+      "action": "create_artifact",
+      "artifact_ref": "adr-docs-a11y",
+      "artifact_type": "adr",
+      "title": "ADR: Documentation & Accessibility Strategy",
+      "scope": "global",
+      "content": "## Context\nThe kanban board needs setup documentation and keyboard accessibility. We evaluated two approaches: (1) minimal README with no keyboard support, (2) full README plus WCAG 2.1 AA keyboard navigation.\n\n## Decision\nWrite a full README covering prerequisites, install, dev server, build, and a screenshot. Add keyboard navigation using native focus management: Tab to focus cards, Space to grab/drop, Arrow keys to move between columns. Use CSS :focus-visible for the focus ring. No third-party a11y library — the interaction surface is small enough to implement natively.\n\n## Consequences\n- New contributors can onboard without guessing setup steps\n- Board is fully usable without a mouse, meeting WCAG 2.1 AA\n- Native focus management avoids adding a dependency\n- Screen reader support requires aria-live announcements on card position changes"
+    },
+
+    {
+      "action": "create_artifact",
+      "artifact_ref": "impl-docs-a11y",
+      "artifact_type": "iplan",
+      "title": "Documentation & Accessibility",
+      "scope": "global",
+      "chain_id_ref": "adr-docs-a11y",
+      "content": "## What\nWrite setup documentation and add keyboard navigation support for the kanban board.\n\n## Why\n- README lets new contributors run the app without guessing.\n- Keyboard nav makes the board usable without a mouse and meets WCAG 2.1 AA.\n\n## Tasks\n1. Write README: prerequisites, install, dev server, build, screenshot\n2. Keyboard navigation: Tab to focus card, Space to pick up, Arrow keys to move columns, Space/Enter to drop. Show focus ring and tooltip.\n\n## Definition of Done\n- README covers all setup steps; screenshot included\n- Cards fully navigable via keyboard\n- Visible focus ring on focused card\n- Screen reader announces card position changes"
+    },
+
+    { "action": "create_task", "task_ref": "task-init-project", "title": "Initialize Vite React TypeScript project", "description": "Run `npm create vite@latest . -- --template react-ts` in the project directory. Install dependencies with `npm install`. Verify `npm run dev` starts the dev server and `npm run build` produces a dist folder." },
+    { "action": "create_task", "task_ref": "task-types", "title": "Define TypeScript types for board state", "description": "Create `src/types.ts` with: `Card { id, title, description? }`, `Column { id, title, cards: Card[] }`, `BoardState { columns: Column[] }`. Export all types. These will be used by all components." },
+    { "action": "create_task", "task_ref": "task-card-component", "title": "Implement Card component", "description": "Create `src/components/Card.tsx`. Props: `card: Card`, `onClick?: () => void`. Renders card title in a styled div. Export as default." },
+    { "action": "create_task", "task_ref": "task-column-component", "title": "Implement Column component", "description": "Create `src/components/Column.tsx`. Props: `column: Column`. Renders column title as header, maps over `column.cards` to render `<Card />` components. No state — purely presentational." },
+    { "action": "create_task", "task_ref": "task-board-component", "title": "Implement Board component with useReducer", "description": "Create `src/components/Board.tsx`. Use `useReducer` with `BoardState`. Initial state: 3 columns (To Do, In Progress, Done) each with 2 sample cards. Renders a row of `<Column />` components." },
+    { "action": "create_task", "task_ref": "task-base-css", "title": "Add base CSS styling for board layout", "description": "Update `src/index.css` or create `src/components/Board.css`. Board: flex row, gap between columns, full viewport height. Column: fixed width ~280px, flex column, rounded border. Card: white background, padding, shadow, rounded corners, hover state." },
+    { "action": "create_task", "task_ref": "task-wire-app", "title": "Wire up App.tsx to render Board", "description": "Update `src/App.tsx` to import and render `<Board />`. Remove the Vite/React boilerplate. The app should show only the kanban board." },
+
+    { "action": "create_task", "task_ref": "task-card-drag", "title": "Add draggable attribute and drag event handlers to Card component", "description": "Make Card components draggable. Add dragstart handler that sets dataTransfer with the card ID and source column ID. Add dragend handler that clears drag state. Apply ghost styling (reduced opacity) during drag." },
+    { "action": "create_task", "task_ref": "task-column-drop", "title": "Add drop zone handlers to Column component", "description": "Add dragover and drop event handlers to Column. On dragover, prevent default and highlight the column. On drop, extract card ID and source column from dataTransfer and call onDrop(cardId, fromColumn, toColumn)." },
+    { "action": "create_task", "task_ref": "task-drag-reducer", "title": "Implement board-level drag reducer", "description": "Add drag state to the board reducer: DRAG_START, DRAG_OVER, DROP, DRAG_CANCEL actions. State shape: { dragging: cardId | null, overColumn: columnId | null }. DROP triggers card movement between columns." },
+    { "action": "create_task", "task_ref": "task-drag-css", "title": "Add drag-and-drop CSS animations", "description": "Add CSS for drag interactions: ghost card (0.5 opacity on source), drop zone highlight (blue border + background tint on dragover), smooth card reorder transition (150ms ease). No JS animations — CSS only for performance." },
+
+    { "action": "create_task", "task_ref": "task-persist-hook", "title": "Write useBoardPersistence hook", "description": "Create a custom hook that wraps localStorage read/write for board state. load(boardId) returns parsed board state or null. save(boardId, state) writes with 200ms debounce. Handle JSON parse errors gracefully (return null, log warning)." },
+    { "action": "create_task", "task_ref": "task-persist-integrate", "title": "Integrate persistence hook into Board component", "description": "In the Board component: call useBoardPersistence to hydrate initial state on mount. Subscribe to state changes and call save() on each change. Show a loading state for one frame while hydration completes to prevent flash of empty board." },
+    { "action": "create_task", "task_ref": "task-reset-button", "title": "Add Reset Board button with confirmation", "description": "Add a Reset button to the board header. On click, show a confirmation dialog: 'This will clear all cards and reset the board. Are you sure?' On confirm, clear localStorage key and reset board to initial empty state." },
+
+    {
+      "action": "create_task_group",
+      "group_ref": "group-base-setup",
+      "name": "Base Kanban Board Setup",
+      "artifact_ref": "impl-base-setup",
+      "color": "#16a34a"
+    },
+    { "action": "add_task_to_group", "task_ref": "task-init-project", "group_ref": "group-base-setup" },
+    { "action": "add_task_to_group", "task_ref": "task-types", "group_ref": "group-base-setup" },
+    { "action": "add_task_to_group", "task_ref": "task-card-component", "group_ref": "group-base-setup" },
+    { "action": "add_task_to_group", "task_ref": "task-column-component", "group_ref": "group-base-setup" },
+    { "action": "add_task_to_group", "task_ref": "task-board-component", "group_ref": "group-base-setup" },
+    { "action": "add_task_to_group", "task_ref": "task-base-css", "group_ref": "group-base-setup" },
+    { "action": "add_task_to_group", "task_ref": "task-wire-app", "group_ref": "group-base-setup" },
+    { "action": "finalize_task_group", "group_ref": "group-base-setup" },
+
+    {
+      "action": "create_task_group",
+      "group_ref": "group-drag-drop",
+      "name": "Card Drag & Drop",
+      "artifact_ref": "impl-drag-drop",
+      "color": "#7c3aed"
+    },
+    { "action": "add_task_to_group", "task_ref": "task-card-drag", "group_ref": "group-drag-drop" },
+    { "action": "add_task_to_group", "task_ref": "task-column-drop", "group_ref": "group-drag-drop" },
+    { "action": "add_task_to_group", "task_ref": "task-drag-reducer", "group_ref": "group-drag-drop" },
+    { "action": "add_task_to_group", "task_ref": "task-drag-css", "group_ref": "group-drag-drop" },
+    { "action": "finalize_task_group", "group_ref": "group-drag-drop" },
+
+    {
+      "action": "create_task_group",
+      "group_ref": "group-persistence",
+      "name": "Board State Persistence",
+      "artifact_ref": "impl-persistence",
+      "color": "#0891b2"
+    },
+    { "action": "add_task_to_group", "task_ref": "task-persist-hook", "group_ref": "group-persistence" },
+    { "action": "add_task_to_group", "task_ref": "task-persist-integrate", "group_ref": "group-persistence" },
+    { "action": "add_task_to_group", "task_ref": "task-reset-button", "group_ref": "group-persistence" },
+    { "action": "finalize_task_group", "group_ref": "group-persistence" }
+  ]
+}

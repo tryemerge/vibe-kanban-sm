@@ -47,9 +47,11 @@ async function main() {
   const state = {
     projectId: null,
     boardId: null,
-    columns: {},    // slug → column object
-    taskRefs: {},   // task_ref → task object
-    labelRefs: {},  // label name → label object
+    columns: {},       // slug → column object
+    taskRefs: {},      // task_ref → task object
+    artifactRefs: {},  // artifact_ref → artifact object
+    groupRefs: {},     // group_ref → group object
+    labelRefs: {},     // label name → label object
   };
 
   // ── Step 1: Create project ──
@@ -58,66 +60,74 @@ async function main() {
   state.projectId = project.id;
   ok(`Project created (${project.id})`);
 
-  // ── Step 2: Create board ──
+  // ── Step 2: Board setup ──
   if (scenario.board) {
     header('Setup: Board');
-    const board = await api.createBoard(
-      scenario.board.name || 'Test Board',
-      scenario.board.description
-    );
-    state.boardId = board.id;
-    ok(`Board created: ${board.name} (${board.id})`);
 
-    // Assign board to project
-    await api.updateProject(state.projectId, { board_id: board.id });
-    ok('Board assigned to project');
+    if (scenario.board.board_id) {
+      // Reuse an existing board — just assign it to the project
+      state.boardId = scenario.board.board_id;
+      await api.updateProject(state.projectId, { board_id: scenario.board.board_id });
+      ok(`Using existing board (${scenario.board.board_id})`);
+    } else {
+      // Create a new board with columns and transitions
+      const board = await api.createBoard(
+        scenario.board.name || 'Test Board',
+        scenario.board.description
+      );
+      state.boardId = board.id;
+      ok(`Board created: ${board.name} (${board.id})`);
 
-    // Create columns
-    if (scenario.board.columns) {
-      for (let i = 0; i < scenario.board.columns.length; i++) {
-        const colDef = scenario.board.columns[i];
-        const col = await api.createColumn(board.id, {
-          name: colDef.name,
-          slug: colDef.slug,
-          position: i,
-          color: colDef.color || null,
-          status: colDef.status || 'todo',
-          is_initial: colDef.is_initial || false,
-          is_terminal: colDef.is_terminal || false,
-          starts_workflow: colDef.starts_workflow || false,
-          deliverable: colDef.deliverable || null,
-          deliverable_variable: colDef.deliverable_variable || null,
-          deliverable_options: colDef.deliverable_options
-            ? JSON.stringify(colDef.deliverable_options)
-            : null,
-        });
-        state.columns[colDef.slug] = col;
-        ok(`Column: ${col.name} [${colDef.status}]`);
-      }
-    }
+      // Assign board to project
+      await api.updateProject(state.projectId, { board_id: board.id });
+      ok('Board assigned to project');
 
-    // Create transitions
-    if (scenario.board.transitions) {
-      for (const tDef of scenario.board.transitions) {
-        const fromCol = state.columns[tDef.from];
-        const toCol = state.columns[tDef.to];
-        if (!fromCol || !toCol) {
-          warn(`Transition skipped: unknown column slug (${tDef.from} → ${tDef.to})`);
-          continue;
+      // Create columns
+      if (scenario.board.columns) {
+        for (let i = 0; i < scenario.board.columns.length; i++) {
+          const colDef = scenario.board.columns[i];
+          const col = await api.createColumn(board.id, {
+            name: colDef.name,
+            slug: colDef.slug,
+            position: i,
+            color: colDef.color || null,
+            status: colDef.status || 'todo',
+            is_initial: colDef.is_initial || false,
+            is_terminal: colDef.is_terminal || false,
+            starts_workflow: colDef.starts_workflow || false,
+            deliverable: colDef.deliverable || null,
+            question: colDef.question || null,
+            answer_options: colDef.answer_options
+              ? JSON.stringify(colDef.answer_options)
+              : null,
+          });
+          state.columns[colDef.slug] = col;
+          ok(`Column: ${col.name} [${colDef.status}]`);
         }
-        const tData = {
-          from_column_id: fromCol.id,
-          to_column_id: toCol.id,
-          name: tDef.name || null,
-          condition_key: tDef.condition_key || null,
-          condition_value: tDef.condition_value || null,
-          max_failures: tDef.max_failures || null,
-        };
-        await api.createTransition(board.id, tData);
-        const condStr = tDef.condition_key
-          ? ` (${tDef.condition_key}=${tDef.condition_value})`
-          : '';
-        ok(`Transition: ${tDef.from} → ${tDef.to}${condStr}`);
+      }
+
+      // Create transitions
+      if (scenario.board.transitions) {
+        for (const tDef of scenario.board.transitions) {
+          const fromCol = state.columns[tDef.from];
+          const toCol = state.columns[tDef.to];
+          if (!fromCol || !toCol) {
+            warn(`Transition skipped: unknown column slug (${tDef.from} → ${tDef.to})`);
+            continue;
+          }
+          const tData = {
+            from_column_id: fromCol.id,
+            to_column_id: toCol.id,
+            name: tDef.name || null,
+            condition_value: tDef.condition_value || null,
+            max_failures: tDef.max_failures || null,
+          };
+          await api.createTransition(board.id, tData);
+          const condStr = tDef.condition_key
+            ? ` (${tDef.condition_key}=${tDef.condition_value})`
+            : '';
+          ok(`Transition: ${tDef.from} → ${tDef.to}${condStr}`);
+        }
       }
     }
   }
@@ -130,6 +140,18 @@ async function main() {
     switch (step.action) {
       case 'create_task':
         await handleCreateTask(state, step);
+        break;
+      case 'create_artifact':
+        await handleCreateArtifact(state, step);
+        break;
+      case 'create_task_group':
+        await handleCreateTaskGroup(state, step);
+        break;
+      case 'add_task_to_group':
+        await handleAddTaskToGroup(state, step);
+        break;
+      case 'finalize_task_group':
+        await handleFinalizeTaskGroup(state, step);
         break;
       case 'simulate_agent_output':
         await handleSimulateOutput(state, step);
@@ -282,6 +304,51 @@ async function handleCheckpoint(state, step) {
         warn(`Unknown measurement type: ${m.type}`);
     }
   }
+}
+
+async function handleCreateArtifact(state, step) {
+  console.log(`\n  ${C.bold}Artifact: ${step.title}${C.reset}`);
+  const artifact = await api.createArtifact({
+    project_id: state.projectId,
+    artifact_type: step.artifact_type,
+    title: step.title,
+    content: step.content,
+    scope: step.scope || 'global',
+    path: step.path || null,
+    chain_id: step.chain_id_ref ? state.artifactRefs[step.chain_id_ref]?.chain_id : null,
+    supersedes_id: step.supersedes_ref ? state.artifactRefs[step.supersedes_ref]?.id : null,
+  });
+  if (step.artifact_ref) state.artifactRefs[step.artifact_ref] = artifact;
+  ok(`Created [${artifact.artifact_type}] ${artifact.title} (${artifact.id})`);
+}
+
+async function handleCreateTaskGroup(state, step) {
+  console.log(`\n  ${C.bold}Group: ${step.name}${C.reset}`);
+  const artifactId = step.artifact_ref ? state.artifactRefs[step.artifact_ref]?.id : null;
+  const group = await api.createTaskGroup(state.projectId, {
+    name: step.name,
+    color: step.color || null,
+    is_backlog: false,
+    artifact_id: artifactId || null,
+  });
+  if (step.group_ref) state.groupRefs[step.group_ref] = group;
+  ok(`Created group "${group.name}" (${group.id})${artifactId ? ' linked to IMPL doc' : ''}`);
+}
+
+async function handleAddTaskToGroup(state, step) {
+  const task = state.taskRefs[step.task_ref];
+  const group = state.groupRefs[step.group_ref];
+  if (!task) { warn(`add_task_to_group: unknown task_ref "${step.task_ref}"`); return; }
+  if (!group) { warn(`add_task_to_group: unknown group_ref "${step.group_ref}"`); return; }
+  await api.addTaskToGroup(task.id, group.id);
+  ok(`Added "${task.title}" → group "${group.name}"`);
+}
+
+async function handleFinalizeTaskGroup(state, step) {
+  const group = state.groupRefs[step.group_ref];
+  if (!group) { warn(`finalize_task_group: unknown group_ref "${step.group_ref}"`); return; }
+  await api.finalizeTaskGroup(group.id);
+  ok(`Finalized group "${group.name}" → ready for Group Evaluator`);
 }
 
 // ── Helpers ──

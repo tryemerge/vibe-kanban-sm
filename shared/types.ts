@@ -4,9 +4,21 @@
 
 // If you are an AI, and you absolutely have to edit this file, please confirm with the user first.
 
-export type Project = { id: string, name: string, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, remote_project_id: string | null, board_id: string | null, created_at: Date, updated_at: Date, };
+export type Project = { id: string, name: string, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, remote_project_id: string | null, board_id: string | null, agent_workspace_id: string | null, 
+/**
+ * Persistent workspace for the Task Grouper agent (Grouper column)
+ */
+grouper_workspace_id: string | null, 
+/**
+ * Persistent workspace for the Group Evaluator agent (Analyzing column)
+ */
+group_evaluator_workspace_id: string | null, 
+/**
+ * Persistent workspace for the PreReq Evaluator agent (PreReq Eval column)
+ */
+prereq_eval_workspace_id: string | null, ready_locked: boolean, created_at: Date, updated_at: Date, };
 
-export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, };
+export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, board_id: string | null, };
 
 export type UpdateProject = { name: string | null, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, board_id: string | null, };
 
@@ -217,9 +229,17 @@ export type TaskGroup = { id: string, project_id: string, name: string, color: s
 /**
  * The workspace/worktree for this group (all tasks share it)
  */
-workspace_id: string | null, };
+workspace_id: string | null, 
+/**
+ * The defining IMPL doc (iplan artifact) for this group. Links the group to its feature spec.
+ */
+artifact_id: string | null, };
 
-export type CreateTaskGroup = { project_id: string, name: string, color: string | null, is_backlog: boolean | null, };
+export type CreateTaskGroup = { project_id: string, name: string, color: string | null, is_backlog: boolean | null, 
+/**
+ * Optional IMPL doc (iplan artifact) to link this group to its feature spec.
+ */
+artifact_id: string | null, };
 
 export type UpdateTaskGroup = { name: string | null, color: string | null, };
 
@@ -236,6 +256,10 @@ depends_on_group_id: string, created_at: Date,
  * When this dependency was satisfied (null if still blocking)
  */
 satisfied_at: Date | null, };
+
+export type GroupEvent = { id: string, task_group_id: string, task_id: string | null, event_type: string, actor_type: string, summary: string, payload: string | null, created_at: Date, };
+
+export type CreateGroupEvent = { task_group_id: string, task_id: string | null, event_type: string, actor_type: string, summary: string, payload: string | null, };
 
 export type TaskLabel = { id: string, project_id: string, name: string, color: string | null, position: number, created_at: Date, };
 
@@ -760,6 +784,12 @@ export type UpdateAgent = { name: string | null, role: string | null, system_pro
 
 export type ContextFile = { pattern: string, instruction: string | null, };
 
+export type Skill = { id: string, name: string, description: string | null, content: string, created_at: Date, updated_at: Date, };
+
+export type CreateSkill = { name: string, description: string | null, content: string, };
+
+export type UpdateSkill = { name: string | null, description: string | null, content: string | null, };
+
 export type AutomationRule = { id: string, project_id: string, column_id: string, trigger_type: string, action_type: string, action_config: string, enabled: boolean, priority: number, name: string | null, created_at: Date, updated_at: Date, };
 
 export type AutomationRuleWithColumn = { id: string, project_id: string, column_id: string, column_name: string, trigger_type: string, action_type: string, action_config: string, enabled: boolean, priority: number, name: string | null, created_at: Date, updated_at: Date, };
@@ -802,7 +832,7 @@ export type TaskEventWithNames = { from_column_name: string | null, to_column_na
 
 export type CreateTaskEvent = { task_id: string, event_type: TaskEventType, from_column_id: string | null, to_column_id: string | null, workspace_id: string | null, session_id: string | null, executor: string | null, automation_rule_id: string | null, trigger_type: EventTriggerType | null, commit_hash: string | null, commit_message: string | null, metadata: JsonValue | null, actor_type: ActorType | null, actor_id: string | null, };
 
-export type ArtifactType = "module_memory" | "adr" | "decision" | "pattern" | "dependency" | "iplan" | "changelog_entry";
+export type ArtifactType = "module_memory" | "adr" | "decision" | "pattern" | "dependency" | "iplan" | "changelog_entry" | "brief";
 
 export type ArtifactScope = "path" | "task" | "global";
 

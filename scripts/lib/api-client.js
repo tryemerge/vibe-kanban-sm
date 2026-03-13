@@ -82,6 +82,26 @@ const api = {
     return request('GET', path);
   },
 
+  // Task Groups
+  createTaskGroup(projectId, data) {
+    return request('POST', `/api/projects/${projectId}/task-groups`, data);
+  },
+  listTaskGroups(projectId) {
+    return request('GET', `/api/projects/${projectId}/task-groups`);
+  },
+  addTaskToGroup(taskId, groupId) {
+    return request('POST', `/api/tasks/${taskId}/task-group/${groupId}`, {});
+  },
+  finalizeTaskGroup(groupId) {
+    return request('POST', `/api/task-groups/${groupId}/transition`, { from: 'draft', to: 'analyzing' });
+  },
+  transitionTaskGroup(groupId, from, to) {
+    return request('POST', `/api/task-groups/${groupId}/transition`, { from, to });
+  },
+  getArtifact(artifactId) {
+    return request('GET', `/api/context-artifacts/${artifactId}`);
+  },
+
   // Triggers
   createTrigger(taskId, data) {
     return request('POST', `/api/tasks/${taskId}/triggers`, { task_id: taskId, ...data });
